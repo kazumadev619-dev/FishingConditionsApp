@@ -1,22 +1,19 @@
 # 🎣 Fishing Conditions App
 
-## 🧭 概要
-釣り初心者から経験者までが、  
-**「いつ・どこで・どんな条件なら釣れるか」**をリアルタイムで確認できるWebアプリ。  
+釣り初心者から経験者までが、**「いつ・どこで・どんな条件なら釣れるか」**をリアルタイムで確認できるWebアプリケーション。
 
-潮汐・風・天気・海水温などのデータをもとに、  
-**釣りやすさスコア**を算出・可視化することを目的とする。
+潮汐・風・天気・海水温などの環境データを統合し、独自の**釣りやすさスコア**を算出・可視化することで、ユーザーの釣果向上を支援します。PWA対応により、スマートフォンでネイティブアプリライクな体験を提供します。
 
 ---
 
-## 🧩 開発目的
-- 釣行前・釣行中に「今の釣り条件」を簡単に確認できる環境を提供する  
-- 気象・潮汐データをもとに「釣り日和」を定量的に評価する  
-- 将来的にユーザーごとの釣果記録・共有機能を追加する  
+## 🎯 プロダクトビジョン
 
----
+### 開発目的
+- 釣行前・釣行中に「今の釣り条件」を簡単に確認できる環境を提供
+- 気象・潮汐データをもとに「釣り日和」を定量的に評価
+- 将来的にユーザーごとの釣果記録・共有機能を追加
 
-## 🎯 ターゲットユーザー
+### ターゲットユーザー
 | 区分 | 想定ユーザー | 利用目的 |
 |------|---------------|-----------|
 | 初心者 | 釣り経験が浅く、潮や風の見方が分からない | 釣りに行く日や時間帯を決めたい |
@@ -24,56 +21,98 @@
 
 ---
 
-## 🕹️ 想定利用シーン
-| シーン | 内容 |
-|---------|------|
-| 出発前 | 1週間〜1ヶ月の釣りやすさをチェック |
-| 現地で | リアルタイムの風・潮・天気を確認 |
-| 将来的 | 自分の釣果を記録・振り返りたい |
+## 🏗️ 開発戦略
+
+### 段階的開発アプローチ
+
+**Phase 1: MVP (Next.js フルスタック)** - 8-10週間
+- 迅速な開発・検証を重視
+- Next.js API Routes でバックエンド機能を実装
+- パフォーマンスベースラインの測定
+
+**Phase 2: バックエンド分離 (Go移行)** - 4-6週間
+- フロントエンド: Next.js (PWA)
+- バックエンド: Go + Gin フレームワーク
+- パフォーマンス比較・最適化
+
+**Phase 3: モバイルアプリ展開** - 6-8週間
+- React Native または Flutter
+- Go APIを共通バックエンドとして活用
 
 ---
 
-## ⚙️ 技術スタック（予定）
+## ⚙️ 技術スタック
 
-| レイヤー | 技術 | 備考 |
-|-----------|-------|------|
-| フロントエンド | React + TypeScript + Vite | モバイル対応SPA構成 |
-| 状態管理 | Zustand または React Query | API連携・状態共有 |
-| バックエンド（MVP） | Go（ Gin ） |
-| データベース | PostgreSQL | sqlcによるDBアクセスコード生成 |
-| 認証 | JWT（Cookieベース） | トークンベース認証 |
-| デプロイ | Vercel（フロント）＋ Render / Fly.io（API） | MVP段階では無料枠想定 |
+### Phase 1: MVP技術スタック
+| レイヤー | 技術 | 理由 |
+|----------|------|------|
+| フロントエンド | Next.js 16.0.1 + React 19 + TypeScript | SSR/SSG対応、PWA化、型安全性 |
+| バックエンド | Next.js API Routes | 迅速な開発、フルスタック統合 |
+| スタイリング | Tailwind CSS + shadcn/ui | モバイルファースト、コンポーネント再利用 |
+| 状態管理 | Zustand + React Query | 軽量、外部API連携に最適 |
+| 認証 | NextAuth.js | 多様な認証プロバイダー対応 |
+| データベース | PostgreSQL (Supabase) | リレーショナルDB、リアルタイム機能 |
+| キャッシュ | Redis (Upstash) | 外部API結果のキャッシュ |
+| デプロイ | Vercel | Next.js最適化、Edge Functions |
 
 ---
 
-## 🔐 MVP機能一覧（v1.0）
+## 🔐 主要機能
 
+### MVP機能一覧 (Phase 1)
 | カテゴリ | 機能 | 詳細 |
 |-----------|-------|------|
-| 認証 | ユーザー登録 / ログイン / ログアウト | メール＋パスワード認証 |
-| 環境データ | 潮汐 / 風 / 天気 / 海水温データ取得 | OpenWeatherMap / WorldTides API など |
-| 釣りやすさ分析 | スコア算出（独自ロジック） | 潮＋風＋天気を重みづけしてスコア化 |
-| 表示UI | 日付別・時間帯別の釣りやすさ表示 | モバイルファーストUI設計 |
-| 検索 | 地名・緯度経度からデータ取得 | Google Maps APIなど |
-| （将来的）釣果記録 | ユーザー単位で保存 | MVP段階では未実装 |
+| 認証 | ユーザー登録・ログイン・ログアウト | NextAuth.js によるメール認証 |
+| 環境データ | 潮汐・風・天気・海水温データ取得 | 外部API統合 + キャッシュ機能 |
+| 釣りやすさ分析 | スコア算出（独自ロジック） | 潮汐・天気・時間帯を重み付けして0-100でスコア化 |
+| データ表示 | 日付別・時間帯別の釣りやすさ表示 | レスポンシブチャート・グラフ表示 |
+| 場所検索 | 地名検索・現在位置取得・履歴保存 | Google Maps API連携 |
+| PWA機能 | オフライン対応・アプリインストール | Service Worker + キャッシュ戦略 |
+
+### 釣りやすさスコア算出ロジック
+```
+総合スコア (0-100) = 潮汐スコア (40) + 天気スコア (35) + 時間帯スコア (25)
+
+- 潮汐スコア: 満潮・干潮前後2時間が高スコア、大潮・中潮期間はボーナス
+- 天気スコア: 風速・天候・気圧の安定性で評価
+- 時間帯スコア: 早朝・夕方が高スコア、日中は中程度
+```
 
 ---
 
+## 📚 外部API統合
 
-## 🧾 開発ルール（暫定）
+### 使用予定API
+- **[OpenWeatherMap API](https://openweathermap.org/api)**: 気象データ（風・天気・気温・湿度）
+- **[WorldTides API](https://www.worldtides.info/apidocs)**: 潮汐データ（満潮・干潮時刻・潮位）
+- **[Google Maps API](https://developers.google.com/maps)**: 地名検索・ジオコーディング・現在位置
 
-- **コーディング規約**：ESLint + Prettier  
-- **ブランチ戦略**：`main` / `dev` / `feature/*`  
-- **コミット規約**：Conventional Commits  
-- **Issue管理**：GitHub Projects（MVPスプリント単位）
+### API統合戦略
+- **キャッシュ戦略**: Redis による結果キャッシュ（天気30分、潮汐6時間）
+- **エラーハンドリング**: タイムアウト・リトライ・フォールバック機能
+- **レート制限対応**: API使用量監視・アラート設定
+
+---
+
+## 🧾 開発・運用ルール
+
+### 開発規約
+- **コーディング規約**: ESLint + Prettier + TypeScript strict mode
+- **ブランチ戦略**: `main` / `develop` / `feature/*` / `hotfix/*`
+- **コミット規約**: Conventional Commits
+- **Issue管理**: GitHub Projects（スプリント単位）
+
+### 品質保証
+- **テスト戦略**: Jest (単体) + Playwright (E2E)
+- **CI/CD**: GitHub Actions + Vercel自動デプロイ
+- **監視**: Vercel Analytics + エラー追跡
 
 ---
 
+## 📞 リソース
 
-## 📚 使用予定API仮
-- [OpenWeatherMap API](https://openweathermap.org/api)（気象・風）
-- [WorldTides API](https://www.worldtides.info/apidocs)（潮汐データ）
-- [Marine API / NOAA](https://tidesandcurrents.noaa.gov/api/)（海水温・潮流）
-- [Google Maps API](https://developers.google.com/maps)（地名・緯度経度検索）
-
----
+### 外部リンク
+- [Next.js Documentation](https://nextjs.org/docs)
+- [OpenWeatherMap API](https://openweathermap.org/api)
+- [WorldTides API](https://www.worldtides.info/apidocs)
+- [Google Maps API](https://developers.google.com/maps)
