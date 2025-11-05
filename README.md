@@ -43,17 +43,23 @@
 
 ## ⚙️ 技術スタック
 
+### 環境要件
+| 項目 | バージョン |
+|------|-----------|
+| Node.js | v24.11.0 |
+| TypeScript | v5.9.3 |
+
 ### Phase 1: MVP技術スタック
-| レイヤー | 技術 | 理由 |
-|----------|------|------|
-| フロントエンド | Next.js 16.0.1 + React 19 + TypeScript | SSR/SSG対応、PWA化、型安全性 |
-| バックエンド | Next.js API Routes | 迅速な開発、フルスタック統合 |
-| スタイリング | Tailwind CSS + shadcn/ui | モバイルファースト、コンポーネント再利用 |
-| 状態管理 | Zustand + React Query | 軽量、外部API連携に最適 |
-| 認証 | NextAuth.js | 多様な認証プロバイダー対応 |
-| データベース | PostgreSQL (Supabase) | リレーショナルDB、リアルタイム機能 |
-| キャッシュ | Redis (Upstash) | 外部API結果のキャッシュ |
-| デプロイ | Vercel | Next.js最適化、Edge Functions |
+| レイヤー | 技術 | バージョン | 理由 |
+|----------|------|-----------|------|
+| フロントエンド | Next.js + React + TypeScript | 16.0.1 + 19.2.0 + 5.9.3 | SSR/SSG対応、PWA化、型安全性 |
+| バックエンド | Next.js API Routes | 16.0.1 | 迅速な開発、フルスタック統合 |
+| スタイリング | Tailwind CSS + shadcn/ui | 4.1.16 + latest | モバイルファースト、コンポーネント再利用 |
+| 状態管理 | Zustand + React Query | 5.0.8 + 5.90.7 | 軽量、外部API連携に最適 |
+| 認証 | Auth.js (NextAuth.js) | 4.24.13 | 多様な認証プロバイダー対応 |
+| データベース | PostgreSQL (Supabase) | 15.0 + latest | リレーショナルDB、リアルタイム機能 |
+| キャッシュ | Redis (Upstash) | 7.2.0 | 外部API結果のキャッシュ |
+| デプロイ | Vercel | latest | Next.js最適化、Edge Functions |
 
 ---
 
@@ -108,8 +114,6 @@
 - **監視**: Vercel Analytics + エラー追跡
 
 ---
-
-## 📞 リソース
 
 ### 外部リンク
 - [Next.js Documentation](https://nextjs.org/docs)
