@@ -1,0 +1,12 @@
+{
+  "name": "fishing-conditions-app-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "FRONTEND",
+    "BACKEND"
+  ],
+  "dependencies": {
+    "next-auth": "^5.0.0-beta.30"
+  }
+}

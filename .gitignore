@@ -1,0 +1,16 @@
+# Dependencies
+/node_modules
+
+# Next.js
+/.next/
+/out/
+
+# Production
+/build
+
+# Local Environment Variables
+.env*.local
+.env
+
+# macOS
+.DS_Store
