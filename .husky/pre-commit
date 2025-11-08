@@ -1,0 +1,2 @@
+npm run test --workspaces --if-present
+npx lint-staged
