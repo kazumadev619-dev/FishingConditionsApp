@@ -116,8 +116,8 @@
 ### 開発規約
 
 - **コーディング規約**: ESLint + Prettier + TypeScript strict mode
-- **ブランチ戦略**: `main` / `develop` / `feature/*` / `hotfix/*`
-- **コミット規約**: Conventional Commits
+- **ブランチ戦略**: `main` / `develop` / `Task/*`
+- **コミット**: `[gitmoji]:[prefix]: [message] #[TaskNoXXX]`
 - **Issue管理**: GitHub Projects（スプリント単位）
 
 ### 品質保証
