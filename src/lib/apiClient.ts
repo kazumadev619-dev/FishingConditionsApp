@@ -35,14 +35,14 @@ class ApiClient {
       url.searchParams.append(this.keyName, this.apiKey);
     }
 
-    const requestHeaders: Record<string, string> = {
-      'Content-Type': 'application/json',
-      ...headers,
-    };
+    const requestHeaders = new Headers(headers);
+    if (!requestHeaders.has('Content-Type')) {
+      requestHeaders.set('Content-Type', 'application/json');
+    }
 
     // APIキーをヘッダーとして追加
     if (this.apiKey && this.keyLocation === 'header') {
-      requestHeaders[this.keyName] = this.apiKey;
+      requestHeaders.set(this.keyName, this.apiKey);
     }
 
     const response = await fetch(url.toString(), {
