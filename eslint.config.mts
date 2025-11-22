@@ -71,6 +71,11 @@ export default [
       'tailwindcss/classnames-order': 'warn',
       'tailwindcss/no-custom-classname': 'off',
     },
+    settings: {
+      tailwindcss: {
+        config: './tailwind.config.ts',
+      },
+    },
   },
 
   // Prettier configuration
@@ -81,7 +86,7 @@ export default [
 
   // Project config files
   {
-    files: ['commitlint.config.js', 'FRONTEND/postcss.config.js'],
+    files: ['commitlint.config.js', 'postcss.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'commonjs',
@@ -92,21 +97,7 @@ export default [
     },
   },
   {
-    files: ['FRONTEND/tailwind.config.ts'],
-    languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'commonjs',
-      globals: {
-        module: 'writable',
-        require: 'readonly',
-      },
-    },
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
-    },
-  },
-  {
-    files: ['FRONTEND/next.config.mjs'],
+    files: ['next.config.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -125,4 +116,3 @@ export default [
     },
   },
 ];
-
