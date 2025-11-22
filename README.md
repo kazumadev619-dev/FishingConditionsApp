@@ -100,8 +100,8 @@
 ### 使用予定API
 
 - **[OpenWeatherMap API](https://openweathermap.org/api)**: 気象データ（風・天気・気温・湿度）
-- **[WorldTides API](https://www.worldtides.info/apidocs)**: 潮汐データ（満潮・干潮時刻・潮位）
-- **[Google Maps API](https://developers.google.com/maps)**: 地名検索・ジオコーディング・現在位置
+- **[tide736.net API](https://tide736.net/api/)**: 潮汐データ（満潮・干潮時刻・潮位）
+- **[Google Maps API](https://developers.google.com/maps)**: 地名検索・ジオコーディング・現在位置 ([プロジェクト内ドキュメント](./docs/google-maps-api.md))
 
 ### API統合戦略
 
@@ -132,5 +132,5 @@
 
 - [Next.js Documentation](https://nextjs.org/docs)
 - [OpenWeatherMap API](https://openweathermap.org/api)
-- [WorldTides API](https://www.worldtides.info/apidocs)
+- **[tide736.net API](https://tide736.net/api/)**
 - [Google Maps API](https://developers.google.com/maps)
