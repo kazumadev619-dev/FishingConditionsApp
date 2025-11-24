@@ -4,7 +4,6 @@ import pluginReact from 'eslint-plugin-react';
 import eslintPluginNext from '@next/eslint-plugin-next';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
-import tailwindcss from 'eslint-plugin-tailwindcss';
 
 export default [
   { files: ['**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'] },
@@ -58,23 +57,6 @@ export default [
     rules: {
       ...eslintPluginNext.configs.recommended.rules,
       ...eslintPluginNext.configs['core-web-vitals'].rules,
-    },
-  },
-
-  // Tailwind CSS configuration
-  {
-    name: 'eslint/recommended-tailwindcss',
-    plugins: {
-      tailwindcss: tailwindcss,
-    },
-    rules: {
-      'tailwindcss/classnames-order': 'warn',
-      'tailwindcss/no-custom-classname': 'off',
-    },
-    settings: {
-      tailwindcss: {
-        config: './tailwind.config.ts',
-      },
     },
   },
 

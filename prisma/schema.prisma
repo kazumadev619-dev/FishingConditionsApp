@@ -1,11 +1,10 @@
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
   schemas  = ["auth", "public"]
 }
 
@@ -354,7 +353,7 @@ model auth_users {
   id                          String                 @id @db.Uuid
   aud                         String?                @db.VarChar(255)
   role                        String?                @db.VarChar(255)
-  email                       String?                @db.VarChar(255)
+  email                       String?                @unique @db.VarChar(255)
   encrypted_password          String?                @db.VarChar(255)
   email_confirmed_at          DateTime?              @db.Timestamptz(6)
   invited_at                  DateTime?              @db.Timestamptz(6)
