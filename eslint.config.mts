@@ -4,7 +4,6 @@ import pluginReact from 'eslint-plugin-react';
 import eslintPluginNext from '@next/eslint-plugin-next';
 import eslintConfigPrettier from 'eslint-config-prettier';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
-import tailwindcss from 'eslint-plugin-tailwindcss';
 
 export default [
   { files: ['**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'] },
@@ -61,18 +60,6 @@ export default [
     },
   },
 
-  // Tailwind CSS configuration
-  {
-    name: 'eslint/recommended-tailwindcss',
-    plugins: {
-      tailwindcss: tailwindcss,
-    },
-    rules: {
-      'tailwindcss/classnames-order': 'warn',
-      'tailwindcss/no-custom-classname': 'off',
-    },
-  },
-
   // Prettier configuration
   {
     name: 'prettier/config',
@@ -81,7 +68,7 @@ export default [
 
   // Project config files
   {
-    files: ['commitlint.config.js', 'FRONTEND/postcss.config.js'],
+    files: ['commitlint.config.js', 'postcss.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'commonjs',
@@ -92,21 +79,7 @@ export default [
     },
   },
   {
-    files: ['FRONTEND/tailwind.config.ts'],
-    languageOptions: {
-      ecmaVersion: 'latest',
-      sourceType: 'commonjs',
-      globals: {
-        module: 'writable',
-        require: 'readonly',
-      },
-    },
-    rules: {
-      '@typescript-eslint/no-require-imports': 'off',
-    },
-  },
-  {
-    files: ['FRONTEND/next.config.mjs'],
+    files: ['next.config.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -125,4 +98,3 @@ export default [
     },
   },
 ];
-
