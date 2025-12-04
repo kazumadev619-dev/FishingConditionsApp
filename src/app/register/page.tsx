@@ -5,13 +5,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { PasswordRequirements } from '@/components/ui/password-requirements';
+import { PasswordStrengthIndicator } from '@/components/ui/password-strength-indicator';
 import Link from 'next/link';
-import { useActionState } from 'react';
+import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { AlertCircle } from 'lucide-react';
 
 export default function RegisterPage() {
   const [errorMessage, dispatch] = useActionState(signup, undefined);
+  const [password, setPassword] = useState('');
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
@@ -35,8 +38,22 @@ export default function RegisterPage() {
               </div>
               <div className="grid gap-2">
                 <Label htmlFor="password">パスワード</Label>
-                <Input id="password" type="password" name="password" required />
+                <Input
+                  id="password"
+                  type="password"
+                  name="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
               </div>
+
+              {password && (
+                <>
+                  <PasswordStrengthIndicator password={password} />
+                  <PasswordRequirements password={password} />
+                </>
+              )}
 
               {errorMessage && (
                 <div
