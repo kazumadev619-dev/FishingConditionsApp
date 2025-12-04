@@ -11,7 +11,22 @@ import { randomUUID } from 'crypto';
 const SignupFormSchema = z.object({
   name: z.string().min(2, { message: '名前は2文字以上で入力してください。' }),
   email: z.string().email({ message: '有効なメールアドレスを入力してください。' }),
-  password: z.string().min(6, { message: 'パスワードは6文字以上で入力してください。' }),
+  password: z
+    .string()
+    .min(8, { message: 'パスワードは8文字以上である必要があります。' })
+    .max(128, { message: 'パスワードは128文字以下である必要があります。' })
+    .refine((password) => /[A-Z]/.test(password), {
+      message: 'パスワードは大文字を1文字以上含む必要があります。',
+    })
+    .refine((password) => /[a-z]/.test(password), {
+      message: 'パスワードは小文字を1文字以上含む必要があります。',
+    })
+    .refine((password) => /[0-9]/.test(password), {
+      message: 'パスワードは数字を1文字以上含む必要があります。',
+    })
+    .refine((password) => /[!@#$%^&*._-]/.test(password), {
+      message: 'パスワードは特殊文字(!@#$%^&*._-)を1文字以上含む必要があります。',
+    }),
 });
 
 export async function signup(_prevState: string | undefined, formData: FormData) {
