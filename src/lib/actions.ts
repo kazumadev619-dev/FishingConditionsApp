@@ -72,6 +72,12 @@ export async function signup(_prevState: string | undefined, formData: FormData)
     // Prisma Known Request Error (P2002, P2003, P2025 等)
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       switch (error.code) {
+        case 'P1001': {
+          // Database server connection error
+          console.error('データベース接続エラー:', error.message);
+          return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';
+        }
+
         case 'P2002': {
           // Unique constraint violation
           const target = error.meta?.target;
