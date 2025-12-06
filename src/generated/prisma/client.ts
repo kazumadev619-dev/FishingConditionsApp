@@ -32,7 +32,7 @@ export * from './enums';
  * const audit_log_entries = await prisma.audit_log_entries.findMany()
  * ```
  *
- * Read more in our [docs](https://www.prisma.io/docs/reference/tools-and-interfaces/prisma-client).
+ * Read more in our [docs](https://pris.ly/d/client).
  */
 export const PrismaClient = $Class.getPrismaClientClass();
 export type PrismaClient<
