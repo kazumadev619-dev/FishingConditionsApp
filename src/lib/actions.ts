@@ -85,10 +85,18 @@ export async function authenticate(_prevState: string | undefined, formData: For
   try {
     await signIn('credentials', formData);
   } catch (error) {
+    // Type guard: ensure error is an Error object
+    if (!(error instanceof Error)) {
+      return '予期しないエラーが発生しました。';
+    }
+
     if (error instanceof AuthError) {
       switch (error.type) {
         case 'CredentialsSignin':
           return 'メールアドレスまたはパスワードが正しくありません。';
+        case 'CallbackRouteError':
+          // Fallback for any callback-related errors
+          return 'ログイン処理中にエラーが発生しました。';
         default:
           return '予期しないエラーが発生しました。';
       }
