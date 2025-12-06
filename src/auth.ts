@@ -26,24 +26,28 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Credentials({
       async authorize(credentials) {
         const parsedCredentials = z
-          .object({ email: z.string().email(), password: z.string().min(6) })
+          .object({ email: z.string().email(), password: z.string().min(8) })
           .safeParse(credentials);
 
-        if (parsedCredentials.success) {
-          const { email, password } = parsedCredentials.data;
-          const user = await getUser(email);
-          if (!user || !user.encrypted_password) {
-            console.log('User not found or password hash missing.');
-            throw new Error('Invalid credentials');
-          }
+        if (!parsedCredentials.success) {
+          return null;
+        }
 
-          const passwordsMatch = await bcrypt.compare(password, user.encrypted_password);
+        const { email, password } = parsedCredentials.data;
+        const user = await getUser(email);
+        if (!user || !user.encrypted_password) {
+          console.log('User not found or password hash missing.');
+          return null;
+        }
 
-          if (passwordsMatch) return user;
+        const passwordsMatch = await bcrypt.compare(password, user.encrypted_password);
+
+        if (passwordsMatch) {
+          return user;
         }
 
         console.log('Invalid credentials');
-        throw new Error('Invalid credentials');
+        return null;
       },
     }),
   ],
