@@ -57,16 +57,127 @@
 
 ### Phase 1: MVP技術スタック
 
-| レイヤー       | 技術                         | バージョン              | 理由                                     |
-| -------------- | ---------------------------- | ----------------------- | ---------------------------------------- |
-| フロントエンド | Next.js + React + TypeScript | 16.0.7 + 19.2.1 + 5.9.3 | SSR/SSG対応、PWA化、型安全性             |
-| バックエンド   | Next.js API Routes           | 16.0.7                  | 迅速な開発、フルスタック統合             |
-| スタイリング   | Tailwind CSS + shadcn/ui     | 4.1.17 + latest         | モバイルファースト、コンポーネント再利用 |
-| 状態管理       | Zustand + React Query        | 5.0.8 + 5.90.7          | 軽量、外部API連携に最適                  |
-| 認証           | Auth.js                      | 5.0.0-beta.30           | 多様な認証プロバイダー対応               |
-| データベース   | PostgreSQL (Supabase)        | 15.0 + latest           | リレーショナルDB、リアルタイム機能       |
-| キャッシュ     | Redis (Upstash)              | 7.2.0                   | 外部API結果のキャッシュ                  |
-| デプロイ       | Vercel                       | latest                  | Next.js最適化、Edge Functions            |
+| レイヤー       | 技術                         | バージョン               | 理由                                     |
+| -------------- | ---------------------------- | ------------------------ | ---------------------------------------- |
+| フロントエンド | Next.js + React + TypeScript | 16.0.10 + 19.2.3 + 5.9.3 | SSR/SSG対応、PWA化、型安全性             |
+| バックエンド   | Next.js API Routes           | 16.0.10                  | 迅速な開発、フルスタック統合             |
+| スタイリング   | Tailwind CSS + shadcn/ui     | 4.1.17 + latest          | モバイルファースト、コンポーネント再利用 |
+| 状態管理       | Zustand + React Query        | 5.0.8 + 5.90.7           | 軽量、外部API連携に最適                  |
+| 認証           | Auth.js                      | 5.0.0-beta.30            | 多様な認証プロバイダー対応               |
+| データベース   | PostgreSQL (Supabase)        | 15.0 + latest            | リレーショナルDB、リアルタイム機能       |
+| キャッシュ     | Redis (Upstash)              | 7.2.0                    | 外部API結果のキャッシュ                  |
+| デプロイ       |                              |                          |                                          |
+
+---
+
+## 🚀 セットアップ
+
+### インストール手順
+
+1. **リポジトリのクローン**
+
+```bash
+git clone https://github.com/kazumadev619-dev/FishingConditionsApp.git
+
+cd FishingConditionsApp
+```
+
+2. **依存関係のインストール**
+
+```bash
+npm install
+```
+
+3. **環境変数の設定**
+
+`.env.example` を参考に `.env.local` ファイルを作成： 詳細は連絡にて共有
+
+```bash
+cp .env.example .env.local
+```
+
+4. **開発サーバーの起動**
+
+```bash
+npm run dev
+```
+
+ブラウザで [http://localhost:3000](http://localhost:3000) を開いて確認してください。
+
+---
+
+## 💻 開発
+
+### よく使うコマンド
+
+| コマンド             | 説明                                     |
+| -------------------- | ---------------------------------------- |
+| `npm run dev`        | 開発サーバー起動 (http://localhost:3000) |
+| `npm run build`      | プロダクションビルド                     |
+| `npm run start`      | プロダクションサーバー起動（要ビルド）   |
+| `npm run lint`       | ESLintでコードチェック                   |
+| `npm run lint:fix`   | ESLintで自動修正                         |
+| `npm run format`     | Prettierでコード整形                     |
+| `npm run type-check` | TypeScript型チェック                     |
+
+### データベース操作
+
+| コマンド                  | 説明                                  |
+| ------------------------- | ------------------------------------- |
+| `npm run prisma:generate` | Prisma Clientの生成（スキーマ変更後） |
+| `npm run prisma:migrate`  | マイグレーション作成・実行            |
+| `npm run prisma:studio`   | Prisma Studio起動（DBビジュアル）     |
+
+### コード品質チェック
+
+```bash
+# 型チェック + リント + フォーマットチェックを一括実行
+npm run type-check && npm run lint && npm run format:check
+```
+
+---
+
+## 🔧 開発ワークフロー
+
+### ブランチ戦略
+
+- `main`: 本番環境（プロダクション）
+- `develop`: 開発統合ブランチ
+- `Task/*`: 機能開発・修正用ブランチ
+
+### コミットメッセージ規約
+
+[gitmoji](https://gitmoji.dev) を使用したコミットメッセージ:
+
+```
+[emoji]:[prefix]: [message] #[TaskNo]
+```
+
+**プレフィックス:**
+
+- `feat`: 新機能
+- `fix`: バグ修正
+- `docs`: ドキュメント
+- `test`: テスト追加・修正
+- `refactor`: リファクタリング
+- `chore`: ビルド・設定変更
+
+**例:**
+
+```bash
+✨:feat: Add tide score calculation #21
+🐛:fix: Fix authentication redirect issue #34
+📝:docs: Update setup instructions in README #45
+```
+
+### 開発フロー
+
+1. `develop` ブランチから新しい `Task/*` ブランチを作成
+2. 機能実装・テスト
+3. `npm run type-check` と `npm run lint` でコード品質確認
+4. コミット（上記規約に従う）
+5. `develop` ブランチへプルリクエスト
+6. レビュー後マージ
 
 ---
 
