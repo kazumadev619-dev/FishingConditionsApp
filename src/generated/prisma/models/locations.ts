@@ -13,7 +13,7 @@ import type * as Prisma from '../internal/prismaNamespace';
 
 /**
  * Model locations
- *
+ * 釣り場マスタ
  */
 export type locationsModel = runtime.Types.Result.DefaultSelection<Prisma.$locationsPayload>;
 
@@ -40,7 +40,12 @@ export type LocationsMinAggregateOutputType = {
   name: string | null;
   latitude: number | null;
   longitude: number | null;
+  region: string | null;
+  prefecture: string | null;
+  location_type: $Enums.location_type | null;
+  port_id: string | null;
   created_at: Date | null;
+  updated_at: Date | null;
 };
 
 export type LocationsMaxAggregateOutputType = {
@@ -48,7 +53,12 @@ export type LocationsMaxAggregateOutputType = {
   name: string | null;
   latitude: number | null;
   longitude: number | null;
+  region: string | null;
+  prefecture: string | null;
+  location_type: $Enums.location_type | null;
+  port_id: string | null;
   created_at: Date | null;
+  updated_at: Date | null;
 };
 
 export type LocationsCountAggregateOutputType = {
@@ -56,7 +66,12 @@ export type LocationsCountAggregateOutputType = {
   name: number;
   latitude: number;
   longitude: number;
+  region: number;
+  prefecture: number;
+  location_type: number;
+  port_id: number;
   created_at: number;
+  updated_at: number;
   _all: number;
 };
 
@@ -75,7 +90,12 @@ export type LocationsMinAggregateInputType = {
   name?: true;
   latitude?: true;
   longitude?: true;
+  region?: true;
+  prefecture?: true;
+  location_type?: true;
+  port_id?: true;
   created_at?: true;
+  updated_at?: true;
 };
 
 export type LocationsMaxAggregateInputType = {
@@ -83,7 +103,12 @@ export type LocationsMaxAggregateInputType = {
   name?: true;
   latitude?: true;
   longitude?: true;
+  region?: true;
+  prefecture?: true;
+  location_type?: true;
+  port_id?: true;
   created_at?: true;
+  updated_at?: true;
 };
 
 export type LocationsCountAggregateInputType = {
@@ -91,7 +116,12 @@ export type LocationsCountAggregateInputType = {
   name?: true;
   latitude?: true;
   longitude?: true;
+  region?: true;
+  prefecture?: true;
+  location_type?: true;
+  port_id?: true;
   created_at?: true;
+  updated_at?: true;
   _all?: true;
 };
 
@@ -189,7 +219,12 @@ export type LocationsGroupByOutputType = {
   name: string;
   latitude: number;
   longitude: number;
-  created_at: Date | null;
+  region: string | null;
+  prefecture: string | null;
+  location_type: $Enums.location_type;
+  port_id: string | null;
+  created_at: Date;
+  updated_at: Date;
   _count: LocationsCountAggregateOutputType | null;
   _avg: LocationsAvgAggregateOutputType | null;
   _sum: LocationsSumAggregateOutputType | null;
@@ -217,9 +252,16 @@ export type locationsWhereInput = {
   name?: Prisma.StringFilter<'locations'> | string;
   latitude?: Prisma.FloatFilter<'locations'> | number;
   longitude?: Prisma.FloatFilter<'locations'> | number;
-  created_at?: Prisma.DateTimeNullableFilter<'locations'> | Date | string | null;
-  environmental_data?: Prisma.Environmental_dataListRelationFilter;
-  user_location_history?: Prisma.User_location_historyListRelationFilter;
+  region?: Prisma.StringNullableFilter<'locations'> | string | null;
+  prefecture?: Prisma.StringNullableFilter<'locations'> | string | null;
+  location_type?: Prisma.Enumlocation_typeFilter<'locations'> | $Enums.location_type;
+  port_id?: Prisma.UuidNullableFilter<'locations'> | string | null;
+  created_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
+  updated_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
+  port?: Prisma.XOR<Prisma.PortsNullableScalarRelationFilter, Prisma.portsWhereInput> | null;
+  weather_cache?: Prisma.Weather_cacheListRelationFilter;
+  favorites?: Prisma.User_favoritesListRelationFilter;
+  search_history?: Prisma.User_search_historyListRelationFilter;
 };
 
 export type locationsOrderByWithRelationInput = {
@@ -227,9 +269,16 @@ export type locationsOrderByWithRelationInput = {
   name?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
-  created_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  environmental_data?: Prisma.environmental_dataOrderByRelationAggregateInput;
-  user_location_history?: Prisma.user_location_historyOrderByRelationAggregateInput;
+  region?: Prisma.SortOrderInput | Prisma.SortOrder;
+  prefecture?: Prisma.SortOrderInput | Prisma.SortOrder;
+  location_type?: Prisma.SortOrder;
+  port_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
+  port?: Prisma.portsOrderByWithRelationInput;
+  weather_cache?: Prisma.weather_cacheOrderByRelationAggregateInput;
+  favorites?: Prisma.user_favoritesOrderByRelationAggregateInput;
+  search_history?: Prisma.user_search_historyOrderByRelationAggregateInput;
 };
 
 export type locationsWhereUniqueInput = Prisma.AtLeast<
@@ -241,9 +290,16 @@ export type locationsWhereUniqueInput = Prisma.AtLeast<
     name?: Prisma.StringFilter<'locations'> | string;
     latitude?: Prisma.FloatFilter<'locations'> | number;
     longitude?: Prisma.FloatFilter<'locations'> | number;
-    created_at?: Prisma.DateTimeNullableFilter<'locations'> | Date | string | null;
-    environmental_data?: Prisma.Environmental_dataListRelationFilter;
-    user_location_history?: Prisma.User_location_historyListRelationFilter;
+    region?: Prisma.StringNullableFilter<'locations'> | string | null;
+    prefecture?: Prisma.StringNullableFilter<'locations'> | string | null;
+    location_type?: Prisma.Enumlocation_typeFilter<'locations'> | $Enums.location_type;
+    port_id?: Prisma.UuidNullableFilter<'locations'> | string | null;
+    created_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
+    updated_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
+    port?: Prisma.XOR<Prisma.PortsNullableScalarRelationFilter, Prisma.portsWhereInput> | null;
+    weather_cache?: Prisma.Weather_cacheListRelationFilter;
+    favorites?: Prisma.User_favoritesListRelationFilter;
+    search_history?: Prisma.User_search_historyListRelationFilter;
   },
   'id'
 >;
@@ -253,7 +309,12 @@ export type locationsOrderByWithAggregationInput = {
   name?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
-  created_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  region?: Prisma.SortOrderInput | Prisma.SortOrder;
+  prefecture?: Prisma.SortOrderInput | Prisma.SortOrder;
+  location_type?: Prisma.SortOrder;
+  port_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
   _count?: Prisma.locationsCountOrderByAggregateInput;
   _avg?: Prisma.locationsAvgOrderByAggregateInput;
   _max?: Prisma.locationsMaxOrderByAggregateInput;
@@ -273,7 +334,12 @@ export type locationsScalarWhereWithAggregatesInput = {
   name?: Prisma.StringWithAggregatesFilter<'locations'> | string;
   latitude?: Prisma.FloatWithAggregatesFilter<'locations'> | number;
   longitude?: Prisma.FloatWithAggregatesFilter<'locations'> | number;
-  created_at?: Prisma.DateTimeNullableWithAggregatesFilter<'locations'> | Date | string | null;
+  region?: Prisma.StringNullableWithAggregatesFilter<'locations'> | string | null;
+  prefecture?: Prisma.StringNullableWithAggregatesFilter<'locations'> | string | null;
+  location_type?: Prisma.Enumlocation_typeWithAggregatesFilter<'locations'> | $Enums.location_type;
+  port_id?: Prisma.UuidNullableWithAggregatesFilter<'locations'> | string | null;
+  created_at?: Prisma.DateTimeWithAggregatesFilter<'locations'> | Date | string;
+  updated_at?: Prisma.DateTimeWithAggregatesFilter<'locations'> | Date | string;
 };
 
 export type locationsCreateInput = {
@@ -281,9 +347,15 @@ export type locationsCreateInput = {
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
-  environmental_data?: Prisma.environmental_dataCreateNestedManyWithoutLocationsInput;
-  user_location_history?: Prisma.user_location_historyCreateNestedManyWithoutLocationsInput;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
+  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
+  favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyCreateNestedManyWithoutLocationInput;
 };
 
 export type locationsUncheckedCreateInput = {
@@ -291,9 +363,15 @@ export type locationsUncheckedCreateInput = {
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
-  environmental_data?: Prisma.environmental_dataUncheckedCreateNestedManyWithoutLocationsInput;
-  user_location_history?: Prisma.user_location_historyUncheckedCreateNestedManyWithoutLocationsInput;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  port_id?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
+  favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutLocationInput;
 };
 
 export type locationsUpdateInput = {
@@ -301,9 +379,15 @@ export type locationsUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
   longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  environmental_data?: Prisma.environmental_dataUpdateManyWithoutLocationsNestedInput;
-  user_location_history?: Prisma.user_location_historyUpdateManyWithoutLocationsNestedInput;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
+  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
+  favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUpdateManyWithoutLocationNestedInput;
 };
 
 export type locationsUncheckedUpdateInput = {
@@ -311,9 +395,15 @@ export type locationsUncheckedUpdateInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
   longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  environmental_data?: Prisma.environmental_dataUncheckedUpdateManyWithoutLocationsNestedInput;
-  user_location_history?: Prisma.user_location_historyUncheckedUpdateManyWithoutLocationsNestedInput;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
+  favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutLocationNestedInput;
 };
 
 export type locationsCreateManyInput = {
@@ -321,7 +411,12 @@ export type locationsCreateManyInput = {
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  port_id?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 };
 
 export type locationsUpdateManyMutationInput = {
@@ -329,7 +424,11 @@ export type locationsUpdateManyMutationInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
   longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type locationsUncheckedUpdateManyInput = {
@@ -337,12 +436,12 @@ export type locationsUncheckedUpdateManyInput = {
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
   longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-};
-
-export type LocationsScalarRelationFilter = {
-  is?: Prisma.locationsWhereInput;
-  isNot?: Prisma.locationsWhereInput;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type locationsCountOrderByAggregateInput = {
@@ -350,7 +449,12 @@ export type locationsCountOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
+  region?: Prisma.SortOrder;
+  prefecture?: Prisma.SortOrder;
+  location_type?: Prisma.SortOrder;
+  port_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
 };
 
 export type locationsAvgOrderByAggregateInput = {
@@ -363,7 +467,12 @@ export type locationsMaxOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
+  region?: Prisma.SortOrder;
+  prefecture?: Prisma.SortOrder;
+  location_type?: Prisma.SortOrder;
+  port_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
 };
 
 export type locationsMinOrderByAggregateInput = {
@@ -371,7 +480,12 @@ export type locationsMinOrderByAggregateInput = {
   name?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
+  region?: Prisma.SortOrder;
+  prefecture?: Prisma.SortOrder;
+  location_type?: Prisma.SortOrder;
+  port_id?: Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
 };
 
 export type locationsSumOrderByAggregateInput = {
@@ -379,30 +493,19 @@ export type locationsSumOrderByAggregateInput = {
   longitude?: Prisma.SortOrder;
 };
 
-export type locationsCreateNestedOneWithoutEnvironmental_dataInput = {
-  create?: Prisma.XOR<
-    Prisma.locationsCreateWithoutEnvironmental_dataInput,
-    Prisma.locationsUncheckedCreateWithoutEnvironmental_dataInput
-  >;
-  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutEnvironmental_dataInput;
-  connect?: Prisma.locationsWhereUniqueInput;
+export type LocationsListRelationFilter = {
+  every?: Prisma.locationsWhereInput;
+  some?: Prisma.locationsWhereInput;
+  none?: Prisma.locationsWhereInput;
 };
 
-export type locationsUpdateOneRequiredWithoutEnvironmental_dataNestedInput = {
-  create?: Prisma.XOR<
-    Prisma.locationsCreateWithoutEnvironmental_dataInput,
-    Prisma.locationsUncheckedCreateWithoutEnvironmental_dataInput
-  >;
-  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutEnvironmental_dataInput;
-  upsert?: Prisma.locationsUpsertWithoutEnvironmental_dataInput;
-  connect?: Prisma.locationsWhereUniqueInput;
-  update?: Prisma.XOR<
-    Prisma.XOR<
-      Prisma.locationsUpdateToOneWithWhereWithoutEnvironmental_dataInput,
-      Prisma.locationsUpdateWithoutEnvironmental_dataInput
-    >,
-    Prisma.locationsUncheckedUpdateWithoutEnvironmental_dataInput
-  >;
+export type locationsOrderByRelationAggregateInput = {
+  _count?: Prisma.SortOrder;
+};
+
+export type LocationsScalarRelationFilter = {
+  is?: Prisma.locationsWhereInput;
+  isNot?: Prisma.locationsWhereInput;
 };
 
 export type FloatFieldUpdateOperationsInput = {
@@ -413,158 +516,577 @@ export type FloatFieldUpdateOperationsInput = {
   divide?: number;
 };
 
-export type locationsCreateNestedOneWithoutUser_location_historyInput = {
+export type Enumlocation_typeFieldUpdateOperationsInput = {
+  set?: $Enums.location_type;
+};
+
+export type locationsCreateNestedManyWithoutPortInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.locationsCreateWithoutPortInput,
+        Prisma.locationsUncheckedCreateWithoutPortInput
+      >
+    | Prisma.locationsCreateWithoutPortInput[]
+    | Prisma.locationsUncheckedCreateWithoutPortInput[];
+  connectOrCreate?:
+    | Prisma.locationsCreateOrConnectWithoutPortInput
+    | Prisma.locationsCreateOrConnectWithoutPortInput[];
+  createMany?: Prisma.locationsCreateManyPortInputEnvelope;
+  connect?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+};
+
+export type locationsUncheckedCreateNestedManyWithoutPortInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.locationsCreateWithoutPortInput,
+        Prisma.locationsUncheckedCreateWithoutPortInput
+      >
+    | Prisma.locationsCreateWithoutPortInput[]
+    | Prisma.locationsUncheckedCreateWithoutPortInput[];
+  connectOrCreate?:
+    | Prisma.locationsCreateOrConnectWithoutPortInput
+    | Prisma.locationsCreateOrConnectWithoutPortInput[];
+  createMany?: Prisma.locationsCreateManyPortInputEnvelope;
+  connect?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+};
+
+export type locationsUpdateManyWithoutPortNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.locationsCreateWithoutPortInput,
+        Prisma.locationsUncheckedCreateWithoutPortInput
+      >
+    | Prisma.locationsCreateWithoutPortInput[]
+    | Prisma.locationsUncheckedCreateWithoutPortInput[];
+  connectOrCreate?:
+    | Prisma.locationsCreateOrConnectWithoutPortInput
+    | Prisma.locationsCreateOrConnectWithoutPortInput[];
+  upsert?:
+    | Prisma.locationsUpsertWithWhereUniqueWithoutPortInput
+    | Prisma.locationsUpsertWithWhereUniqueWithoutPortInput[];
+  createMany?: Prisma.locationsCreateManyPortInputEnvelope;
+  set?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  disconnect?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  delete?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  connect?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  update?:
+    | Prisma.locationsUpdateWithWhereUniqueWithoutPortInput
+    | Prisma.locationsUpdateWithWhereUniqueWithoutPortInput[];
+  updateMany?:
+    | Prisma.locationsUpdateManyWithWhereWithoutPortInput
+    | Prisma.locationsUpdateManyWithWhereWithoutPortInput[];
+  deleteMany?: Prisma.locationsScalarWhereInput | Prisma.locationsScalarWhereInput[];
+};
+
+export type locationsUncheckedUpdateManyWithoutPortNestedInput = {
+  create?:
+    | Prisma.XOR<
+        Prisma.locationsCreateWithoutPortInput,
+        Prisma.locationsUncheckedCreateWithoutPortInput
+      >
+    | Prisma.locationsCreateWithoutPortInput[]
+    | Prisma.locationsUncheckedCreateWithoutPortInput[];
+  connectOrCreate?:
+    | Prisma.locationsCreateOrConnectWithoutPortInput
+    | Prisma.locationsCreateOrConnectWithoutPortInput[];
+  upsert?:
+    | Prisma.locationsUpsertWithWhereUniqueWithoutPortInput
+    | Prisma.locationsUpsertWithWhereUniqueWithoutPortInput[];
+  createMany?: Prisma.locationsCreateManyPortInputEnvelope;
+  set?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  disconnect?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  delete?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  connect?: Prisma.locationsWhereUniqueInput | Prisma.locationsWhereUniqueInput[];
+  update?:
+    | Prisma.locationsUpdateWithWhereUniqueWithoutPortInput
+    | Prisma.locationsUpdateWithWhereUniqueWithoutPortInput[];
+  updateMany?:
+    | Prisma.locationsUpdateManyWithWhereWithoutPortInput
+    | Prisma.locationsUpdateManyWithWhereWithoutPortInput[];
+  deleteMany?: Prisma.locationsScalarWhereInput | Prisma.locationsScalarWhereInput[];
+};
+
+export type locationsCreateNestedOneWithoutWeather_cacheInput = {
   create?: Prisma.XOR<
-    Prisma.locationsCreateWithoutUser_location_historyInput,
-    Prisma.locationsUncheckedCreateWithoutUser_location_historyInput
+    Prisma.locationsCreateWithoutWeather_cacheInput,
+    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
   >;
-  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutUser_location_historyInput;
+  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutWeather_cacheInput;
   connect?: Prisma.locationsWhereUniqueInput;
 };
 
-export type locationsUpdateOneRequiredWithoutUser_location_historyNestedInput = {
+export type locationsUpdateOneRequiredWithoutWeather_cacheNestedInput = {
   create?: Prisma.XOR<
-    Prisma.locationsCreateWithoutUser_location_historyInput,
-    Prisma.locationsUncheckedCreateWithoutUser_location_historyInput
+    Prisma.locationsCreateWithoutWeather_cacheInput,
+    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
   >;
-  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutUser_location_historyInput;
-  upsert?: Prisma.locationsUpsertWithoutUser_location_historyInput;
+  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutWeather_cacheInput;
+  upsert?: Prisma.locationsUpsertWithoutWeather_cacheInput;
   connect?: Prisma.locationsWhereUniqueInput;
   update?: Prisma.XOR<
     Prisma.XOR<
-      Prisma.locationsUpdateToOneWithWhereWithoutUser_location_historyInput,
-      Prisma.locationsUpdateWithoutUser_location_historyInput
+      Prisma.locationsUpdateToOneWithWhereWithoutWeather_cacheInput,
+      Prisma.locationsUpdateWithoutWeather_cacheInput
     >,
-    Prisma.locationsUncheckedUpdateWithoutUser_location_historyInput
+    Prisma.locationsUncheckedUpdateWithoutWeather_cacheInput
   >;
 };
 
-export type locationsCreateWithoutEnvironmental_dataInput = {
+export type locationsCreateNestedOneWithoutFavoritesInput = {
+  create?: Prisma.XOR<
+    Prisma.locationsCreateWithoutFavoritesInput,
+    Prisma.locationsUncheckedCreateWithoutFavoritesInput
+  >;
+  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutFavoritesInput;
+  connect?: Prisma.locationsWhereUniqueInput;
+};
+
+export type locationsUpdateOneRequiredWithoutFavoritesNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.locationsCreateWithoutFavoritesInput,
+    Prisma.locationsUncheckedCreateWithoutFavoritesInput
+  >;
+  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutFavoritesInput;
+  upsert?: Prisma.locationsUpsertWithoutFavoritesInput;
+  connect?: Prisma.locationsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.locationsUpdateToOneWithWhereWithoutFavoritesInput,
+      Prisma.locationsUpdateWithoutFavoritesInput
+    >,
+    Prisma.locationsUncheckedUpdateWithoutFavoritesInput
+  >;
+};
+
+export type locationsCreateNestedOneWithoutSearch_historyInput = {
+  create?: Prisma.XOR<
+    Prisma.locationsCreateWithoutSearch_historyInput,
+    Prisma.locationsUncheckedCreateWithoutSearch_historyInput
+  >;
+  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutSearch_historyInput;
+  connect?: Prisma.locationsWhereUniqueInput;
+};
+
+export type locationsUpdateOneRequiredWithoutSearch_historyNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.locationsCreateWithoutSearch_historyInput,
+    Prisma.locationsUncheckedCreateWithoutSearch_historyInput
+  >;
+  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutSearch_historyInput;
+  upsert?: Prisma.locationsUpsertWithoutSearch_historyInput;
+  connect?: Prisma.locationsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.locationsUpdateToOneWithWhereWithoutSearch_historyInput,
+      Prisma.locationsUpdateWithoutSearch_historyInput
+    >,
+    Prisma.locationsUncheckedUpdateWithoutSearch_historyInput
+  >;
+};
+
+export type locationsCreateWithoutPortInput = {
   id?: string;
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
-  user_location_history?: Prisma.user_location_historyCreateNestedManyWithoutLocationsInput;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
+  favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyCreateNestedManyWithoutLocationInput;
 };
 
-export type locationsUncheckedCreateWithoutEnvironmental_dataInput = {
+export type locationsUncheckedCreateWithoutPortInput = {
   id?: string;
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
-  user_location_history?: Prisma.user_location_historyUncheckedCreateNestedManyWithoutLocationsInput;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
+  favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutLocationInput;
 };
 
-export type locationsCreateOrConnectWithoutEnvironmental_dataInput = {
+export type locationsCreateOrConnectWithoutPortInput = {
   where: Prisma.locationsWhereUniqueInput;
   create: Prisma.XOR<
-    Prisma.locationsCreateWithoutEnvironmental_dataInput,
-    Prisma.locationsUncheckedCreateWithoutEnvironmental_dataInput
+    Prisma.locationsCreateWithoutPortInput,
+    Prisma.locationsUncheckedCreateWithoutPortInput
   >;
 };
 
-export type locationsUpsertWithoutEnvironmental_dataInput = {
+export type locationsCreateManyPortInputEnvelope = {
+  data: Prisma.locationsCreateManyPortInput | Prisma.locationsCreateManyPortInput[];
+  skipDuplicates?: boolean;
+};
+
+export type locationsUpsertWithWhereUniqueWithoutPortInput = {
+  where: Prisma.locationsWhereUniqueInput;
   update: Prisma.XOR<
-    Prisma.locationsUpdateWithoutEnvironmental_dataInput,
-    Prisma.locationsUncheckedUpdateWithoutEnvironmental_dataInput
+    Prisma.locationsUpdateWithoutPortInput,
+    Prisma.locationsUncheckedUpdateWithoutPortInput
   >;
   create: Prisma.XOR<
-    Prisma.locationsCreateWithoutEnvironmental_dataInput,
-    Prisma.locationsUncheckedCreateWithoutEnvironmental_dataInput
+    Prisma.locationsCreateWithoutPortInput,
+    Prisma.locationsUncheckedCreateWithoutPortInput
   >;
-  where?: Prisma.locationsWhereInput;
 };
 
-export type locationsUpdateToOneWithWhereWithoutEnvironmental_dataInput = {
-  where?: Prisma.locationsWhereInput;
+export type locationsUpdateWithWhereUniqueWithoutPortInput = {
+  where: Prisma.locationsWhereUniqueInput;
   data: Prisma.XOR<
-    Prisma.locationsUpdateWithoutEnvironmental_dataInput,
-    Prisma.locationsUncheckedUpdateWithoutEnvironmental_dataInput
+    Prisma.locationsUpdateWithoutPortInput,
+    Prisma.locationsUncheckedUpdateWithoutPortInput
   >;
 };
 
-export type locationsUpdateWithoutEnvironmental_dataInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  name?: Prisma.StringFieldUpdateOperationsInput | string;
-  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  user_location_history?: Prisma.user_location_historyUpdateManyWithoutLocationsNestedInput;
+export type locationsUpdateManyWithWhereWithoutPortInput = {
+  where: Prisma.locationsScalarWhereInput;
+  data: Prisma.XOR<
+    Prisma.locationsUpdateManyMutationInput,
+    Prisma.locationsUncheckedUpdateManyWithoutPortInput
+  >;
 };
 
-export type locationsUncheckedUpdateWithoutEnvironmental_dataInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  name?: Prisma.StringFieldUpdateOperationsInput | string;
-  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  user_location_history?: Prisma.user_location_historyUncheckedUpdateManyWithoutLocationsNestedInput;
+export type locationsScalarWhereInput = {
+  AND?: Prisma.locationsScalarWhereInput | Prisma.locationsScalarWhereInput[];
+  OR?: Prisma.locationsScalarWhereInput[];
+  NOT?: Prisma.locationsScalarWhereInput | Prisma.locationsScalarWhereInput[];
+  id?: Prisma.UuidFilter<'locations'> | string;
+  name?: Prisma.StringFilter<'locations'> | string;
+  latitude?: Prisma.FloatFilter<'locations'> | number;
+  longitude?: Prisma.FloatFilter<'locations'> | number;
+  region?: Prisma.StringNullableFilter<'locations'> | string | null;
+  prefecture?: Prisma.StringNullableFilter<'locations'> | string | null;
+  location_type?: Prisma.Enumlocation_typeFilter<'locations'> | $Enums.location_type;
+  port_id?: Prisma.UuidNullableFilter<'locations'> | string | null;
+  created_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
+  updated_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
 };
 
-export type locationsCreateWithoutUser_location_historyInput = {
+export type locationsCreateWithoutWeather_cacheInput = {
   id?: string;
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
-  environmental_data?: Prisma.environmental_dataCreateNestedManyWithoutLocationsInput;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
+  favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyCreateNestedManyWithoutLocationInput;
 };
 
-export type locationsUncheckedCreateWithoutUser_location_historyInput = {
+export type locationsUncheckedCreateWithoutWeather_cacheInput = {
   id?: string;
   name: string;
   latitude: number;
   longitude: number;
-  created_at?: Date | string | null;
-  environmental_data?: Prisma.environmental_dataUncheckedCreateNestedManyWithoutLocationsInput;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  port_id?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutLocationInput;
 };
 
-export type locationsCreateOrConnectWithoutUser_location_historyInput = {
+export type locationsCreateOrConnectWithoutWeather_cacheInput = {
   where: Prisma.locationsWhereUniqueInput;
   create: Prisma.XOR<
-    Prisma.locationsCreateWithoutUser_location_historyInput,
-    Prisma.locationsUncheckedCreateWithoutUser_location_historyInput
+    Prisma.locationsCreateWithoutWeather_cacheInput,
+    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
   >;
 };
 
-export type locationsUpsertWithoutUser_location_historyInput = {
+export type locationsUpsertWithoutWeather_cacheInput = {
   update: Prisma.XOR<
-    Prisma.locationsUpdateWithoutUser_location_historyInput,
-    Prisma.locationsUncheckedUpdateWithoutUser_location_historyInput
+    Prisma.locationsUpdateWithoutWeather_cacheInput,
+    Prisma.locationsUncheckedUpdateWithoutWeather_cacheInput
   >;
   create: Prisma.XOR<
-    Prisma.locationsCreateWithoutUser_location_historyInput,
-    Prisma.locationsUncheckedCreateWithoutUser_location_historyInput
+    Prisma.locationsCreateWithoutWeather_cacheInput,
+    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
   >;
   where?: Prisma.locationsWhereInput;
 };
 
-export type locationsUpdateToOneWithWhereWithoutUser_location_historyInput = {
+export type locationsUpdateToOneWithWhereWithoutWeather_cacheInput = {
   where?: Prisma.locationsWhereInput;
   data: Prisma.XOR<
-    Prisma.locationsUpdateWithoutUser_location_historyInput,
-    Prisma.locationsUncheckedUpdateWithoutUser_location_historyInput
+    Prisma.locationsUpdateWithoutWeather_cacheInput,
+    Prisma.locationsUncheckedUpdateWithoutWeather_cacheInput
   >;
 };
 
-export type locationsUpdateWithoutUser_location_historyInput = {
+export type locationsUpdateWithoutWeather_cacheInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
   longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  environmental_data?: Prisma.environmental_dataUpdateManyWithoutLocationsNestedInput;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
+  favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUpdateManyWithoutLocationNestedInput;
 };
 
-export type locationsUncheckedUpdateWithoutUser_location_historyInput = {
+export type locationsUncheckedUpdateWithoutWeather_cacheInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
   longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  environmental_data?: Prisma.environmental_dataUncheckedUpdateManyWithoutLocationsNestedInput;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsCreateWithoutFavoritesInput = {
+  id?: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
+  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyCreateNestedManyWithoutLocationInput;
+};
+
+export type locationsUncheckedCreateWithoutFavoritesInput = {
+  id?: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  port_id?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
+  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutLocationInput;
+};
+
+export type locationsCreateOrConnectWithoutFavoritesInput = {
+  where: Prisma.locationsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.locationsCreateWithoutFavoritesInput,
+    Prisma.locationsUncheckedCreateWithoutFavoritesInput
+  >;
+};
+
+export type locationsUpsertWithoutFavoritesInput = {
+  update: Prisma.XOR<
+    Prisma.locationsUpdateWithoutFavoritesInput,
+    Prisma.locationsUncheckedUpdateWithoutFavoritesInput
+  >;
+  create: Prisma.XOR<
+    Prisma.locationsCreateWithoutFavoritesInput,
+    Prisma.locationsUncheckedCreateWithoutFavoritesInput
+  >;
+  where?: Prisma.locationsWhereInput;
+};
+
+export type locationsUpdateToOneWithWhereWithoutFavoritesInput = {
+  where?: Prisma.locationsWhereInput;
+  data: Prisma.XOR<
+    Prisma.locationsUpdateWithoutFavoritesInput,
+    Prisma.locationsUncheckedUpdateWithoutFavoritesInput
+  >;
+};
+
+export type locationsUpdateWithoutFavoritesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
+  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsUncheckedUpdateWithoutFavoritesInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsCreateWithoutSearch_historyInput = {
+  id?: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
+  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
+  favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
+};
+
+export type locationsUncheckedCreateWithoutSearch_historyInput = {
+  id?: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  port_id?: string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
+  favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
+};
+
+export type locationsCreateOrConnectWithoutSearch_historyInput = {
+  where: Prisma.locationsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.locationsCreateWithoutSearch_historyInput,
+    Prisma.locationsUncheckedCreateWithoutSearch_historyInput
+  >;
+};
+
+export type locationsUpsertWithoutSearch_historyInput = {
+  update: Prisma.XOR<
+    Prisma.locationsUpdateWithoutSearch_historyInput,
+    Prisma.locationsUncheckedUpdateWithoutSearch_historyInput
+  >;
+  create: Prisma.XOR<
+    Prisma.locationsCreateWithoutSearch_historyInput,
+    Prisma.locationsUncheckedCreateWithoutSearch_historyInput
+  >;
+  where?: Prisma.locationsWhereInput;
+};
+
+export type locationsUpdateToOneWithWhereWithoutSearch_historyInput = {
+  where?: Prisma.locationsWhereInput;
+  data: Prisma.XOR<
+    Prisma.locationsUpdateWithoutSearch_historyInput,
+    Prisma.locationsUncheckedUpdateWithoutSearch_historyInput
+  >;
+};
+
+export type locationsUpdateWithoutSearch_historyInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
+  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
+  favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsUncheckedUpdateWithoutSearch_historyInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
+  favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsCreateManyPortInput = {
+  id?: string;
+  name: string;
+  latitude: number;
+  longitude: number;
+  region?: string | null;
+  prefecture?: string | null;
+  location_type?: $Enums.location_type;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+};
+
+export type locationsUpdateWithoutPortInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
+  favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsUncheckedUpdateWithoutPortInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
+  favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
+  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutLocationNestedInput;
+};
+
+export type locationsUncheckedUpdateManyWithoutPortInput = {
+  id?: Prisma.StringFieldUpdateOperationsInput | string;
+  name?: Prisma.StringFieldUpdateOperationsInput | string;
+  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
+  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 /**
@@ -572,15 +1094,17 @@ export type locationsUncheckedUpdateWithoutUser_location_historyInput = {
  */
 
 export type LocationsCountOutputType = {
-  environmental_data: number;
-  user_location_history: number;
+  weather_cache: number;
+  favorites: number;
+  search_history: number;
 };
 
 export type LocationsCountOutputTypeSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  environmental_data?: boolean | LocationsCountOutputTypeCountEnvironmental_dataArgs;
-  user_location_history?: boolean | LocationsCountOutputTypeCountUser_location_historyArgs;
+  weather_cache?: boolean | LocationsCountOutputTypeCountWeather_cacheArgs;
+  favorites?: boolean | LocationsCountOutputTypeCountFavoritesArgs;
+  search_history?: boolean | LocationsCountOutputTypeCountSearch_historyArgs;
 };
 
 /**
@@ -598,19 +1122,28 @@ export type LocationsCountOutputTypeDefaultArgs<
 /**
  * LocationsCountOutputType without action
  */
-export type LocationsCountOutputTypeCountEnvironmental_dataArgs<
+export type LocationsCountOutputTypeCountWeather_cacheArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  where?: Prisma.environmental_dataWhereInput;
+  where?: Prisma.weather_cacheWhereInput;
 };
 
 /**
  * LocationsCountOutputType without action
  */
-export type LocationsCountOutputTypeCountUser_location_historyArgs<
+export type LocationsCountOutputTypeCountFavoritesArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  where?: Prisma.user_location_historyWhereInput;
+  where?: Prisma.user_favoritesWhereInput;
+};
+
+/**
+ * LocationsCountOutputType without action
+ */
+export type LocationsCountOutputTypeCountSearch_historyArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  where?: Prisma.user_search_historyWhereInput;
 };
 
 export type locationsSelect<
@@ -621,9 +1154,16 @@ export type locationsSelect<
     name?: boolean;
     latitude?: boolean;
     longitude?: boolean;
+    region?: boolean;
+    prefecture?: boolean;
+    location_type?: boolean;
+    port_id?: boolean;
     created_at?: boolean;
-    environmental_data?: boolean | Prisma.locations$environmental_dataArgs<ExtArgs>;
-    user_location_history?: boolean | Prisma.locations$user_location_historyArgs<ExtArgs>;
+    updated_at?: boolean;
+    port?: boolean | Prisma.locations$portArgs<ExtArgs>;
+    weather_cache?: boolean | Prisma.locations$weather_cacheArgs<ExtArgs>;
+    favorites?: boolean | Prisma.locations$favoritesArgs<ExtArgs>;
+    search_history?: boolean | Prisma.locations$search_historyArgs<ExtArgs>;
     _count?: boolean | Prisma.LocationsCountOutputTypeDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['locations']
@@ -637,7 +1177,13 @@ export type locationsSelectCreateManyAndReturn<
     name?: boolean;
     latitude?: boolean;
     longitude?: boolean;
+    region?: boolean;
+    prefecture?: boolean;
+    location_type?: boolean;
+    port_id?: boolean;
     created_at?: boolean;
+    updated_at?: boolean;
+    port?: boolean | Prisma.locations$portArgs<ExtArgs>;
   },
   ExtArgs['result']['locations']
 >;
@@ -650,7 +1196,13 @@ export type locationsSelectUpdateManyAndReturn<
     name?: boolean;
     latitude?: boolean;
     longitude?: boolean;
+    region?: boolean;
+    prefecture?: boolean;
+    location_type?: boolean;
+    port_id?: boolean;
     created_at?: boolean;
+    updated_at?: boolean;
+    port?: boolean | Prisma.locations$portArgs<ExtArgs>;
   },
   ExtArgs['result']['locations']
 >;
@@ -660,36 +1212,58 @@ export type locationsSelectScalar = {
   name?: boolean;
   latitude?: boolean;
   longitude?: boolean;
+  region?: boolean;
+  prefecture?: boolean;
+  location_type?: boolean;
+  port_id?: boolean;
   created_at?: boolean;
+  updated_at?: boolean;
 };
 
 export type locationsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  'id' | 'name' | 'latitude' | 'longitude' | 'created_at',
+  | 'id'
+  | 'name'
+  | 'latitude'
+  | 'longitude'
+  | 'region'
+  | 'prefecture'
+  | 'location_type'
+  | 'port_id'
+  | 'created_at'
+  | 'updated_at',
   ExtArgs['result']['locations']
 >;
 export type locationsInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  environmental_data?: boolean | Prisma.locations$environmental_dataArgs<ExtArgs>;
-  user_location_history?: boolean | Prisma.locations$user_location_historyArgs<ExtArgs>;
+  port?: boolean | Prisma.locations$portArgs<ExtArgs>;
+  weather_cache?: boolean | Prisma.locations$weather_cacheArgs<ExtArgs>;
+  favorites?: boolean | Prisma.locations$favoritesArgs<ExtArgs>;
+  search_history?: boolean | Prisma.locations$search_historyArgs<ExtArgs>;
   _count?: boolean | Prisma.LocationsCountOutputTypeDefaultArgs<ExtArgs>;
 };
 export type locationsIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {};
+> = {
+  port?: boolean | Prisma.locations$portArgs<ExtArgs>;
+};
 export type locationsIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {};
+> = {
+  port?: boolean | Prisma.locations$portArgs<ExtArgs>;
+};
 
 export type $locationsPayload<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   name: 'locations';
   objects: {
-    environmental_data: Prisma.$environmental_dataPayload<ExtArgs>[];
-    user_location_history: Prisma.$user_location_historyPayload<ExtArgs>[];
+    port: Prisma.$portsPayload<ExtArgs> | null;
+    weather_cache: Prisma.$weather_cachePayload<ExtArgs>[];
+    favorites: Prisma.$user_favoritesPayload<ExtArgs>[];
+    search_history: Prisma.$user_search_historyPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
@@ -697,7 +1271,12 @@ export type $locationsPayload<
       name: string;
       latitude: number;
       longitude: number;
-      created_at: Date | null;
+      region: string | null;
+      prefecture: string | null;
+      location_type: $Enums.location_type;
+      port_id: string | null;
+      created_at: Date;
+      updated_at: Date;
     },
     ExtArgs['result']['locations']
   >;
@@ -1236,22 +1815,46 @@ export interface Prisma__locationsClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: 'PrismaPromise';
-  environmental_data<T extends Prisma.locations$environmental_dataArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.locations$environmental_dataArgs<ExtArgs>>,
+  port<T extends Prisma.locations$portArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.locations$portArgs<ExtArgs>>,
+  ): Prisma.Prisma__portsClient<
+    runtime.Types.Result.GetResult<
+      Prisma.$portsPayload<ExtArgs>,
+      T,
+      'findUniqueOrThrow',
+      GlobalOmitOptions
+    > | null,
+    null,
+    ExtArgs,
+    GlobalOmitOptions
+  >;
+  weather_cache<T extends Prisma.locations$weather_cacheArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.locations$weather_cacheArgs<ExtArgs>>,
   ): Prisma.PrismaPromise<
     | runtime.Types.Result.GetResult<
-        Prisma.$environmental_dataPayload<ExtArgs>,
+        Prisma.$weather_cachePayload<ExtArgs>,
         T,
         'findMany',
         GlobalOmitOptions
       >
     | Null
   >;
-  user_location_history<T extends Prisma.locations$user_location_historyArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.locations$user_location_historyArgs<ExtArgs>>,
+  favorites<T extends Prisma.locations$favoritesArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.locations$favoritesArgs<ExtArgs>>,
   ): Prisma.PrismaPromise<
     | runtime.Types.Result.GetResult<
-        Prisma.$user_location_historyPayload<ExtArgs>,
+        Prisma.$user_favoritesPayload<ExtArgs>,
+        T,
+        'findMany',
+        GlobalOmitOptions
+      >
+    | Null
+  >;
+  search_history<T extends Prisma.locations$search_historyArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.locations$search_historyArgs<ExtArgs>>,
+  ): Prisma.PrismaPromise<
+    | runtime.Types.Result.GetResult<
+        Prisma.$user_search_historyPayload<ExtArgs>,
         T,
         'findMany',
         GlobalOmitOptions
@@ -1293,7 +1896,12 @@ export interface locationsFieldRefs {
   readonly name: Prisma.FieldRef<'locations', 'String'>;
   readonly latitude: Prisma.FieldRef<'locations', 'Float'>;
   readonly longitude: Prisma.FieldRef<'locations', 'Float'>;
+  readonly region: Prisma.FieldRef<'locations', 'String'>;
+  readonly prefecture: Prisma.FieldRef<'locations', 'String'>;
+  readonly location_type: Prisma.FieldRef<'locations', 'location_type'>;
+  readonly port_id: Prisma.FieldRef<'locations', 'String'>;
   readonly created_at: Prisma.FieldRef<'locations', 'DateTime'>;
+  readonly updated_at: Prisma.FieldRef<'locations', 'DateTime'>;
 }
 
 // Custom InputTypes
@@ -1558,6 +2166,10 @@ export type locationsCreateManyAndReturnArgs<
    */
   data: Prisma.locationsCreateManyInput | Prisma.locationsCreateManyInput[];
   skipDuplicates?: boolean;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.locationsIncludeCreateManyAndReturn<ExtArgs> | null;
 };
 
 /**
@@ -1640,6 +2252,10 @@ export type locationsUpdateManyAndReturnArgs<
    * Limit how many locations to update.
    */
   limit?: number;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.locationsIncludeUpdateManyAndReturn<ExtArgs> | null;
 };
 
 /**
@@ -1715,61 +2331,110 @@ export type locationsDeleteManyArgs<
 };
 
 /**
- * locations.environmental_data
+ * locations.port
  */
-export type locations$environmental_dataArgs<
+export type locations$portArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   /**
-   * Select specific fields to fetch from the environmental_data
+   * Select specific fields to fetch from the ports
    */
-  select?: Prisma.environmental_dataSelect<ExtArgs> | null;
+  select?: Prisma.portsSelect<ExtArgs> | null;
   /**
-   * Omit specific fields from the environmental_data
+   * Omit specific fields from the ports
    */
-  omit?: Prisma.environmental_dataOmit<ExtArgs> | null;
+  omit?: Prisma.portsOmit<ExtArgs> | null;
   /**
    * Choose, which related nodes to fetch as well
    */
-  include?: Prisma.environmental_dataInclude<ExtArgs> | null;
-  where?: Prisma.environmental_dataWhereInput;
-  orderBy?:
-    | Prisma.environmental_dataOrderByWithRelationInput
-    | Prisma.environmental_dataOrderByWithRelationInput[];
-  cursor?: Prisma.environmental_dataWhereUniqueInput;
-  take?: number;
-  skip?: number;
-  distinct?: Prisma.Environmental_dataScalarFieldEnum | Prisma.Environmental_dataScalarFieldEnum[];
+  include?: Prisma.portsInclude<ExtArgs> | null;
+  where?: Prisma.portsWhereInput;
 };
 
 /**
- * locations.user_location_history
+ * locations.weather_cache
  */
-export type locations$user_location_historyArgs<
+export type locations$weather_cacheArgs<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   /**
-   * Select specific fields to fetch from the user_location_history
+   * Select specific fields to fetch from the weather_cache
    */
-  select?: Prisma.user_location_historySelect<ExtArgs> | null;
+  select?: Prisma.weather_cacheSelect<ExtArgs> | null;
   /**
-   * Omit specific fields from the user_location_history
+   * Omit specific fields from the weather_cache
    */
-  omit?: Prisma.user_location_historyOmit<ExtArgs> | null;
+  omit?: Prisma.weather_cacheOmit<ExtArgs> | null;
   /**
    * Choose, which related nodes to fetch as well
    */
-  include?: Prisma.user_location_historyInclude<ExtArgs> | null;
-  where?: Prisma.user_location_historyWhereInput;
+  include?: Prisma.weather_cacheInclude<ExtArgs> | null;
+  where?: Prisma.weather_cacheWhereInput;
   orderBy?:
-    | Prisma.user_location_historyOrderByWithRelationInput
-    | Prisma.user_location_historyOrderByWithRelationInput[];
-  cursor?: Prisma.user_location_historyWhereUniqueInput;
+    | Prisma.weather_cacheOrderByWithRelationInput
+    | Prisma.weather_cacheOrderByWithRelationInput[];
+  cursor?: Prisma.weather_cacheWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.Weather_cacheScalarFieldEnum | Prisma.Weather_cacheScalarFieldEnum[];
+};
+
+/**
+ * locations.favorites
+ */
+export type locations$favoritesArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the user_favorites
+   */
+  select?: Prisma.user_favoritesSelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the user_favorites
+   */
+  omit?: Prisma.user_favoritesOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.user_favoritesInclude<ExtArgs> | null;
+  where?: Prisma.user_favoritesWhereInput;
+  orderBy?:
+    | Prisma.user_favoritesOrderByWithRelationInput
+    | Prisma.user_favoritesOrderByWithRelationInput[];
+  cursor?: Prisma.user_favoritesWhereUniqueInput;
+  take?: number;
+  skip?: number;
+  distinct?: Prisma.User_favoritesScalarFieldEnum | Prisma.User_favoritesScalarFieldEnum[];
+};
+
+/**
+ * locations.search_history
+ */
+export type locations$search_historyArgs<
+  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
+> = {
+  /**
+   * Select specific fields to fetch from the user_search_history
+   */
+  select?: Prisma.user_search_historySelect<ExtArgs> | null;
+  /**
+   * Omit specific fields from the user_search_history
+   */
+  omit?: Prisma.user_search_historyOmit<ExtArgs> | null;
+  /**
+   * Choose, which related nodes to fetch as well
+   */
+  include?: Prisma.user_search_historyInclude<ExtArgs> | null;
+  where?: Prisma.user_search_historyWhereInput;
+  orderBy?:
+    | Prisma.user_search_historyOrderByWithRelationInput
+    | Prisma.user_search_historyOrderByWithRelationInput[];
+  cursor?: Prisma.user_search_historyWhereUniqueInput;
   take?: number;
   skip?: number;
   distinct?:
-    | Prisma.User_location_historyScalarFieldEnum
-    | Prisma.User_location_historyScalarFieldEnum[];
+    | Prisma.User_search_historyScalarFieldEnum
+    | Prisma.User_search_historyScalarFieldEnum[];
 };
 
 /**

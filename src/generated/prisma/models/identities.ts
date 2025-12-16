@@ -13,8 +13,7 @@ import type * as Prisma from '../internal/prismaNamespace';
 
 /**
  * Model identities
- * This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
- * This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+ * OAuth認証プロバイダー情報（Google等）
  */
 export type identitiesModel = runtime.Types.Result.DefaultSelection<Prisma.$identitiesPayload>;
 
@@ -25,72 +24,66 @@ export type AggregateIdentities = {
 };
 
 export type IdentitiesMinAggregateOutputType = {
-  provider_id: string | null;
+  id: string | null;
   user_id: string | null;
   provider: string | null;
+  provider_id: string | null;
   last_sign_in_at: Date | null;
   created_at: Date | null;
   updated_at: Date | null;
-  email: string | null;
-  id: string | null;
 };
 
 export type IdentitiesMaxAggregateOutputType = {
-  provider_id: string | null;
+  id: string | null;
   user_id: string | null;
   provider: string | null;
+  provider_id: string | null;
   last_sign_in_at: Date | null;
   created_at: Date | null;
   updated_at: Date | null;
-  email: string | null;
-  id: string | null;
 };
 
 export type IdentitiesCountAggregateOutputType = {
-  provider_id: number;
+  id: number;
   user_id: number;
-  identity_data: number;
   provider: number;
+  provider_id: number;
+  identity_data: number;
   last_sign_in_at: number;
   created_at: number;
   updated_at: number;
-  email: number;
-  id: number;
   _all: number;
 };
 
 export type IdentitiesMinAggregateInputType = {
-  provider_id?: true;
+  id?: true;
   user_id?: true;
   provider?: true;
+  provider_id?: true;
   last_sign_in_at?: true;
   created_at?: true;
   updated_at?: true;
-  email?: true;
-  id?: true;
 };
 
 export type IdentitiesMaxAggregateInputType = {
-  provider_id?: true;
+  id?: true;
   user_id?: true;
   provider?: true;
+  provider_id?: true;
   last_sign_in_at?: true;
   created_at?: true;
   updated_at?: true;
-  email?: true;
-  id?: true;
 };
 
 export type IdentitiesCountAggregateInputType = {
-  provider_id?: true;
+  id?: true;
   user_id?: true;
-  identity_data?: true;
   provider?: true;
+  provider_id?: true;
+  identity_data?: true;
   last_sign_in_at?: true;
   created_at?: true;
   updated_at?: true;
-  email?: true;
-  id?: true;
   _all?: true;
 };
 
@@ -170,15 +163,14 @@ export type identitiesGroupByArgs<
 };
 
 export type IdentitiesGroupByOutputType = {
-  provider_id: string;
-  user_id: string;
-  identity_data: runtime.JsonValue;
-  provider: string;
-  last_sign_in_at: Date | null;
-  created_at: Date | null;
-  updated_at: Date | null;
-  email: string | null;
   id: string;
+  user_id: string;
+  provider: string;
+  provider_id: string;
+  identity_data: runtime.JsonValue | null;
+  last_sign_in_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
   _count: IdentitiesCountAggregateOutputType | null;
   _min: IdentitiesMinAggregateOutputType | null;
   _max: IdentitiesMaxAggregateOutputType | null;
@@ -200,61 +192,57 @@ export type identitiesWhereInput = {
   AND?: Prisma.identitiesWhereInput | Prisma.identitiesWhereInput[];
   OR?: Prisma.identitiesWhereInput[];
   NOT?: Prisma.identitiesWhereInput | Prisma.identitiesWhereInput[];
-  provider_id?: Prisma.StringFilter<'identities'> | string;
-  user_id?: Prisma.UuidFilter<'identities'> | string;
-  identity_data?: Prisma.JsonFilter<'identities'>;
-  provider?: Prisma.StringFilter<'identities'> | string;
-  last_sign_in_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-  created_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-  updated_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-  email?: Prisma.StringNullableFilter<'identities'> | string | null;
   id?: Prisma.UuidFilter<'identities'> | string;
-  users?: Prisma.XOR<Prisma.Auth_usersScalarRelationFilter, Prisma.auth_usersWhereInput>;
+  user_id?: Prisma.UuidFilter<'identities'> | string;
+  provider?: Prisma.StringFilter<'identities'> | string;
+  provider_id?: Prisma.StringFilter<'identities'> | string;
+  identity_data?: Prisma.JsonNullableFilter<'identities'>;
+  last_sign_in_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
+  created_at?: Prisma.DateTimeFilter<'identities'> | Date | string;
+  updated_at?: Prisma.DateTimeFilter<'identities'> | Date | string;
+  user?: Prisma.XOR<Prisma.UsersScalarRelationFilter, Prisma.usersWhereInput>;
 };
 
 export type identitiesOrderByWithRelationInput = {
-  provider_id?: Prisma.SortOrder;
-  user_id?: Prisma.SortOrder;
-  identity_data?: Prisma.SortOrder;
-  provider?: Prisma.SortOrder;
-  last_sign_in_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  created_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  email?: Prisma.SortOrderInput | Prisma.SortOrder;
   id?: Prisma.SortOrder;
-  users?: Prisma.auth_usersOrderByWithRelationInput;
+  user_id?: Prisma.SortOrder;
+  provider?: Prisma.SortOrder;
+  provider_id?: Prisma.SortOrder;
+  identity_data?: Prisma.SortOrderInput | Prisma.SortOrder;
+  last_sign_in_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
+  user?: Prisma.usersOrderByWithRelationInput;
 };
 
 export type identitiesWhereUniqueInput = Prisma.AtLeast<
   {
     id?: string;
-    provider_id_provider?: Prisma.identitiesProvider_idProviderCompoundUniqueInput;
+    provider_provider_id?: Prisma.identitiesProviderProvider_idCompoundUniqueInput;
     AND?: Prisma.identitiesWhereInput | Prisma.identitiesWhereInput[];
     OR?: Prisma.identitiesWhereInput[];
     NOT?: Prisma.identitiesWhereInput | Prisma.identitiesWhereInput[];
-    provider_id?: Prisma.StringFilter<'identities'> | string;
     user_id?: Prisma.UuidFilter<'identities'> | string;
-    identity_data?: Prisma.JsonFilter<'identities'>;
     provider?: Prisma.StringFilter<'identities'> | string;
+    provider_id?: Prisma.StringFilter<'identities'> | string;
+    identity_data?: Prisma.JsonNullableFilter<'identities'>;
     last_sign_in_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-    created_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-    updated_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-    email?: Prisma.StringNullableFilter<'identities'> | string | null;
-    users?: Prisma.XOR<Prisma.Auth_usersScalarRelationFilter, Prisma.auth_usersWhereInput>;
+    created_at?: Prisma.DateTimeFilter<'identities'> | Date | string;
+    updated_at?: Prisma.DateTimeFilter<'identities'> | Date | string;
+    user?: Prisma.XOR<Prisma.UsersScalarRelationFilter, Prisma.usersWhereInput>;
   },
-  'id' | 'provider_id_provider'
+  'id' | 'provider_provider_id'
 >;
 
 export type identitiesOrderByWithAggregationInput = {
-  provider_id?: Prisma.SortOrder;
-  user_id?: Prisma.SortOrder;
-  identity_data?: Prisma.SortOrder;
-  provider?: Prisma.SortOrder;
-  last_sign_in_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  created_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  email?: Prisma.SortOrderInput | Prisma.SortOrder;
   id?: Prisma.SortOrder;
+  user_id?: Prisma.SortOrder;
+  provider?: Prisma.SortOrder;
+  provider_id?: Prisma.SortOrder;
+  identity_data?: Prisma.SortOrderInput | Prisma.SortOrder;
+  last_sign_in_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
   _count?: Prisma.identitiesCountOrderByAggregateInput;
   _max?: Prisma.identitiesMaxOrderByAggregateInput;
   _min?: Prisma.identitiesMinOrderByAggregateInput;
@@ -268,141 +256,94 @@ export type identitiesScalarWhereWithAggregatesInput = {
   NOT?:
     | Prisma.identitiesScalarWhereWithAggregatesInput
     | Prisma.identitiesScalarWhereWithAggregatesInput[];
-  provider_id?: Prisma.StringWithAggregatesFilter<'identities'> | string;
+  id?: Prisma.UuidWithAggregatesFilter<'identities'> | string;
   user_id?: Prisma.UuidWithAggregatesFilter<'identities'> | string;
-  identity_data?: Prisma.JsonWithAggregatesFilter<'identities'>;
   provider?: Prisma.StringWithAggregatesFilter<'identities'> | string;
+  provider_id?: Prisma.StringWithAggregatesFilter<'identities'> | string;
+  identity_data?: Prisma.JsonNullableWithAggregatesFilter<'identities'>;
   last_sign_in_at?:
     | Prisma.DateTimeNullableWithAggregatesFilter<'identities'>
     | Date
     | string
     | null;
-  created_at?: Prisma.DateTimeNullableWithAggregatesFilter<'identities'> | Date | string | null;
-  updated_at?: Prisma.DateTimeNullableWithAggregatesFilter<'identities'> | Date | string | null;
-  email?: Prisma.StringNullableWithAggregatesFilter<'identities'> | string | null;
-  id?: Prisma.UuidWithAggregatesFilter<'identities'> | string;
+  created_at?: Prisma.DateTimeWithAggregatesFilter<'identities'> | Date | string;
+  updated_at?: Prisma.DateTimeWithAggregatesFilter<'identities'> | Date | string;
 };
 
 export type identitiesCreateInput = {
-  provider_id: string;
-  identity_data: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider: string;
-  last_sign_in_at?: Date | string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  email?: string | null;
   id?: string;
-  users: Prisma.auth_usersCreateNestedOneWithoutIdentitiesInput;
+  provider: string;
+  provider_id: string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
+  user: Prisma.usersCreateNestedOneWithoutIdentitiesInput;
 };
 
 export type identitiesUncheckedCreateInput = {
-  provider_id: string;
-  user_id: string;
-  identity_data: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider: string;
-  last_sign_in_at?: Date | string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  email?: string | null;
   id?: string;
+  user_id: string;
+  provider: string;
+  provider_id: string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 };
 
 export type identitiesUpdateInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-  users?: Prisma.auth_usersUpdateOneRequiredWithoutIdentitiesNestedInput;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  user?: Prisma.usersUpdateOneRequiredWithoutIdentitiesNestedInput;
 };
 
 export type identitiesUncheckedUpdateInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  user_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  user_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type identitiesCreateManyInput = {
-  provider_id: string;
-  user_id: string;
-  identity_data: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider: string;
-  last_sign_in_at?: Date | string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  email?: string | null;
   id?: string;
+  user_id: string;
+  provider: string;
+  provider_id: string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 };
 
 export type identitiesUpdateManyMutationInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type identitiesUncheckedUpdateManyInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  user_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   id?: Prisma.StringFieldUpdateOperationsInput | string;
-};
-
-export type identitiesProvider_idProviderCompoundUniqueInput = {
-  provider_id: string;
-  provider: string;
-};
-
-export type identitiesCountOrderByAggregateInput = {
-  provider_id?: Prisma.SortOrder;
-  user_id?: Prisma.SortOrder;
-  identity_data?: Prisma.SortOrder;
-  provider?: Prisma.SortOrder;
-  last_sign_in_at?: Prisma.SortOrder;
-  created_at?: Prisma.SortOrder;
-  updated_at?: Prisma.SortOrder;
-  email?: Prisma.SortOrder;
-  id?: Prisma.SortOrder;
-};
-
-export type identitiesMaxOrderByAggregateInput = {
-  provider_id?: Prisma.SortOrder;
-  user_id?: Prisma.SortOrder;
-  provider?: Prisma.SortOrder;
-  last_sign_in_at?: Prisma.SortOrder;
-  created_at?: Prisma.SortOrder;
-  updated_at?: Prisma.SortOrder;
-  email?: Prisma.SortOrder;
-  id?: Prisma.SortOrder;
-};
-
-export type identitiesMinOrderByAggregateInput = {
-  provider_id?: Prisma.SortOrder;
-  user_id?: Prisma.SortOrder;
-  provider?: Prisma.SortOrder;
-  last_sign_in_at?: Prisma.SortOrder;
-  created_at?: Prisma.SortOrder;
-  updated_at?: Prisma.SortOrder;
-  email?: Prisma.SortOrder;
-  id?: Prisma.SortOrder;
+  user_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type IdentitiesListRelationFilter = {
@@ -415,152 +356,186 @@ export type identitiesOrderByRelationAggregateInput = {
   _count?: Prisma.SortOrder;
 };
 
-export type identitiesCreateNestedManyWithoutUsersInput = {
+export type identitiesProviderProvider_idCompoundUniqueInput = {
+  provider: string;
+  provider_id: string;
+};
+
+export type identitiesCountOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
+  user_id?: Prisma.SortOrder;
+  provider?: Prisma.SortOrder;
+  provider_id?: Prisma.SortOrder;
+  identity_data?: Prisma.SortOrder;
+  last_sign_in_at?: Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
+};
+
+export type identitiesMaxOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
+  user_id?: Prisma.SortOrder;
+  provider?: Prisma.SortOrder;
+  provider_id?: Prisma.SortOrder;
+  last_sign_in_at?: Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
+};
+
+export type identitiesMinOrderByAggregateInput = {
+  id?: Prisma.SortOrder;
+  user_id?: Prisma.SortOrder;
+  provider?: Prisma.SortOrder;
+  provider_id?: Prisma.SortOrder;
+  last_sign_in_at?: Prisma.SortOrder;
+  created_at?: Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
+};
+
+export type identitiesCreateNestedManyWithoutUserInput = {
   create?:
     | Prisma.XOR<
-        Prisma.identitiesCreateWithoutUsersInput,
-        Prisma.identitiesUncheckedCreateWithoutUsersInput
+        Prisma.identitiesCreateWithoutUserInput,
+        Prisma.identitiesUncheckedCreateWithoutUserInput
       >
-    | Prisma.identitiesCreateWithoutUsersInput[]
-    | Prisma.identitiesUncheckedCreateWithoutUsersInput[];
+    | Prisma.identitiesCreateWithoutUserInput[]
+    | Prisma.identitiesUncheckedCreateWithoutUserInput[];
   connectOrCreate?:
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput[];
-  createMany?: Prisma.identitiesCreateManyUsersInputEnvelope;
+    | Prisma.identitiesCreateOrConnectWithoutUserInput
+    | Prisma.identitiesCreateOrConnectWithoutUserInput[];
+  createMany?: Prisma.identitiesCreateManyUserInputEnvelope;
   connect?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
 };
 
-export type identitiesUncheckedCreateNestedManyWithoutUsersInput = {
+export type identitiesUncheckedCreateNestedManyWithoutUserInput = {
   create?:
     | Prisma.XOR<
-        Prisma.identitiesCreateWithoutUsersInput,
-        Prisma.identitiesUncheckedCreateWithoutUsersInput
+        Prisma.identitiesCreateWithoutUserInput,
+        Prisma.identitiesUncheckedCreateWithoutUserInput
       >
-    | Prisma.identitiesCreateWithoutUsersInput[]
-    | Prisma.identitiesUncheckedCreateWithoutUsersInput[];
+    | Prisma.identitiesCreateWithoutUserInput[]
+    | Prisma.identitiesUncheckedCreateWithoutUserInput[];
   connectOrCreate?:
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput[];
-  createMany?: Prisma.identitiesCreateManyUsersInputEnvelope;
+    | Prisma.identitiesCreateOrConnectWithoutUserInput
+    | Prisma.identitiesCreateOrConnectWithoutUserInput[];
+  createMany?: Prisma.identitiesCreateManyUserInputEnvelope;
   connect?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
 };
 
-export type identitiesUpdateManyWithoutUsersNestedInput = {
+export type identitiesUpdateManyWithoutUserNestedInput = {
   create?:
     | Prisma.XOR<
-        Prisma.identitiesCreateWithoutUsersInput,
-        Prisma.identitiesUncheckedCreateWithoutUsersInput
+        Prisma.identitiesCreateWithoutUserInput,
+        Prisma.identitiesUncheckedCreateWithoutUserInput
       >
-    | Prisma.identitiesCreateWithoutUsersInput[]
-    | Prisma.identitiesUncheckedCreateWithoutUsersInput[];
+    | Prisma.identitiesCreateWithoutUserInput[]
+    | Prisma.identitiesUncheckedCreateWithoutUserInput[];
   connectOrCreate?:
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput[];
+    | Prisma.identitiesCreateOrConnectWithoutUserInput
+    | Prisma.identitiesCreateOrConnectWithoutUserInput[];
   upsert?:
-    | Prisma.identitiesUpsertWithWhereUniqueWithoutUsersInput
-    | Prisma.identitiesUpsertWithWhereUniqueWithoutUsersInput[];
-  createMany?: Prisma.identitiesCreateManyUsersInputEnvelope;
+    | Prisma.identitiesUpsertWithWhereUniqueWithoutUserInput
+    | Prisma.identitiesUpsertWithWhereUniqueWithoutUserInput[];
+  createMany?: Prisma.identitiesCreateManyUserInputEnvelope;
   set?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   disconnect?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   delete?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   connect?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   update?:
-    | Prisma.identitiesUpdateWithWhereUniqueWithoutUsersInput
-    | Prisma.identitiesUpdateWithWhereUniqueWithoutUsersInput[];
+    | Prisma.identitiesUpdateWithWhereUniqueWithoutUserInput
+    | Prisma.identitiesUpdateWithWhereUniqueWithoutUserInput[];
   updateMany?:
-    | Prisma.identitiesUpdateManyWithWhereWithoutUsersInput
-    | Prisma.identitiesUpdateManyWithWhereWithoutUsersInput[];
+    | Prisma.identitiesUpdateManyWithWhereWithoutUserInput
+    | Prisma.identitiesUpdateManyWithWhereWithoutUserInput[];
   deleteMany?: Prisma.identitiesScalarWhereInput | Prisma.identitiesScalarWhereInput[];
 };
 
-export type identitiesUncheckedUpdateManyWithoutUsersNestedInput = {
+export type identitiesUncheckedUpdateManyWithoutUserNestedInput = {
   create?:
     | Prisma.XOR<
-        Prisma.identitiesCreateWithoutUsersInput,
-        Prisma.identitiesUncheckedCreateWithoutUsersInput
+        Prisma.identitiesCreateWithoutUserInput,
+        Prisma.identitiesUncheckedCreateWithoutUserInput
       >
-    | Prisma.identitiesCreateWithoutUsersInput[]
-    | Prisma.identitiesUncheckedCreateWithoutUsersInput[];
+    | Prisma.identitiesCreateWithoutUserInput[]
+    | Prisma.identitiesUncheckedCreateWithoutUserInput[];
   connectOrCreate?:
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput
-    | Prisma.identitiesCreateOrConnectWithoutUsersInput[];
+    | Prisma.identitiesCreateOrConnectWithoutUserInput
+    | Prisma.identitiesCreateOrConnectWithoutUserInput[];
   upsert?:
-    | Prisma.identitiesUpsertWithWhereUniqueWithoutUsersInput
-    | Prisma.identitiesUpsertWithWhereUniqueWithoutUsersInput[];
-  createMany?: Prisma.identitiesCreateManyUsersInputEnvelope;
+    | Prisma.identitiesUpsertWithWhereUniqueWithoutUserInput
+    | Prisma.identitiesUpsertWithWhereUniqueWithoutUserInput[];
+  createMany?: Prisma.identitiesCreateManyUserInputEnvelope;
   set?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   disconnect?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   delete?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   connect?: Prisma.identitiesWhereUniqueInput | Prisma.identitiesWhereUniqueInput[];
   update?:
-    | Prisma.identitiesUpdateWithWhereUniqueWithoutUsersInput
-    | Prisma.identitiesUpdateWithWhereUniqueWithoutUsersInput[];
+    | Prisma.identitiesUpdateWithWhereUniqueWithoutUserInput
+    | Prisma.identitiesUpdateWithWhereUniqueWithoutUserInput[];
   updateMany?:
-    | Prisma.identitiesUpdateManyWithWhereWithoutUsersInput
-    | Prisma.identitiesUpdateManyWithWhereWithoutUsersInput[];
+    | Prisma.identitiesUpdateManyWithWhereWithoutUserInput
+    | Prisma.identitiesUpdateManyWithWhereWithoutUserInput[];
   deleteMany?: Prisma.identitiesScalarWhereInput | Prisma.identitiesScalarWhereInput[];
 };
 
-export type identitiesCreateWithoutUsersInput = {
-  provider_id: string;
-  identity_data: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider: string;
-  last_sign_in_at?: Date | string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  email?: string | null;
+export type identitiesCreateWithoutUserInput = {
   id?: string;
+  provider: string;
+  provider_id: string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 };
 
-export type identitiesUncheckedCreateWithoutUsersInput = {
-  provider_id: string;
-  identity_data: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider: string;
-  last_sign_in_at?: Date | string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  email?: string | null;
+export type identitiesUncheckedCreateWithoutUserInput = {
   id?: string;
+  provider: string;
+  provider_id: string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 };
 
-export type identitiesCreateOrConnectWithoutUsersInput = {
+export type identitiesCreateOrConnectWithoutUserInput = {
   where: Prisma.identitiesWhereUniqueInput;
   create: Prisma.XOR<
-    Prisma.identitiesCreateWithoutUsersInput,
-    Prisma.identitiesUncheckedCreateWithoutUsersInput
+    Prisma.identitiesCreateWithoutUserInput,
+    Prisma.identitiesUncheckedCreateWithoutUserInput
   >;
 };
 
-export type identitiesCreateManyUsersInputEnvelope = {
-  data: Prisma.identitiesCreateManyUsersInput | Prisma.identitiesCreateManyUsersInput[];
+export type identitiesCreateManyUserInputEnvelope = {
+  data: Prisma.identitiesCreateManyUserInput | Prisma.identitiesCreateManyUserInput[];
   skipDuplicates?: boolean;
 };
 
-export type identitiesUpsertWithWhereUniqueWithoutUsersInput = {
+export type identitiesUpsertWithWhereUniqueWithoutUserInput = {
   where: Prisma.identitiesWhereUniqueInput;
   update: Prisma.XOR<
-    Prisma.identitiesUpdateWithoutUsersInput,
-    Prisma.identitiesUncheckedUpdateWithoutUsersInput
+    Prisma.identitiesUpdateWithoutUserInput,
+    Prisma.identitiesUncheckedUpdateWithoutUserInput
   >;
   create: Prisma.XOR<
-    Prisma.identitiesCreateWithoutUsersInput,
-    Prisma.identitiesUncheckedCreateWithoutUsersInput
+    Prisma.identitiesCreateWithoutUserInput,
+    Prisma.identitiesUncheckedCreateWithoutUserInput
   >;
 };
 
-export type identitiesUpdateWithWhereUniqueWithoutUsersInput = {
+export type identitiesUpdateWithWhereUniqueWithoutUserInput = {
   where: Prisma.identitiesWhereUniqueInput;
   data: Prisma.XOR<
-    Prisma.identitiesUpdateWithoutUsersInput,
-    Prisma.identitiesUncheckedUpdateWithoutUsersInput
+    Prisma.identitiesUpdateWithoutUserInput,
+    Prisma.identitiesUncheckedUpdateWithoutUserInput
   >;
 };
 
-export type identitiesUpdateManyWithWhereWithoutUsersInput = {
+export type identitiesUpdateManyWithWhereWithoutUserInput = {
   where: Prisma.identitiesScalarWhereInput;
   data: Prisma.XOR<
     Prisma.identitiesUpdateManyMutationInput,
-    Prisma.identitiesUncheckedUpdateManyWithoutUsersInput
+    Prisma.identitiesUncheckedUpdateManyWithoutUserInput
   >;
 };
 
@@ -568,75 +543,69 @@ export type identitiesScalarWhereInput = {
   AND?: Prisma.identitiesScalarWhereInput | Prisma.identitiesScalarWhereInput[];
   OR?: Prisma.identitiesScalarWhereInput[];
   NOT?: Prisma.identitiesScalarWhereInput | Prisma.identitiesScalarWhereInput[];
-  provider_id?: Prisma.StringFilter<'identities'> | string;
-  user_id?: Prisma.UuidFilter<'identities'> | string;
-  identity_data?: Prisma.JsonFilter<'identities'>;
-  provider?: Prisma.StringFilter<'identities'> | string;
-  last_sign_in_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-  created_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-  updated_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
-  email?: Prisma.StringNullableFilter<'identities'> | string | null;
   id?: Prisma.UuidFilter<'identities'> | string;
+  user_id?: Prisma.UuidFilter<'identities'> | string;
+  provider?: Prisma.StringFilter<'identities'> | string;
+  provider_id?: Prisma.StringFilter<'identities'> | string;
+  identity_data?: Prisma.JsonNullableFilter<'identities'>;
+  last_sign_in_at?: Prisma.DateTimeNullableFilter<'identities'> | Date | string | null;
+  created_at?: Prisma.DateTimeFilter<'identities'> | Date | string;
+  updated_at?: Prisma.DateTimeFilter<'identities'> | Date | string;
 };
 
-export type identitiesCreateManyUsersInput = {
-  provider_id: string;
-  identity_data: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider: string;
-  last_sign_in_at?: Date | string | null;
-  created_at?: Date | string | null;
-  updated_at?: Date | string | null;
-  email?: string | null;
+export type identitiesCreateManyUserInput = {
   id?: string;
+  provider: string;
+  provider_id: string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Date | string | null;
+  created_at?: Date | string;
+  updated_at?: Date | string;
 };
 
-export type identitiesUpdateWithoutUsersInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+export type identitiesUpdateWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
-export type identitiesUncheckedUpdateWithoutUsersInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+export type identitiesUncheckedUpdateWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
-export type identitiesUncheckedUpdateManyWithoutUsersInput = {
-  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
-  identity_data?: Prisma.JsonNullValueInput | runtime.InputJsonValue;
-  provider?: Prisma.StringFieldUpdateOperationsInput | string;
-  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  email?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+export type identitiesUncheckedUpdateManyWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider?: Prisma.StringFieldUpdateOperationsInput | string;
+  provider_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  identity_data?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  last_sign_in_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type identitiesSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
-    provider_id?: boolean;
+    id?: boolean;
     user_id?: boolean;
-    identity_data?: boolean;
     provider?: boolean;
+    provider_id?: boolean;
+    identity_data?: boolean;
     last_sign_in_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
-    email?: boolean;
-    id?: boolean;
-    users?: boolean | Prisma.auth_usersDefaultArgs<ExtArgs>;
+    user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['identities']
 >;
@@ -645,16 +614,15 @@ export type identitiesSelectCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
-    provider_id?: boolean;
+    id?: boolean;
     user_id?: boolean;
-    identity_data?: boolean;
     provider?: boolean;
+    provider_id?: boolean;
+    identity_data?: boolean;
     last_sign_in_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
-    email?: boolean;
-    id?: boolean;
-    users?: boolean | Prisma.auth_usersDefaultArgs<ExtArgs>;
+    user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['identities']
 >;
@@ -663,60 +631,57 @@ export type identitiesSelectUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
   {
-    provider_id?: boolean;
+    id?: boolean;
     user_id?: boolean;
-    identity_data?: boolean;
     provider?: boolean;
+    provider_id?: boolean;
+    identity_data?: boolean;
     last_sign_in_at?: boolean;
     created_at?: boolean;
     updated_at?: boolean;
-    email?: boolean;
-    id?: boolean;
-    users?: boolean | Prisma.auth_usersDefaultArgs<ExtArgs>;
+    user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['identities']
 >;
 
 export type identitiesSelectScalar = {
-  provider_id?: boolean;
+  id?: boolean;
   user_id?: boolean;
-  identity_data?: boolean;
   provider?: boolean;
+  provider_id?: boolean;
+  identity_data?: boolean;
   last_sign_in_at?: boolean;
   created_at?: boolean;
   updated_at?: boolean;
-  email?: boolean;
-  id?: boolean;
 };
 
 export type identitiesOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  | 'provider_id'
+  | 'id'
   | 'user_id'
-  | 'identity_data'
   | 'provider'
+  | 'provider_id'
+  | 'identity_data'
   | 'last_sign_in_at'
   | 'created_at'
-  | 'updated_at'
-  | 'email'
-  | 'id',
+  | 'updated_at',
   ExtArgs['result']['identities']
 >;
 export type identitiesInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  users?: boolean | Prisma.auth_usersDefaultArgs<ExtArgs>;
+  user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
 };
 export type identitiesIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  users?: boolean | Prisma.auth_usersDefaultArgs<ExtArgs>;
+  user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
 };
 export type identitiesIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  users?: boolean | Prisma.auth_usersDefaultArgs<ExtArgs>;
+  user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
 };
 
 export type $identitiesPayload<
@@ -724,19 +689,18 @@ export type $identitiesPayload<
 > = {
   name: 'identities';
   objects: {
-    users: Prisma.$auth_usersPayload<ExtArgs>;
+    user: Prisma.$usersPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
-      provider_id: string;
-      user_id: string;
-      identity_data: runtime.JsonValue;
-      provider: string;
-      last_sign_in_at: Date | null;
-      created_at: Date | null;
-      updated_at: Date | null;
-      email: string | null;
       id: string;
+      user_id: string;
+      provider: string;
+      provider_id: string;
+      identity_data: runtime.JsonValue | null;
+      last_sign_in_at: Date | null;
+      created_at: Date;
+      updated_at: Date;
     },
     ExtArgs['result']['identities']
   >;
@@ -878,8 +842,8 @@ export interface identitiesDelegate<
    * // Get first 10 Identities
    * const identities = await prisma.identities.findMany({ take: 10 })
    *
-   * // Only select the `provider_id`
-   * const identitiesWithProvider_idOnly = await prisma.identities.findMany({ select: { provider_id: true } })
+   * // Only select the `id`
+   * const identitiesWithIdOnly = await prisma.identities.findMany({ select: { id: true } })
    *
    */
   findMany<T extends identitiesFindManyArgs>(
@@ -946,9 +910,9 @@ export interface identitiesDelegate<
    *   ]
    * })
    *
-   * // Create many Identities and only return the `provider_id`
-   * const identitiesWithProvider_idOnly = await prisma.identities.createManyAndReturn({
-   *   select: { provider_id: true },
+   * // Create many Identities and only return the `id`
+   * const identitiesWithIdOnly = await prisma.identities.createManyAndReturn({
+   *   select: { id: true },
    *   data: [
    *     // ... provide data here
    *   ]
@@ -1074,9 +1038,9 @@ export interface identitiesDelegate<
    *   ]
    * })
    *
-   * // Update zero or more Identities and only return the `provider_id`
-   * const identitiesWithProvider_idOnly = await prisma.identities.updateManyAndReturn({
-   *   select: { provider_id: true },
+   * // Update zero or more Identities and only return the `id`
+   * const identitiesWithIdOnly = await prisma.identities.updateManyAndReturn({
+   *   select: { id: true },
    *   where: {
    *     // ... provide filter here
    *   },
@@ -1275,11 +1239,11 @@ export interface Prisma__identitiesClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: 'PrismaPromise';
-  users<T extends Prisma.auth_usersDefaultArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.auth_usersDefaultArgs<ExtArgs>>,
-  ): Prisma.Prisma__auth_usersClient<
+  user<T extends Prisma.usersDefaultArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.usersDefaultArgs<ExtArgs>>,
+  ): Prisma.Prisma__usersClient<
     | runtime.Types.Result.GetResult<
-        Prisma.$auth_usersPayload<ExtArgs>,
+        Prisma.$usersPayload<ExtArgs>,
         T,
         'findUniqueOrThrow',
         GlobalOmitOptions
@@ -1320,15 +1284,14 @@ export interface Prisma__identitiesClient<
  * Fields of the identities model
  */
 export interface identitiesFieldRefs {
-  readonly provider_id: Prisma.FieldRef<'identities', 'String'>;
+  readonly id: Prisma.FieldRef<'identities', 'String'>;
   readonly user_id: Prisma.FieldRef<'identities', 'String'>;
-  readonly identity_data: Prisma.FieldRef<'identities', 'Json'>;
   readonly provider: Prisma.FieldRef<'identities', 'String'>;
+  readonly provider_id: Prisma.FieldRef<'identities', 'String'>;
+  readonly identity_data: Prisma.FieldRef<'identities', 'Json'>;
   readonly last_sign_in_at: Prisma.FieldRef<'identities', 'DateTime'>;
   readonly created_at: Prisma.FieldRef<'identities', 'DateTime'>;
   readonly updated_at: Prisma.FieldRef<'identities', 'DateTime'>;
-  readonly email: Prisma.FieldRef<'identities', 'String'>;
-  readonly id: Prisma.FieldRef<'identities', 'String'>;
 }
 
 // Custom InputTypes
