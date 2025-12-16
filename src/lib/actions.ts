@@ -47,24 +47,14 @@ export async function signup(_prevState: string | undefined, formData: FormData)
     const password_hash = await bcrypt.hash(password, 10);
     const userId = randomUUID();
 
-    await prisma.$transaction(async (tx) => {
-      await tx.auth_users.create({
-        data: {
-          id: userId,
-          email: normalizedEmail,
-          encrypted_password: password_hash,
-          aud: 'authenticated',
-          role: 'authenticated',
-        },
-      });
-
-      await tx.public_users.create({
-        data: {
-          id: userId,
-          name,
-          email: normalizedEmail,
-        },
-      });
+    // usersテーブルに認証+プロフィール情報を統合して保存
+    await prisma.users.create({
+      data: {
+        id: userId,
+        email: normalizedEmail,
+        password_hash,
+        name,
+      },
     });
   } catch (error) {
     console.error('Signup error:', error);

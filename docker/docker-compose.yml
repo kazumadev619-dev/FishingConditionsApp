@@ -1,0 +1,85 @@
+# ============================================
+# 開発環境用 docker-compose
+# ローカルPostgreSQL + Redis（Upstash互換） + Next.jsアプリ
+# ============================================
+
+services:
+  # Next.js アプリケーション
+  app:
+    container_name: fishing-app
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    env_file:
+      - ../.env.local
+    ports:
+      - '${APP_PORT:-3000}:3000'
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
+      # Upstash互換Redis（serverless-redis-http経由）
+      - UPSTASH_REDIS_REST_URL=http://serverless-redis:8079
+      - UPSTASH_REDIS_REST_TOKEN=example_token
+      # AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, OPENWEATHERMAP_API_KEYは
+      # env_fileから読み込まれる（.env.local）
+    depends_on:
+      postgres:
+        condition: service_healthy
+      serverless-redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # PostgreSQL
+  postgres:
+    container_name: fishing-postgres
+    image: postgres:17-alpine
+    env_file:
+      - ../.env.local
+    ports:
+      - '${POSTGRES_PORT:-5432}:5432'
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-FishingPostgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-FishingPostgres}
+      - POSTGRES_DB=${POSTGRES_DB:-fishing_app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-FishingPostgres} -d ${POSTGRES_DB:-fishing_app}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Redis
+  redis:
+    container_name: fishing-redis
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Upstash互換HTTPラッパー
+  serverless-redis:
+    container_name: fishing-serverless-redis
+    image: hiett/serverless-redis-http:latest
+    ports:
+      - '${REDIS_HTTP_PORT:-8079}:8079'
+    environment:
+      - SRH_MODE=env
+      - SRH_TOKEN=example_token
+      - SRH_CONNECTION_STRING=redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  redis_data:

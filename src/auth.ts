@@ -9,15 +9,16 @@ import { randomUUID } from 'crypto';
 
 async function getUser(email: string) {
   try {
-    const user = await prisma.auth_users.findUnique({
+    // メールアドレスを正規化（新規登録時と同じ処理）
+    const normalizedEmail = email.toLowerCase().trim();
+    const user = await prisma.users.findUnique({
       where: {
-        email: email,
+        email: normalizedEmail,
       },
     });
     return user;
   } catch (error) {
     console.error('Failed to fetch user:', error);
-    // ユーザーが見つからない場合や、エラーが発生した場合は null を返す
     return null;
   }
 }
@@ -42,12 +43,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         const { email, password } = parsedCredentials.data;
         const user = await getUser(email);
-        if (!user || !user.encrypted_password) {
+        if (!user || !user.password_hash) {
           console.log('User not found or password hash missing.');
           return null;
         }
 
-        const passwordsMatch = await bcrypt.compare(password, user.encrypted_password);
+        const passwordsMatch = await bcrypt.compare(password, user.password_hash);
 
         if (passwordsMatch) {
           return user;
@@ -72,18 +73,17 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
         try {
           // 既存ユーザーをメールアドレスで検索
-          const existingAuthUser = await prisma.auth_users.findUnique({
+          const existingUser = await prisma.users.findUnique({
             where: { email },
           });
 
-          if (existingAuthUser) {
+          if (existingUser) {
             // 既存ユーザーが存在する場合：アカウント連携
-            // identitiesレコードが存在するか確認
             const existingIdentity = await prisma.identities.findUnique({
               where: {
-                provider_id_provider: {
-                  provider_id: account.providerAccountId,
+                provider_provider_id: {
                   provider: 'google',
+                  provider_id: account.providerAccountId,
                 },
               },
             });
@@ -92,9 +92,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               // identitiesレコードを作成（アカウント連携）
               await prisma.identities.create({
                 data: {
-                  provider_id: account.providerAccountId,
                   provider: 'google',
-                  user_id: existingAuthUser.id,
+                  provider_id: account.providerAccountId,
+                  user_id: existingUser.id,
                   identity_data: {
                     email: user.email,
                     name: user.name,
@@ -105,45 +105,36 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
               });
 
               // is_sso_userフラグを更新
-              await prisma.auth_users.update({
-                where: { id: existingAuthUser.id },
+              await prisma.users.update({
+                where: { id: existingUser.id },
                 data: { is_sso_user: true },
               });
             }
 
             return true;
           } else {
-            // 新規ユーザー作成（トランザクション処理）
+            // 新規ユーザー作成
             const userId = randomUUID();
 
             await prisma.$transaction(async (tx) => {
-              // 1. auth_usersレコード作成
-              await tx.auth_users.create({
+              // usersレコード作成（認証+プロフィール統合）
+              await tx.users.create({
                 data: {
                   id: userId,
                   email,
-                  encrypted_password: null, // パスワード不要
-                  aud: 'authenticated',
-                  role: 'authenticated',
-                  is_sso_user: true,
-                  email_confirmed_at: new Date(), // OAuth認証済みなのでメール確認不要
-                },
-              });
-
-              // 2. public_usersレコード作成
-              await tx.public_users.create({
-                data: {
-                  id: userId,
+                  password_hash: null,
                   name: user.name || 'Googleユーザー',
-                  email,
+                  avatar_url: user.image,
+                  is_sso_user: true,
+                  email_verified_at: new Date(),
                 },
               });
 
-              // 3. identitiesレコード作成
+              // identitiesレコード作成
               await tx.identities.create({
                 data: {
-                  provider_id: account.providerAccountId,
                   provider: 'google',
+                  provider_id: account.providerAccountId,
                   user_id: userId,
                   identity_data: {
                     email: user.email,
@@ -159,7 +150,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           }
         } catch (error) {
           console.error('Google sign-in error:', error);
-          return false; // ログイン失敗
+          return false;
         }
       }
 

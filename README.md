@@ -64,9 +64,10 @@
 | スタイリング   | Tailwind CSS + shadcn/ui     | 4.1.17 + latest          | モバイルファースト、コンポーネント再利用 |
 | 状態管理       | Zustand + React Query        | 5.0.8 + 5.90.7           | 軽量、外部API連携に最適                  |
 | 認証           | Auth.js                      | 5.0.0-beta.30            | 多様な認証プロバイダー対応               |
-| データベース   | PostgreSQL (Supabase)        | 15.0 + latest            | リレーショナルDB、リアルタイム機能       |
+| データベース   | PostgreSQL                   | 17.0                     | リレーショナルDB、Prisma ORM             |
 | キャッシュ     | Redis (Upstash)              | 7.2.0                    | 外部API結果のキャッシュ                  |
-| デプロイ       |                              |                          |                                          |
+| デプロイ       | GCP (GKE)                    | -                        | Kubernetes本番環境                       |
+| ローカルk8s    | kind                         | -                        | ローカルKubernetes開発環境               |
 
 ---
 
@@ -103,6 +104,16 @@ npm run dev
 ```
 
 ブラウザで [http://localhost:3000](http://localhost:3000) を開いて確認してください。
+
+### Docker開発環境
+
+```bash
+# docker-composeでローカル環境起動
+cd docker && docker-compose up -d
+
+# ログ確認
+docker-compose logs -f app
+```
 
 ---
 
@@ -234,8 +245,8 @@ npm run type-check && npm run lint && npm run format:check
 ### 品質保証
 
 - **テスト戦略**: Jest (単体) + Playwright (E2E)
-- **CI/CD**: GitHub Actions + Vercel自動デプロイ
-- **監視**: Vercel Analytics + エラー追跡
+- **CI/CD**: GitHub Actions + GKE自動デプロイ
+- **監視**: GCPモニタリング + エラー追跡
 
 ---
 

@@ -13,7 +13,7 @@ import type * as Prisma from '../internal/prismaNamespace';
 
 /**
  * Model user_settings
- * This model contains row level security and requires additional setup for migrations. Visit https://pris.ly/d/row-level-security for more info.
+ * ユーザー設定
  */
 export type user_settingsModel =
   runtime.Types.Result.DefaultSelection<Prisma.$user_settingsPayload>;
@@ -27,18 +27,30 @@ export type AggregateUser_settings = {
 export type User_settingsMinAggregateOutputType = {
   id: string | null;
   user_id: string | null;
+  default_location_id: string | null;
+  notification_enabled: boolean | null;
+  theme: string | null;
+  unit_system: string | null;
   updated_at: Date | null;
 };
 
 export type User_settingsMaxAggregateOutputType = {
   id: string | null;
   user_id: string | null;
+  default_location_id: string | null;
+  notification_enabled: boolean | null;
+  theme: string | null;
+  unit_system: string | null;
   updated_at: Date | null;
 };
 
 export type User_settingsCountAggregateOutputType = {
   id: number;
   user_id: number;
+  default_location_id: number;
+  notification_enabled: number;
+  theme: number;
+  unit_system: number;
   preferences: number;
   updated_at: number;
   _all: number;
@@ -47,18 +59,30 @@ export type User_settingsCountAggregateOutputType = {
 export type User_settingsMinAggregateInputType = {
   id?: true;
   user_id?: true;
+  default_location_id?: true;
+  notification_enabled?: true;
+  theme?: true;
+  unit_system?: true;
   updated_at?: true;
 };
 
 export type User_settingsMaxAggregateInputType = {
   id?: true;
   user_id?: true;
+  default_location_id?: true;
+  notification_enabled?: true;
+  theme?: true;
+  unit_system?: true;
   updated_at?: true;
 };
 
 export type User_settingsCountAggregateInputType = {
   id?: true;
   user_id?: true;
+  default_location_id?: true;
+  notification_enabled?: true;
+  theme?: true;
+  unit_system?: true;
   preferences?: true;
   updated_at?: true;
   _all?: true;
@@ -144,8 +168,12 @@ export type user_settingsGroupByArgs<
 export type User_settingsGroupByOutputType = {
   id: string;
   user_id: string;
+  default_location_id: string | null;
+  notification_enabled: boolean;
+  theme: string;
+  unit_system: string;
   preferences: runtime.JsonValue | null;
-  updated_at: Date | null;
+  updated_at: Date;
   _count: User_settingsCountAggregateOutputType | null;
   _min: User_settingsMinAggregateOutputType | null;
   _max: User_settingsMaxAggregateOutputType | null;
@@ -169,38 +197,54 @@ export type user_settingsWhereInput = {
   NOT?: Prisma.user_settingsWhereInput | Prisma.user_settingsWhereInput[];
   id?: Prisma.UuidFilter<'user_settings'> | string;
   user_id?: Prisma.UuidFilter<'user_settings'> | string;
+  default_location_id?: Prisma.UuidNullableFilter<'user_settings'> | string | null;
+  notification_enabled?: Prisma.BoolFilter<'user_settings'> | boolean;
+  theme?: Prisma.StringFilter<'user_settings'> | string;
+  unit_system?: Prisma.StringFilter<'user_settings'> | string;
   preferences?: Prisma.JsonNullableFilter<'user_settings'>;
-  updated_at?: Prisma.DateTimeNullableFilter<'user_settings'> | Date | string | null;
-  users?: Prisma.XOR<Prisma.Public_usersScalarRelationFilter, Prisma.public_usersWhereInput>;
+  updated_at?: Prisma.DateTimeFilter<'user_settings'> | Date | string;
+  user?: Prisma.XOR<Prisma.UsersScalarRelationFilter, Prisma.usersWhereInput>;
 };
 
 export type user_settingsOrderByWithRelationInput = {
   id?: Prisma.SortOrder;
   user_id?: Prisma.SortOrder;
+  default_location_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  notification_enabled?: Prisma.SortOrder;
+  theme?: Prisma.SortOrder;
+  unit_system?: Prisma.SortOrder;
   preferences?: Prisma.SortOrderInput | Prisma.SortOrder;
-  updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
-  users?: Prisma.public_usersOrderByWithRelationInput;
+  updated_at?: Prisma.SortOrder;
+  user?: Prisma.usersOrderByWithRelationInput;
 };
 
 export type user_settingsWhereUniqueInput = Prisma.AtLeast<
   {
     id?: string;
+    user_id?: string;
     AND?: Prisma.user_settingsWhereInput | Prisma.user_settingsWhereInput[];
     OR?: Prisma.user_settingsWhereInput[];
     NOT?: Prisma.user_settingsWhereInput | Prisma.user_settingsWhereInput[];
-    user_id?: Prisma.UuidFilter<'user_settings'> | string;
+    default_location_id?: Prisma.UuidNullableFilter<'user_settings'> | string | null;
+    notification_enabled?: Prisma.BoolFilter<'user_settings'> | boolean;
+    theme?: Prisma.StringFilter<'user_settings'> | string;
+    unit_system?: Prisma.StringFilter<'user_settings'> | string;
     preferences?: Prisma.JsonNullableFilter<'user_settings'>;
-    updated_at?: Prisma.DateTimeNullableFilter<'user_settings'> | Date | string | null;
-    users?: Prisma.XOR<Prisma.Public_usersScalarRelationFilter, Prisma.public_usersWhereInput>;
+    updated_at?: Prisma.DateTimeFilter<'user_settings'> | Date | string;
+    user?: Prisma.XOR<Prisma.UsersScalarRelationFilter, Prisma.usersWhereInput>;
   },
-  'id'
+  'id' | 'user_id'
 >;
 
 export type user_settingsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder;
   user_id?: Prisma.SortOrder;
+  default_location_id?: Prisma.SortOrderInput | Prisma.SortOrder;
+  notification_enabled?: Prisma.SortOrder;
+  theme?: Prisma.SortOrder;
+  unit_system?: Prisma.SortOrder;
   preferences?: Prisma.SortOrderInput | Prisma.SortOrder;
-  updated_at?: Prisma.SortOrderInput | Prisma.SortOrder;
+  updated_at?: Prisma.SortOrder;
   _count?: Prisma.user_settingsCountOrderByAggregateInput;
   _max?: Prisma.user_settingsMaxOrderByAggregateInput;
   _min?: Prisma.user_settingsMinOrderByAggregateInput;
@@ -216,61 +260,102 @@ export type user_settingsScalarWhereWithAggregatesInput = {
     | Prisma.user_settingsScalarWhereWithAggregatesInput[];
   id?: Prisma.UuidWithAggregatesFilter<'user_settings'> | string;
   user_id?: Prisma.UuidWithAggregatesFilter<'user_settings'> | string;
+  default_location_id?: Prisma.UuidNullableWithAggregatesFilter<'user_settings'> | string | null;
+  notification_enabled?: Prisma.BoolWithAggregatesFilter<'user_settings'> | boolean;
+  theme?: Prisma.StringWithAggregatesFilter<'user_settings'> | string;
+  unit_system?: Prisma.StringWithAggregatesFilter<'user_settings'> | string;
   preferences?: Prisma.JsonNullableWithAggregatesFilter<'user_settings'>;
-  updated_at?: Prisma.DateTimeNullableWithAggregatesFilter<'user_settings'> | Date | string | null;
+  updated_at?: Prisma.DateTimeWithAggregatesFilter<'user_settings'> | Date | string;
 };
 
 export type user_settingsCreateInput = {
-  id: string;
+  id?: string;
+  default_location_id?: string | null;
+  notification_enabled?: boolean;
+  theme?: string;
+  unit_system?: string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Date | string | null;
-  users: Prisma.public_usersCreateNestedOneWithoutUser_settingsInput;
+  updated_at?: Date | string;
+  user: Prisma.usersCreateNestedOneWithoutSettingsInput;
 };
 
 export type user_settingsUncheckedCreateInput = {
-  id: string;
+  id?: string;
   user_id: string;
+  default_location_id?: string | null;
+  notification_enabled?: boolean;
+  theme?: string;
+  unit_system?: string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Date | string | null;
+  updated_at?: Date | string;
 };
 
 export type user_settingsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_location_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  notification_enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean;
+  theme?: Prisma.StringFieldUpdateOperationsInput | string;
+  unit_system?: Prisma.StringFieldUpdateOperationsInput | string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  users?: Prisma.public_usersUpdateOneRequiredWithoutUser_settingsNestedInput;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+  user?: Prisma.usersUpdateOneRequiredWithoutSettingsNestedInput;
 };
 
 export type user_settingsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   user_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_location_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  notification_enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean;
+  theme?: Prisma.StringFieldUpdateOperationsInput | string;
+  unit_system?: Prisma.StringFieldUpdateOperationsInput | string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type user_settingsCreateManyInput = {
-  id: string;
+  id?: string;
   user_id: string;
+  default_location_id?: string | null;
+  notification_enabled?: boolean;
+  theme?: string;
+  unit_system?: string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Date | string | null;
+  updated_at?: Date | string;
 };
 
 export type user_settingsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_location_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  notification_enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean;
+  theme?: Prisma.StringFieldUpdateOperationsInput | string;
+  unit_system?: Prisma.StringFieldUpdateOperationsInput | string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type user_settingsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   user_id?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_location_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  notification_enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean;
+  theme?: Prisma.StringFieldUpdateOperationsInput | string;
+  unit_system?: Prisma.StringFieldUpdateOperationsInput | string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
+};
+
+export type User_settingsNullableScalarRelationFilter = {
+  is?: Prisma.user_settingsWhereInput | null;
+  isNot?: Prisma.user_settingsWhereInput | null;
 };
 
 export type user_settingsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   user_id?: Prisma.SortOrder;
+  default_location_id?: Prisma.SortOrder;
+  notification_enabled?: Prisma.SortOrder;
+  theme?: Prisma.SortOrder;
+  unit_system?: Prisma.SortOrder;
   preferences?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
@@ -278,196 +363,145 @@ export type user_settingsCountOrderByAggregateInput = {
 export type user_settingsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   user_id?: Prisma.SortOrder;
+  default_location_id?: Prisma.SortOrder;
+  notification_enabled?: Prisma.SortOrder;
+  theme?: Prisma.SortOrder;
+  unit_system?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
 export type user_settingsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   user_id?: Prisma.SortOrder;
+  default_location_id?: Prisma.SortOrder;
+  notification_enabled?: Prisma.SortOrder;
+  theme?: Prisma.SortOrder;
+  unit_system?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
 };
 
-export type User_settingsListRelationFilter = {
-  every?: Prisma.user_settingsWhereInput;
-  some?: Prisma.user_settingsWhereInput;
-  none?: Prisma.user_settingsWhereInput;
+export type user_settingsCreateNestedOneWithoutUserInput = {
+  create?: Prisma.XOR<
+    Prisma.user_settingsCreateWithoutUserInput,
+    Prisma.user_settingsUncheckedCreateWithoutUserInput
+  >;
+  connectOrCreate?: Prisma.user_settingsCreateOrConnectWithoutUserInput;
+  connect?: Prisma.user_settingsWhereUniqueInput;
 };
 
-export type user_settingsOrderByRelationAggregateInput = {
-  _count?: Prisma.SortOrder;
+export type user_settingsUncheckedCreateNestedOneWithoutUserInput = {
+  create?: Prisma.XOR<
+    Prisma.user_settingsCreateWithoutUserInput,
+    Prisma.user_settingsUncheckedCreateWithoutUserInput
+  >;
+  connectOrCreate?: Prisma.user_settingsCreateOrConnectWithoutUserInput;
+  connect?: Prisma.user_settingsWhereUniqueInput;
 };
 
-export type user_settingsCreateNestedManyWithoutUsersInput = {
-  create?:
-    | Prisma.XOR<
-        Prisma.user_settingsCreateWithoutUsersInput,
-        Prisma.user_settingsUncheckedCreateWithoutUsersInput
-      >
-    | Prisma.user_settingsCreateWithoutUsersInput[]
-    | Prisma.user_settingsUncheckedCreateWithoutUsersInput[];
-  connectOrCreate?:
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput[];
-  createMany?: Prisma.user_settingsCreateManyUsersInputEnvelope;
-  connect?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-};
-
-export type user_settingsUncheckedCreateNestedManyWithoutUsersInput = {
-  create?:
-    | Prisma.XOR<
-        Prisma.user_settingsCreateWithoutUsersInput,
-        Prisma.user_settingsUncheckedCreateWithoutUsersInput
-      >
-    | Prisma.user_settingsCreateWithoutUsersInput[]
-    | Prisma.user_settingsUncheckedCreateWithoutUsersInput[];
-  connectOrCreate?:
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput[];
-  createMany?: Prisma.user_settingsCreateManyUsersInputEnvelope;
-  connect?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-};
-
-export type user_settingsUpdateManyWithoutUsersNestedInput = {
-  create?:
-    | Prisma.XOR<
-        Prisma.user_settingsCreateWithoutUsersInput,
-        Prisma.user_settingsUncheckedCreateWithoutUsersInput
-      >
-    | Prisma.user_settingsCreateWithoutUsersInput[]
-    | Prisma.user_settingsUncheckedCreateWithoutUsersInput[];
-  connectOrCreate?:
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput[];
-  upsert?:
-    | Prisma.user_settingsUpsertWithWhereUniqueWithoutUsersInput
-    | Prisma.user_settingsUpsertWithWhereUniqueWithoutUsersInput[];
-  createMany?: Prisma.user_settingsCreateManyUsersInputEnvelope;
-  set?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  disconnect?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  delete?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  connect?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  update?:
-    | Prisma.user_settingsUpdateWithWhereUniqueWithoutUsersInput
-    | Prisma.user_settingsUpdateWithWhereUniqueWithoutUsersInput[];
-  updateMany?:
-    | Prisma.user_settingsUpdateManyWithWhereWithoutUsersInput
-    | Prisma.user_settingsUpdateManyWithWhereWithoutUsersInput[];
-  deleteMany?: Prisma.user_settingsScalarWhereInput | Prisma.user_settingsScalarWhereInput[];
-};
-
-export type user_settingsUncheckedUpdateManyWithoutUsersNestedInput = {
-  create?:
-    | Prisma.XOR<
-        Prisma.user_settingsCreateWithoutUsersInput,
-        Prisma.user_settingsUncheckedCreateWithoutUsersInput
-      >
-    | Prisma.user_settingsCreateWithoutUsersInput[]
-    | Prisma.user_settingsUncheckedCreateWithoutUsersInput[];
-  connectOrCreate?:
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput
-    | Prisma.user_settingsCreateOrConnectWithoutUsersInput[];
-  upsert?:
-    | Prisma.user_settingsUpsertWithWhereUniqueWithoutUsersInput
-    | Prisma.user_settingsUpsertWithWhereUniqueWithoutUsersInput[];
-  createMany?: Prisma.user_settingsCreateManyUsersInputEnvelope;
-  set?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  disconnect?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  delete?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  connect?: Prisma.user_settingsWhereUniqueInput | Prisma.user_settingsWhereUniqueInput[];
-  update?:
-    | Prisma.user_settingsUpdateWithWhereUniqueWithoutUsersInput
-    | Prisma.user_settingsUpdateWithWhereUniqueWithoutUsersInput[];
-  updateMany?:
-    | Prisma.user_settingsUpdateManyWithWhereWithoutUsersInput
-    | Prisma.user_settingsUpdateManyWithWhereWithoutUsersInput[];
-  deleteMany?: Prisma.user_settingsScalarWhereInput | Prisma.user_settingsScalarWhereInput[];
-};
-
-export type user_settingsCreateWithoutUsersInput = {
-  id: string;
-  preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Date | string | null;
-};
-
-export type user_settingsUncheckedCreateWithoutUsersInput = {
-  id: string;
-  preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Date | string | null;
-};
-
-export type user_settingsCreateOrConnectWithoutUsersInput = {
-  where: Prisma.user_settingsWhereUniqueInput;
-  create: Prisma.XOR<
-    Prisma.user_settingsCreateWithoutUsersInput,
-    Prisma.user_settingsUncheckedCreateWithoutUsersInput
+export type user_settingsUpdateOneWithoutUserNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.user_settingsCreateWithoutUserInput,
+    Prisma.user_settingsUncheckedCreateWithoutUserInput
+  >;
+  connectOrCreate?: Prisma.user_settingsCreateOrConnectWithoutUserInput;
+  upsert?: Prisma.user_settingsUpsertWithoutUserInput;
+  disconnect?: Prisma.user_settingsWhereInput | boolean;
+  delete?: Prisma.user_settingsWhereInput | boolean;
+  connect?: Prisma.user_settingsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.user_settingsUpdateToOneWithWhereWithoutUserInput,
+      Prisma.user_settingsUpdateWithoutUserInput
+    >,
+    Prisma.user_settingsUncheckedUpdateWithoutUserInput
   >;
 };
 
-export type user_settingsCreateManyUsersInputEnvelope = {
-  data: Prisma.user_settingsCreateManyUsersInput | Prisma.user_settingsCreateManyUsersInput[];
-  skipDuplicates?: boolean;
+export type user_settingsUncheckedUpdateOneWithoutUserNestedInput = {
+  create?: Prisma.XOR<
+    Prisma.user_settingsCreateWithoutUserInput,
+    Prisma.user_settingsUncheckedCreateWithoutUserInput
+  >;
+  connectOrCreate?: Prisma.user_settingsCreateOrConnectWithoutUserInput;
+  upsert?: Prisma.user_settingsUpsertWithoutUserInput;
+  disconnect?: Prisma.user_settingsWhereInput | boolean;
+  delete?: Prisma.user_settingsWhereInput | boolean;
+  connect?: Prisma.user_settingsWhereUniqueInput;
+  update?: Prisma.XOR<
+    Prisma.XOR<
+      Prisma.user_settingsUpdateToOneWithWhereWithoutUserInput,
+      Prisma.user_settingsUpdateWithoutUserInput
+    >,
+    Prisma.user_settingsUncheckedUpdateWithoutUserInput
+  >;
 };
 
-export type user_settingsUpsertWithWhereUniqueWithoutUsersInput = {
+export type user_settingsCreateWithoutUserInput = {
+  id?: string;
+  default_location_id?: string | null;
+  notification_enabled?: boolean;
+  theme?: string;
+  unit_system?: string;
+  preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  updated_at?: Date | string;
+};
+
+export type user_settingsUncheckedCreateWithoutUserInput = {
+  id?: string;
+  default_location_id?: string | null;
+  notification_enabled?: boolean;
+  theme?: string;
+  unit_system?: string;
+  preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
+  updated_at?: Date | string;
+};
+
+export type user_settingsCreateOrConnectWithoutUserInput = {
   where: Prisma.user_settingsWhereUniqueInput;
+  create: Prisma.XOR<
+    Prisma.user_settingsCreateWithoutUserInput,
+    Prisma.user_settingsUncheckedCreateWithoutUserInput
+  >;
+};
+
+export type user_settingsUpsertWithoutUserInput = {
   update: Prisma.XOR<
-    Prisma.user_settingsUpdateWithoutUsersInput,
-    Prisma.user_settingsUncheckedUpdateWithoutUsersInput
+    Prisma.user_settingsUpdateWithoutUserInput,
+    Prisma.user_settingsUncheckedUpdateWithoutUserInput
   >;
   create: Prisma.XOR<
-    Prisma.user_settingsCreateWithoutUsersInput,
-    Prisma.user_settingsUncheckedCreateWithoutUsersInput
+    Prisma.user_settingsCreateWithoutUserInput,
+    Prisma.user_settingsUncheckedCreateWithoutUserInput
   >;
+  where?: Prisma.user_settingsWhereInput;
 };
 
-export type user_settingsUpdateWithWhereUniqueWithoutUsersInput = {
-  where: Prisma.user_settingsWhereUniqueInput;
+export type user_settingsUpdateToOneWithWhereWithoutUserInput = {
+  where?: Prisma.user_settingsWhereInput;
   data: Prisma.XOR<
-    Prisma.user_settingsUpdateWithoutUsersInput,
-    Prisma.user_settingsUncheckedUpdateWithoutUsersInput
+    Prisma.user_settingsUpdateWithoutUserInput,
+    Prisma.user_settingsUncheckedUpdateWithoutUserInput
   >;
 };
 
-export type user_settingsUpdateManyWithWhereWithoutUsersInput = {
-  where: Prisma.user_settingsScalarWhereInput;
-  data: Prisma.XOR<
-    Prisma.user_settingsUpdateManyMutationInput,
-    Prisma.user_settingsUncheckedUpdateManyWithoutUsersInput
-  >;
-};
-
-export type user_settingsScalarWhereInput = {
-  AND?: Prisma.user_settingsScalarWhereInput | Prisma.user_settingsScalarWhereInput[];
-  OR?: Prisma.user_settingsScalarWhereInput[];
-  NOT?: Prisma.user_settingsScalarWhereInput | Prisma.user_settingsScalarWhereInput[];
-  id?: Prisma.UuidFilter<'user_settings'> | string;
-  user_id?: Prisma.UuidFilter<'user_settings'> | string;
-  preferences?: Prisma.JsonNullableFilter<'user_settings'>;
-  updated_at?: Prisma.DateTimeNullableFilter<'user_settings'> | Date | string | null;
-};
-
-export type user_settingsCreateManyUsersInput = {
-  id: string;
-  preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Date | string | null;
-};
-
-export type user_settingsUpdateWithoutUsersInput = {
+export type user_settingsUpdateWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_location_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  notification_enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean;
+  theme?: Prisma.StringFieldUpdateOperationsInput | string;
+  unit_system?: Prisma.StringFieldUpdateOperationsInput | string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
-export type user_settingsUncheckedUpdateWithoutUsersInput = {
+export type user_settingsUncheckedUpdateWithoutUserInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
+  default_location_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
+  notification_enabled?: Prisma.BoolFieldUpdateOperationsInput | boolean;
+  theme?: Prisma.StringFieldUpdateOperationsInput | string;
+  unit_system?: Prisma.StringFieldUpdateOperationsInput | string;
   preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-};
-
-export type user_settingsUncheckedUpdateManyWithoutUsersInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  preferences?: Prisma.NullableJsonNullValueInput | runtime.InputJsonValue;
-  updated_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
+  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
 };
 
 export type user_settingsSelect<
@@ -476,9 +510,13 @@ export type user_settingsSelect<
   {
     id?: boolean;
     user_id?: boolean;
+    default_location_id?: boolean;
+    notification_enabled?: boolean;
+    theme?: boolean;
+    unit_system?: boolean;
     preferences?: boolean;
     updated_at?: boolean;
-    users?: boolean | Prisma.public_usersDefaultArgs<ExtArgs>;
+    user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['user_settings']
 >;
@@ -489,9 +527,13 @@ export type user_settingsSelectCreateManyAndReturn<
   {
     id?: boolean;
     user_id?: boolean;
+    default_location_id?: boolean;
+    notification_enabled?: boolean;
+    theme?: boolean;
+    unit_system?: boolean;
     preferences?: boolean;
     updated_at?: boolean;
-    users?: boolean | Prisma.public_usersDefaultArgs<ExtArgs>;
+    user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['user_settings']
 >;
@@ -502,9 +544,13 @@ export type user_settingsSelectUpdateManyAndReturn<
   {
     id?: boolean;
     user_id?: boolean;
+    default_location_id?: boolean;
+    notification_enabled?: boolean;
+    theme?: boolean;
+    unit_system?: boolean;
     preferences?: boolean;
     updated_at?: boolean;
-    users?: boolean | Prisma.public_usersDefaultArgs<ExtArgs>;
+    user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['user_settings']
 >;
@@ -512,6 +558,10 @@ export type user_settingsSelectUpdateManyAndReturn<
 export type user_settingsSelectScalar = {
   id?: boolean;
   user_id?: boolean;
+  default_location_id?: boolean;
+  notification_enabled?: boolean;
+  theme?: boolean;
+  unit_system?: boolean;
   preferences?: boolean;
   updated_at?: boolean;
 };
@@ -519,23 +569,30 @@ export type user_settingsSelectScalar = {
 export type user_settingsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  'id' | 'user_id' | 'preferences' | 'updated_at',
+  | 'id'
+  | 'user_id'
+  | 'default_location_id'
+  | 'notification_enabled'
+  | 'theme'
+  | 'unit_system'
+  | 'preferences'
+  | 'updated_at',
   ExtArgs['result']['user_settings']
 >;
 export type user_settingsInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  users?: boolean | Prisma.public_usersDefaultArgs<ExtArgs>;
+  user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
 };
 export type user_settingsIncludeCreateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  users?: boolean | Prisma.public_usersDefaultArgs<ExtArgs>;
+  user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
 };
 export type user_settingsIncludeUpdateManyAndReturn<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  users?: boolean | Prisma.public_usersDefaultArgs<ExtArgs>;
+  user?: boolean | Prisma.usersDefaultArgs<ExtArgs>;
 };
 
 export type $user_settingsPayload<
@@ -543,14 +600,18 @@ export type $user_settingsPayload<
 > = {
   name: 'user_settings';
   objects: {
-    users: Prisma.$public_usersPayload<ExtArgs>;
+    user: Prisma.$usersPayload<ExtArgs>;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
       id: string;
       user_id: string;
+      default_location_id: string | null;
+      notification_enabled: boolean;
+      theme: string;
+      unit_system: string;
       preferences: runtime.JsonValue | null;
-      updated_at: Date | null;
+      updated_at: Date;
     },
     ExtArgs['result']['user_settings']
   >;
@@ -1090,11 +1151,11 @@ export interface Prisma__user_settingsClient<
   GlobalOmitOptions = {},
 > extends Prisma.PrismaPromise<T> {
   readonly [Symbol.toStringTag]: 'PrismaPromise';
-  users<T extends Prisma.public_usersDefaultArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.public_usersDefaultArgs<ExtArgs>>,
-  ): Prisma.Prisma__public_usersClient<
+  user<T extends Prisma.usersDefaultArgs<ExtArgs> = {}>(
+    args?: Prisma.Subset<T, Prisma.usersDefaultArgs<ExtArgs>>,
+  ): Prisma.Prisma__usersClient<
     | runtime.Types.Result.GetResult<
-        Prisma.$public_usersPayload<ExtArgs>,
+        Prisma.$usersPayload<ExtArgs>,
         T,
         'findUniqueOrThrow',
         GlobalOmitOptions
@@ -1137,6 +1198,10 @@ export interface Prisma__user_settingsClient<
 export interface user_settingsFieldRefs {
   readonly id: Prisma.FieldRef<'user_settings', 'String'>;
   readonly user_id: Prisma.FieldRef<'user_settings', 'String'>;
+  readonly default_location_id: Prisma.FieldRef<'user_settings', 'String'>;
+  readonly notification_enabled: Prisma.FieldRef<'user_settings', 'Boolean'>;
+  readonly theme: Prisma.FieldRef<'user_settings', 'String'>;
+  readonly unit_system: Prisma.FieldRef<'user_settings', 'String'>;
   readonly preferences: Prisma.FieldRef<'user_settings', 'Json'>;
   readonly updated_at: Prisma.FieldRef<'user_settings', 'DateTime'>;
 }
