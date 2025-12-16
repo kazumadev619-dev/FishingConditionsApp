@@ -13,7 +13,9 @@ RUN apk add --no-cache python3 make g++
 
 # パッケージファイルをコピー
 COPY package.json package-lock.json ./
+COPY prisma.config.ts ./
 COPY prisma ./prisma/
+COPY .env ./
 
 # 依存関係インストール & Prisma Client 生成
 RUN npm ci && npx prisma generate
@@ -27,6 +29,7 @@ WORKDIR /app
 
 # 依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/prisma.config.ts ./
 COPY --from=deps /app/prisma ./prisma
 COPY . .
 
@@ -57,6 +60,7 @@ ENV HOSTNAME="0.0.0.0"
 
 # 生成済みの依存関係をコピー
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/prisma.config.ts ./
 COPY --from=deps /app/prisma ./prisma
 
 # standalone出力をコピー
