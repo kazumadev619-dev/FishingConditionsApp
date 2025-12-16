@@ -12,19 +12,18 @@ services:
       dockerfile: docker/Dockerfile
       args:
         - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+    env_file:
+      - ../.env.local
     ports:
       - '${APP_PORT:-3000}:3000'
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-fishing_app}
+      - DATABASE_URL=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
       # Upstash互換Redis（serverless-redis-http経由）
       - UPSTASH_REDIS_REST_URL=http://serverless-redis:8079
       - UPSTASH_REDIS_REST_TOKEN=example_token
-      - AUTH_SECRET=${AUTH_SECRET}
-      - AUTH_URL=${AUTH_URL:-http://localhost:3000}
-      - AUTH_GOOGLE_ID=${AUTH_GOOGLE_ID:-}
-      - AUTH_GOOGLE_SECRET=${AUTH_GOOGLE_SECRET:-}
-      - OPENWEATHERMAP_API_KEY=${OPENWEATHERMAP_API_KEY:-}
+      # AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, OPENWEATHERMAP_API_KEYは
+      # env_fileから読み込まれる（.env.local）
     depends_on:
       postgres:
         condition: service_healthy
@@ -36,16 +35,18 @@ services:
   postgres:
     container_name: fishing-postgres
     image: postgres:17-alpine
+    env_file:
+      - ../.env.local
     ports:
       - '${POSTGRES_PORT:-5432}:5432'
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-postgres}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_USER=${POSTGRES_USER:-FishingPostgres}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-FishingPostgres}
       - POSTGRES_DB=${POSTGRES_DB:-fishing_app}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-FishingPostgres} -d ${POSTGRES_DB:-fishing_app}']
       interval: 10s
       timeout: 5s
       retries: 5
