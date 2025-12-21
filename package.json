@@ -14,7 +14,11 @@
     "type-check": "tsc --noEmit",
     "prisma:generate": "dotenv -e .env.local -- prisma generate",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev",
+    "prisma:seed": "dotenv -e .env.local -- node --import tsx/esm prisma/seed.ts",
     "prisma:studio": "dotenv -e .env.local -- prisma studio"
+  },
+  "prisma": {
+    "seed": "node --import tsx/esm prisma/seed.ts"
   },
   "lint-staged": {
     "src/**/*.{js,jsx,ts,tsx,json,md}": [
@@ -69,6 +73,7 @@
     "prisma": "^7.0.0",
     "tailwindcss": "^4.1.17",
     "tailwindcss-animate": "^1.0.7",
+    "tsx": "^4.21.0",
     "tw-animate-css": "^1.4.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.46.4"
