@@ -38,6 +38,8 @@ class ApiClient {
   // APIキーをクエリパラメータとして渡すか、ヘッダーで渡すかを指定
   private keyLocation: 'query' | 'header';
   private keyName: string;
+  // APIクライアントが正しく設定されているかを示すフラグ
+  private isConfigured: boolean = true;
 
   // デフォルト設定
   private readonly DEFAULT_TIMEOUT_MS = 10000; // 10秒
@@ -48,11 +50,25 @@ class ApiClient {
     apiKey: string,
     keyLocation: 'query' | 'header' = 'header', // デフォルトはヘッダー
     keyName: string = 'X-API-Key', // デフォルトのヘッダー/クエリ名
+    requireApiKey: boolean = true, // APIキーが必須かどうか
   ) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
     this.keyLocation = keyLocation;
     this.keyName = keyName;
+
+    // APIキーが必要なのに未設定の場合、警告を出して無効化
+    if (requireApiKey && !apiKey) {
+      console.warn(`[ApiClient] API key not configured for ${baseUrl}. Requests will fail.`);
+      this.isConfigured = false;
+    }
+  }
+
+  /**
+   * APIクライアントが正しく設定されているかチェック
+   */
+  public isAvailable(): boolean {
+    return this.isConfigured;
   }
 
   /**
@@ -125,6 +141,16 @@ class ApiClient {
     options: RequestOptions = {},
     attempt: number = 0,
   ): Promise<T> {
+    // APIクライアントが無効な場合、即座にエラーをスロー
+    if (!this.isConfigured) {
+      throw new ApiError(
+        'API client is not configured. Please check your environment variables.',
+        ApiErrorType.CLIENT_ERROR,
+        undefined,
+        false, // リトライ不可
+      );
+    }
+
     const timeout = options.timeout ?? this.DEFAULT_TIMEOUT_MS;
     const maxRetries = options.retries ?? this.DEFAULT_RETRIES;
 
@@ -265,6 +291,7 @@ export const openWeatherMapClient = new ApiClient(
   process.env.OPENWEATHERMAP_API_KEY || '',
   'query', // OpenWeatherMapはキーをクエリ(appid)で渡す
   'appid',
+  true, // APIキー必須
 );
 
 export const googleMapsClient = new ApiClient(
@@ -272,10 +299,14 @@ export const googleMapsClient = new ApiClient(
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
   'query', // Google Maps APIはキーをクエリ(key)で渡す
   'key',
+  true, // APIキー必須
 );
 
 // tide736.net のAPIクライアントインスタンスをエクスポート
 export const tide736Client = new ApiClient(
   'https://api.tide736.net/api', // tide736.net のベースURL
-  '', // APIキーは不要
+  '',
+  'query',
+  '',
+  false, // APIキー不要
 );
