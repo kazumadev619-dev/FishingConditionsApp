@@ -7,7 +7,7 @@
 export const CACHE_TTL = {
   WEATHER: 30 * 60, // 30分
   TIDE: 6 * 60 * 60, // 6時間
-  LOCATION: 24 * 60 * 60, // 24時間
+  LOCATION: 60 * 60, // 1時間
 } as const;
 
 // キャッシュキーのプレフィックス
