@@ -1,4 +1,6 @@
 // API エラーの種類を定義
+import { withCache, generateCacheKey } from './cache';
+
 export enum ApiErrorType {
   TIMEOUT = 'TIMEOUT', // リクエストタイムアウト
   RATE_LIMITED = 'RATE_LIMITED', // API レート制限（429）
@@ -20,10 +22,15 @@ export class ApiError extends Error {
   }
 }
 
-interface RequestOptions extends RequestInit {
+interface RequestOptions extends Omit<RequestInit, 'cache'> {
   params?: Record<string, string>;
   timeout?: number; // ミリ秒単位のタイムアウト（デフォルト: 10000）
   retries?: number; // リトライ回数（デフォルト: 3）
+  cache?: {
+    ttl: number; // TTL（秒）
+    key?: string; // キャッシュキー（省略時は自動生成）
+    prefix?: string; // キャッシュキーのプレフィックス
+  };
 }
 
 // リトライ可能なHTTPステータスコード
@@ -151,10 +158,25 @@ class ApiClient {
       );
     }
 
-    const timeout = options.timeout ?? this.DEFAULT_TIMEOUT_MS;
-    const maxRetries = options.retries ?? this.DEFAULT_RETRIES;
+    // キャッシング処理（最初のリクエストのみ）
+    const { cache: cacheOptions, ...restOptions } = options;
 
-    const { params, headers, ...rest } = options;
+    if (cacheOptions && attempt === 0) {
+      const cacheKey =
+        cacheOptions.key ||
+        generateCacheKey(cacheOptions.prefix || 'api', restOptions.params || {});
+
+      return (
+        await withCache(cacheKey, cacheOptions.ttl, () =>
+          this.request<T>(endpoint, restOptions, attempt),
+        )
+      ).data;
+    }
+
+    const timeout = restOptions.timeout ?? this.DEFAULT_TIMEOUT_MS;
+    const maxRetries = restOptions.retries ?? this.DEFAULT_RETRIES;
+
+    const { params, headers, ...rest } = restOptions;
     const url = new URL(`${this.baseUrl}${endpoint}`);
 
     // 既存のクエリパラメータを追加
@@ -201,7 +223,7 @@ class ApiClient {
             `[API] Retry attempt ${attempt + 1}/${maxRetries} for ${endpoint} after ${delay}ms`,
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, options, attempt + 1);
+          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
         }
 
         throw error;
@@ -225,7 +247,7 @@ class ApiClient {
             `[API] Retry attempt ${attempt + 1}/${maxRetries} after timeout (${delay}ms)`,
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, options, attempt + 1);
+          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
         }
 
         throw timeoutError;
@@ -246,7 +268,7 @@ class ApiClient {
             `[API] Retry attempt ${attempt + 1}/${maxRetries} after network error (${delay}ms)`,
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, options, attempt + 1);
+          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
         }
 
         throw networkError;
