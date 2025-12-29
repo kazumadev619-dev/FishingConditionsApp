@@ -37,20 +37,23 @@ calculateTideScore(tide: TideData, currentTime: Date): number {
 ```typescript
 private calculateTideTimingScore(tide: TideData, currentTime: Date): number {
   const currentHour = currentTime.getHours();
+  const currentMinutes = currentTime.getMinutes();
+  const currentTotalMinutes = currentHour * 60 + currentMinutes;
   let maxScore = 0;
 
   // 満潮・干潮時刻の前後2時間を高評価
   for (const extreme of [...tide.highTides, ...tide.lowTides]) {
-    const extremeHour = new Date(extreme.time).getHours();
-    const timeDiff = Math.abs(currentHour - extremeHour);
+    const extremeTotalMinutes = /* 極値の時刻を分単位に変換 */;
+    const minDiff = Math.abs(extremeTotalMinutes - currentTotalMinutes);
+    const hoursFromExtreme = minDiff / 60;
 
-    if (timeDiff <= 2) {
+    if (hoursFromExtreme <= 2) {
       // 前後2時間以内: 高スコア
-      const score = 25 - (timeDiff * 5); // 2時間で25点から15点に減少
+      const score = 25 - hoursFromExtreme * 6.25; // 2時間で25点から12.5点に減少
       maxScore = Math.max(maxScore, score);
-    } else if (timeDiff <= 4) {
+    } else if (hoursFromExtreme <= 4) {
       // 前後4時間以内: 中スコア
-      const score = 15 - ((timeDiff - 2) * 5); // 4時間で15点から5点に減少
+      const score = 12.5 - (hoursFromExtreme - 2) * 6.25; // 4時間で12.5点から0点に減少
       maxScore = Math.max(maxScore, score);
     }
   }
@@ -153,44 +156,53 @@ private calculatePressureScore(pressure: number): number {
 
 ### 基本ロジック
 
-魚の活性が高い時間帯を評価します。一般的に早朝と夕方が最も釣りやすいとされています。
+日の出・日の入り前後の時間帯で魚の活性度を評価します。魚は光の変化に敏感で、日の出・日の入り前後が最も活発に活動します。
 
 ### 計算方法
 
 ```typescript
-calculateTimeScore(currentTime: Date): number {
-  const hour = currentTime.getHours();
+calculateTimeScore(weatherData: FormattedWeatherData, currentTime: Date): number {
+  const currentHour = currentTime.getHours();
+  const currentMinutes = currentTime.getMinutes();
+  const currentTotalMinutes = currentHour * 60 + currentMinutes;
 
-  // 時間帯別スコア
-  if (hour >= 5 && hour <= 7) return 25;    // 早朝 (5-7時): 最適
-  if (hour >= 17 && hour <= 19) return 25;  // 夕方 (17-19時): 最適
-  if (hour >= 4 && hour <= 8) return 20;    // 朝 (4-8時): 良好
-  if (hour >= 16 && hour <= 20) return 20;  // 夕 (16-20時): 良好
-  if (hour >= 9 && hour <= 15) return 10;   // 日中 (9-15時): 普通
-  if (hour >= 21 || hour <= 3) return 5;    // 夜間 (21-3時): やや不利
+  // 日の出・日の入り時刻を分単位で取得
+  const sunriseTotalMinutes = weatherData.sunrise.getHours() * 60 + weatherData.sunrise.getMinutes();
+  const sunsetTotalMinutes = weatherData.sunset.getHours() * 60 + weatherData.sunset.getMinutes();
 
-  return 10; // デフォルト
+  // 日の出・日の入りからの最短時間を計算（分単位）
+  const diffFromSunrise = Math.abs(currentTotalMinutes - sunriseTotalMinutes);
+  const diffFromSunset = Math.abs(currentTotalMinutes - sunsetTotalMinutes);
+  const minDiff = Math.min(diffFromSunrise, diffFromSunset);
+
+  // 時間を時間単位に変換
+  const hoursFromSunEvent = minDiff / 60;
+
+  // 日の出・日の入り前後でスコアを段階的に評価
+  if (hoursFromSunEvent <= 1) {
+    // ±1時間以内: 最高スコア
+    return 25;
+  } else if (hoursFromSunEvent <= 2) {
+    // ±2時間以内: 中スコア
+    return 15;
+  } else if (hoursFromSunEvent <= 3) {
+    // ±3時間以内: 低スコア
+    return 5;
+  }
+
+  // それ以外: スコアなし
+  return 0;
 }
 ```
 
-### 季節補正（将来実装予定）
+### 評価基準
 
-```typescript
-private applySeasonalAdjustment(score: number, month: number): number {
-  const seasonalMultipliers = {
-    spring: [3, 4, 5],     // 春: 1.1倍
-    summer: [6, 7, 8],     // 夏: 1.0倍
-    autumn: [9, 10, 11],   // 秋: 1.1倍
-    winter: [12, 1, 2]     // 冬: 0.9倍
-  };
-
-  // 季節による補正を適用
-  if (seasonalMultipliers.spring.includes(month)) return score * 1.1;
-  if (seasonalMultipliers.autumn.includes(month)) return score * 1.1;
-  if (seasonalMultipliers.winter.includes(month)) return score * 0.9;
-  return score; // 夏はそのまま
-}
-```
+| 時間帯 | スコア | 説明 |
+|--------|--------|------|
+| 日の出・日の入り ±1時間 | 25点 | 最適な釣り時間帯 |
+| 日の出・日の入り ±2時間 | 15点 | 良好な釣り時間帯 |
+| 日の出・日の入り ±3時間 | 5点 | やや期待できる時間帯 |
+| その他の時間帯 | 0点 | 通常の時間帯 |
 
 ---
 
@@ -211,15 +223,19 @@ export const ScoreInterpretation = {
 ### スコア内訳表示
 
 ```typescript
-interface ScoreBreakdown {
-  totalScore: number;
-  tideScore: number; // 潮汐スコア (最大40点)
-  weatherScore: number; // 天気スコア (最大35点)
-  timeScore: number; // 時間帯スコア (最大25点)
-  factors: {
-    tide: string[]; // 潮汐要因の詳細
-    weather: string[]; // 天気要因の詳細
-    time: string[]; // 時間帯要因の詳細
-  };
+interface ScoreComponents {
+  tide: number; // 潮汐スコア (最大40点)
+  weather: number; // 天気スコア (最大35点)
+  time: number; // 時間帯スコア (最大25点)
+}
+
+interface FishingScore {
+  score: number; // 総合スコア (0-100)
+  rank: ScoreRank;
+  components: ScoreComponents;
+  explanation: string;
+  bestComponent: 'tide' | 'weather' | 'time';
+  worstComponent: 'tide' | 'weather' | 'time';
+  calculatedAt: Date;
 }
 ```
