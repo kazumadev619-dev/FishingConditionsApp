@@ -48,7 +48,19 @@ class ScoringEngine {
       | 'time';
 
     // 説明文を生成
-    const explanation = this.generateExplanation(clippedScore, bestComponent, weatherData);
+    const explanation = this.generateExplanation(
+      clippedScore,
+      bestComponent,
+      weatherData,
+      tideData,
+      currentTime,
+    );
+
+    // 月齢と潮の種類を取得（tide736.net APIから）
+    const today = this.formatDateToString(currentTime);
+    const todayTides = tideData.tides.find((t) => t.date === today);
+    const tideName = todayTides?.daily.moon?.title;
+    const moonAge = todayTides?.daily.moon?.age;
 
     return {
       score: clippedScore,
@@ -57,6 +69,8 @@ class ScoringEngine {
       explanation,
       bestComponent,
       worstComponent,
+      tideName,
+      moonAge,
       calculatedAt: currentTime,
     };
   }
@@ -270,6 +284,8 @@ class ScoringEngine {
     score: number,
     bestComponent: 'tide' | 'weather' | 'time',
     weatherData: FormattedWeatherData,
+    tideData: FormattedTideData,
+    currentTime: Date,
   ): string {
     const rank = this.getRankFromScore(score);
 
@@ -296,6 +312,15 @@ class ScoringEngine {
     // 最良要素を追加
     const bestLabel = this.getComponentLabel(bestComponent);
     explanation += `\n最も良い条件は${bestLabel}です。`;
+
+    // 月齢と潮の種類を追加（tide736.net APIから取得）
+    const today = this.formatDateToString(currentTime);
+    const todayTides = tideData.tides.find((t) => t.date === today);
+    if (todayTides?.daily.moon) {
+      const moonAge = todayTides.daily.moon.age;
+      const tideName = todayTides.daily.moon.title; // APIから潮の種類を取得
+      explanation += `\n🌙 本日は${tideName}です（月齢：${moonAge.toFixed(1)}）。`;
+    }
 
     // 天気に関する追加情報
     if (weatherData.windSpeed > 10) {
