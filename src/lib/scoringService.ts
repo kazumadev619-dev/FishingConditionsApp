@@ -319,7 +319,7 @@ class ScoringEngine {
     if (todayTides?.daily.moon) {
       const moonAge = todayTides.daily.moon.age;
       const tideName = todayTides.daily.moon.title; // APIから潮の種類を取得
-      explanation += `\n🌙 本日は${tideName}です（月齢：${moonAge.toFixed(1)}）。`;
+      explanation += `\n🌙 本日は${tideName}です（月齢：${parseFloat(moonAge).toFixed(1)}）。`;
     }
 
     // 天気に関する追加情報

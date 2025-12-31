@@ -5,7 +5,10 @@
 
 import { tide736Client } from './apiClient';
 import { withCache, generateCacheKey, CACHE_TTL, CACHE_PREFIX } from './cache';
-import type { TideApiResponse, DailyTide } from '@/types/tide';
+import type { TideApiResponse, DailyTide, TideEvent } from '@/types/tide';
+
+// Re-export types for external use
+export type { DailyTide, TideEvent };
 
 /**
  * 潮汐取得時のオプション
