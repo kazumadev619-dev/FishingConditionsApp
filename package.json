@@ -15,7 +15,13 @@
     "prisma:generate": "dotenv -e .env.local -- prisma generate",
     "prisma:migrate": "dotenv -e .env.local -- prisma migrate dev",
     "prisma:seed": "dotenv -e .env.local -- node --import tsx/esm prisma/seed.ts",
-    "prisma:studio": "dotenv -e .env.local -- prisma studio"
+    "prisma:studio": "dotenv -e .env.local -- prisma studio",
+    "docker:dev": "cd docker && docker compose --env-file ../.env.local up -d",
+    "docker:dev:build": "cd docker && docker compose --env-file ../.env.local up -d --build",
+    "docker:logs": "cd docker && docker compose logs -f app",
+    "docker:down": "cd docker && docker compose down",
+    "docker:down:volumes": "cd docker && docker compose down -v",
+    "docker:restart": "cd docker && docker compose restart app"
   },
   "prisma": {
     "seed": "node --import tsx/esm prisma/seed.ts"
@@ -27,8 +33,8 @@
     ]
   },
   "dependencies": {
-    "@prisma/adapter-pg": "^7.0.0",
-    "@prisma/client": "^7.1.0",
+    "@prisma/adapter-pg": "^7.2.0",
+    "@prisma/client": "^7.2.0",
     "@radix-ui/react-label": "^2.1.8",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/postcss": "^4.1.17",
@@ -54,7 +60,7 @@
     "@next/eslint-plugin-next": "^16.0.3",
     "@types/eslint-plugin-tailwindcss": "^3.17.0",
     "@types/node": "^24.10.0",
-    "@types/pg": "^8.15.6",
+    "@types/pg": "^8.16.0",
     "@types/react": "^19.2.2",
     "@types/react-dom": "^19.2.2",
     "autoprefixer": "^10.4.21",
@@ -70,7 +76,7 @@
     "lint-staged": "^16.2.6",
     "postcss": "^8.5.6",
     "prettier": "^3.6.2",
-    "prisma": "^7.0.0",
+    "prisma": "^7.2.0",
     "tailwindcss": "^4.1.17",
     "tailwindcss-animate": "^1.0.7",
     "tsx": "^4.21.0",
