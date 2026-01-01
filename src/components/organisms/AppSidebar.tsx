@@ -3,8 +3,8 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
-import { Home, MapPin, ChevronDown, Waves } from 'lucide-react';
+import { Home, MapPin, ChevronDown, Waves, User } from 'lucide-react';
+import { useSession } from 'next-auth/react';
 
 const sidebarItems = [
   {
@@ -28,6 +28,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar({ isOpen }: AppSidebarProps) {
+  const { data: session } = useSession();
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
 
   const toggleExpanded = (title: string) => {
@@ -107,10 +108,8 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
           <div className="space-y-1">
             <button className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium hover:bg-muted">
               <div className="flex items-center gap-3">
-                <Avatar className="h-6 w-6">
-                  <AvatarFallback>ユ</AvatarFallback>
-                </Avatar>
-                <span>ユーザー</span>
+                <User className="h-6 w-6" />
+                <span className="truncate">{session?.user?.email || 'ユーザー'}</span>
               </div>
             </button>
           </div>
