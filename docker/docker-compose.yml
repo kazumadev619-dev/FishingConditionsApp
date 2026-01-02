@@ -12,6 +12,7 @@ services:
       dockerfile: docker/Dockerfile
       args:
         - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+        - NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=${NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID:-}
     env_file:
       - ../.env.local
     ports:
@@ -24,6 +25,7 @@ services:
       - UPSTASH_REDIS_REST_TOKEN=example_token
       # Google Maps API
       - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
+      - NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=${NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID:-}
       # AUTH_SECRET, AUTH_GOOGLE_ID, AUTH_GOOGLE_SECRET, OPENWEATHERMAP_API_KEYは
       # env_fileから読み込まれる（.env.local）
     depends_on:
@@ -86,6 +88,20 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # RedisInsight
+  redisinsight:
+    container_name: fishing-redisinsight
+    image: redis/redisinsight:latest
+    ports:
+      - '${REDISINSIGHT_PORT:-8001}:5540'
+    volumes:
+      - redisinsight_data:/data
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: unless-stopped
+
 volumes:
   postgres_data:
   redis_data:
+  redisinsight_data:
