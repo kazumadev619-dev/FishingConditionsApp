@@ -4,8 +4,22 @@ import Google from 'next-auth/providers/google';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcrypt';
-import { authConfig } from './auth.config';
+import { authConfig } from './config';
 import { randomUUID } from 'crypto';
+
+/**
+ * Node Runtime用の認証設定
+ * API Routes、Server Componentsで使用（Prisma利用可能）
+ */
+
+// 環境変数の検証（起動時）
+if (!process.env.AUTH_GOOGLE_ID || !process.env.AUTH_GOOGLE_SECRET) {
+  throw new Error('AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET must be set in environment variables');
+}
+
+if (!process.env.AUTH_SECRET) {
+  throw new Error('AUTH_SECRET must be set in environment variables');
+}
 
 async function getUser(email: string) {
   try {
@@ -27,8 +41,8 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   ...authConfig,
   providers: [
     Google({
-      clientId: process.env.AUTH_GOOGLE_ID!,
-      clientSecret: process.env.AUTH_GOOGLE_SECRET!,
+      clientId: process.env.AUTH_GOOGLE_ID,
+      clientSecret: process.env.AUTH_GOOGLE_SECRET,
       allowDangerousEmailAccountLinking: true,
     }),
     Credentials({
