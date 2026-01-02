@@ -1,11 +1,13 @@
 import type { NextAuthConfig } from 'next-auth';
 
 /**
- * Auth.js共通設定
- * Edge RuntimeとNode Runtimeの両方で使用可能
- * Prisma/Adapterへの依存なし
+ * Auth.js基本設定
+ * Edge/Node Runtime共通で使用
+ * ❌ Prisma Adapter、DB操作callbacks含まない
+ * ❌ authorized callback（Edge専用なのでedge.tsに配置）
+ * ✅ session戦略、pages、runtime非依存callbacks のみ
  */
-export const authConfig = {
+export const baseAuthConfig = {
   // JWTセッション戦略（Edge Runtime対応）
   session: {
     strategy: 'jwt',
@@ -21,30 +23,6 @@ export const authConfig = {
   callbacks: {
     async redirect({ baseUrl }) {
       return `${baseUrl}/dashboard`;
-    },
-    authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = !!auth?.user;
-      const isOnDashboard = nextUrl.pathname.startsWith('/dashboard');
-      const isOnAuth = nextUrl.pathname === '/login' || nextUrl.pathname === '/register';
-      const isOnRoot = nextUrl.pathname === '/';
-
-      // 未ログイン & ダッシュボードアクセス → ログインページへ
-      if (isOnDashboard && !isLoggedIn) {
-        return false; // /login へリダイレクト
-      }
-
-      // ログイン済み & 認証ページ → ダッシュボードへ
-      if (isLoggedIn && isOnAuth) {
-        return Response.redirect(new URL('/dashboard', nextUrl));
-      }
-
-      // ログイン済み & ルート → ダッシュボードへ
-      if (isLoggedIn && isOnRoot) {
-        return Response.redirect(new URL('/dashboard', nextUrl));
-      }
-
-      // 未ログイン & ルート → そのまま表示（ランディングページ）
-      return true;
     },
   },
 } satisfies NextAuthConfig;

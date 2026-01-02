@@ -15,8 +15,15 @@
 
 ## 主要ファイル
 
-- `src/auth.ts`: `next-auth` のメイン設定ファイル。`Credentials`と`Google`プロバイダーの設定、`signIn`コールバックでのアカウント連携ロジックを定義しています。
-- `src/auth.config.ts`: 認証に関する設定（ログインページのパス、リダイレクト処理、アクセス制御など）を定義しています。
+### 認証設定（Edge/Node分離アーキテクチャ）
+
+- `src/auth/config.ts`: **共通設定**。session戦略、pages設定など、Edge/Node両方で使用可能な設定のみを定義。
+- `src/auth/edge.ts`: **Edge Runtime用**。`authorized`コールバック（アクセス制御）を含む。`proxy.ts`から使用。
+- `src/auth/index.ts`: **Node Runtime用**。Prismaを使用したDB操作、`Credentials`/`Google`プロバイダー、`signIn`コールバックを定義。
+- `src/proxy.ts`: Next.js 16のProxy（旧middleware）。`edge.ts`の`auth`を使用してアクセス制御を実行。
+
+### その他
+
 - `src/app/api/auth/[...nextauth]/route.ts`: `next-auth` が使用するAPIルートです。
 - `src/lib/actions.ts`: ユーザー登録 (`signup`) やログイン (`authenticate`) のためのサーバーアクションを定義しています。
 - `src/types/next-auth.d.ts`: Next-Authの型拡張（セッション/JWTトークンにユーザーIDを追加）。
@@ -41,7 +48,7 @@
 
 ### 3. アクセス制御
 
-`src/auth.config.ts` の `authorized` コールバックでアクセス制御を行っています。
+`src/auth/edge.ts` の `authorized` コールバックでアクセス制御を行っています（Edge Runtime専用）。
 
 - `/dashboard` で始まるパスへのアクセスには認証が必要です。未認証のユーザーはログインページ (`/login`) にリダイレクトされます。
 - 認証済みのユーザーがログインページ (`/login`) や登録ページ (`/register`) にアクセスすると、ダッシュボード (`/dashboard`) に自動的にリダイレクトされます。
@@ -51,7 +58,7 @@
 1. ユーザーがログインページ (`/login`) または登録ページ (`/register`) で「Googleでログイン」ボタンをクリックします。
 2. `signIn('google', { callbackUrl: '/dashboard' })` が呼び出され、Google OAuth画面へリダイレクトされます。
 3. ユーザーがGoogleアカウントで認証します。
-4. `/api/auth/callback/google` へリダイレクトされ、`src/auth.ts` の `signIn` コールバックが実行されます。
+4. `/api/auth/callback/google` へリダイレクトされ、`src/auth/index.ts` の `signIn` コールバックが実行されます。
 5. **既存ユーザーの場合**:
    - メールアドレスで既存ユーザーを検索
    - `identities` テーブルに新規レコード追加（アカウント連携）
