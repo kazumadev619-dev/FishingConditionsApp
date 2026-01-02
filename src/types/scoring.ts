@@ -47,8 +47,8 @@ export interface FishingScore {
   worstComponent: 'tide' | 'weather' | 'time';
   /** 潮の種類（大潮、中潮、小潮、長潮、若潮） */
   tideName?: string;
-  /** 月齢 (0-29.5) */
-  moonAge?: number;
+  /** 月齢 (0-29.5)  */
+  moonAge?: string;
   /** スコア計算時刻 */
   calculatedAt: Date;
 }

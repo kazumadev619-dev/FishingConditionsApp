@@ -326,7 +326,7 @@ export const googleMapsClient = new ApiClient(
 
 // tide736.net のAPIクライアントインスタンスをエクスポート
 export const tide736Client = new ApiClient(
-  'https://api.tide736.net/api', // tide736.net のベースURL
+  'https://tide736.net/api', // tide736.net のベースURL
   '',
   'query',
   '',

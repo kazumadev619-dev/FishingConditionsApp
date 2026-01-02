@@ -9,13 +9,13 @@ export const dynamic = 'force-dynamic';
 
 const DEFAULT_LOCATION = {
   name: '東京湾（芝浦）',
-  latitude: 35.6419,
-  longitude: 139.7483,
+  latitude: 35.6895,
+  longitude: 139.6917,
   prefectureCode: '13', // 東京都
   portCode: '2', // 芝浦港
 };
 
-export default async function DashboardPage() {
+export default async function Home() {
   const currentTime = new Date();
   const today = currentTime.toISOString().split('T')[0];
 
