@@ -1,13 +1,10 @@
-import NextAuth from 'next-auth';
-import { authConfig } from '@/auth/config';
+import { auth } from '@/auth/edge';
 
 /**
  * Next.js 16 Proxy (旧middleware)
  * Node.js Runtimeで動作（runtime設定は不可）
- * Prisma/Adapterなし、JWTセッションのみで認証チェック
+ * auth/edge.tsからauth()をインポート（シンプルかつ明示的）
  */
-const { auth } = NextAuth(authConfig);
-
 export default auth;
 
 export const config = {

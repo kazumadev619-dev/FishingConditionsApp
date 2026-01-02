@@ -4,7 +4,7 @@ import Google from 'next-auth/providers/google';
 import { z } from 'zod';
 import prisma from '@/lib/prisma';
 import bcrypt from 'bcrypt';
-import { authConfig } from './config';
+import { baseAuthConfig } from './config';
 import { randomUUID } from 'crypto';
 
 /**
@@ -38,7 +38,7 @@ async function getUser(email: string) {
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  ...authConfig,
+  ...baseAuthConfig,
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
@@ -74,7 +74,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    ...authConfig.callbacks,
+    ...baseAuthConfig.callbacks,
     async signIn({ user, account }) {
       // Credentials認証の場合はスキップ（既存動作維持）
       if (account?.provider === 'credentials') {
