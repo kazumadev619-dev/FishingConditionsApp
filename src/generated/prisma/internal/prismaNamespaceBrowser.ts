@@ -50,6 +50,7 @@ export const AnyNull = runtime.AnyNull;
 export const ModelName = {
   users: 'users',
   identities: 'identities',
+  verification_tokens: 'verification_tokens',
   locations: 'locations',
   ports: 'ports',
   weather_cache: 'weather_cache',
@@ -102,6 +103,17 @@ export const IdentitiesScalarFieldEnum = {
 
 export type IdentitiesScalarFieldEnum =
   (typeof IdentitiesScalarFieldEnum)[keyof typeof IdentitiesScalarFieldEnum];
+
+export const Verification_tokensScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  token: 'token',
+  expires_at: 'expires_at',
+  created_at: 'created_at',
+} as const;
+
+export type Verification_tokensScalarFieldEnum =
+  (typeof Verification_tokensScalarFieldEnum)[keyof typeof Verification_tokensScalarFieldEnum];
 
 export const LocationsScalarFieldEnum = {
   id: 'id',

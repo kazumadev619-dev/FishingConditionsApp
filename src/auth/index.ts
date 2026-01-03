@@ -6,6 +6,8 @@ import prisma from '@/lib/prisma';
 import bcrypt from 'bcrypt';
 import { baseAuthConfig } from './config';
 import { randomUUID } from 'crypto';
+import { createVerificationToken } from '@/lib/token';
+import { sendVerificationEmail } from '@/lib/email';
 
 /**
  * Node Runtime用の認証設定
@@ -43,7 +45,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     Google({
       clientId: process.env.AUTH_GOOGLE_ID,
       clientSecret: process.env.AUTH_GOOGLE_SECRET,
-      allowDangerousEmailAccountLinking: true,
     }),
     Credentials({
       async authorize(credentials) {
@@ -92,7 +93,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           });
 
           if (existingUser) {
-            // 既存ユーザーが存在する場合：アカウント連携
+            // 既存ユーザーが存在する場合：アカウント連携フロー
             const existingIdentity = await prisma.identities.findUnique({
               where: {
                 provider_provider_id: {
@@ -103,7 +104,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             });
 
             if (!existingIdentity) {
-              // identitiesレコードを作成（アカウント連携）
+              // メール検証が完了しているかチェック
+              if (!existingUser.email_verified_at) {
+                // メール未検証の場合：検証メールを送信してサインインを拒否
+                try {
+                  const token = await createVerificationToken(email);
+                  const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`;
+                  await sendVerificationEmail(email, verificationUrl, 'social-link');
+                  console.log('Verification email sent to:', email);
+                } catch (error) {
+                  console.error('Failed to send verification email:', error);
+                }
+                // サインインを拒否（メール検証待ち）
+                return false;
+              }
+
+              // メール検証済みの場合：identitiesレコードを作成（アカウント連携）
               await prisma.identities.create({
                 data: {
                   provider: 'google',
@@ -140,7 +156,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   name: user.name || 'Googleユーザー',
                   avatar_url: user.image,
                   is_sso_user: true,
-                  email_verified_at: new Date(),
+                  email_verified_at: new Date(), // Google認証済みなので検証済みとする
                 },
               });
 
