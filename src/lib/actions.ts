@@ -8,6 +8,8 @@ import { Prisma } from '@/generated/prisma/client';
 import bcrypt from 'bcrypt';
 import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
+import { createVerificationToken } from '@/lib/token';
+import { sendVerificationEmail } from '@/lib/email';
 
 const SignupFormSchema = z.object({
   name: z.string().min(2, { message: '名前は2文字以上で入力してください。' }),
@@ -54,8 +56,23 @@ export async function signup(_prevState: string | undefined, formData: FormData)
         email: normalizedEmail,
         password_hash,
         name,
+        // 通常登録時はメール未検証（email_verified_atはnull）
       },
     });
+
+    // メール検証トークンを生成して送信
+    try {
+      const token = await createVerificationToken(normalizedEmail);
+      const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`;
+      const emailSent = await sendVerificationEmail(normalizedEmail, verificationUrl);
+
+      if (!emailSent) {
+        console.error('Failed to send verification email to:', normalizedEmail);
+      }
+    } catch (emailError) {
+      // メール送信失敗してもユーザー登録は成功させる
+      console.error('Email sending error during signup:', emailError);
+    }
   } catch (error) {
     console.error('Signup error:', error);
 

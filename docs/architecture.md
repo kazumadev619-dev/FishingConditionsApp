@@ -160,6 +160,7 @@ erDiagram
     %% 認証・ユーザー系
     %% ============================================
     users ||--o{ identities : "has"
+    users ||--o{ verification_tokens : "has"
     users ||--o| user_settings : "has"
     users ||--o{ user_favorites : "has"
     users ||--o{ user_search_history : "has"
@@ -197,6 +198,13 @@ erDiagram
         timestamptz last_sign_in_at "最終ログイン"
         timestamptz created_at "作成日時"
         timestamptz updated_at "更新日時"
+    }
+
+    verification_tokens {
+        varchar token PK "検証トークン"
+        varchar email UK "メールアドレス"
+        timestamptz expires_at "有効期限"
+        timestamptz created_at "作成日時"
     }
 
     locations {
@@ -286,6 +294,23 @@ erDiagram
   - 例: 同じメールアドレスでGoogleとGitHubの両方でログイン可能
   - `provider`: 'google', 'github' 等
   - `identity_data`: プロバイダー固有の認証情報をJSON形式で保存
+
+##### **verification_tokens** テーブル
+
+- **用途**: メール検証トークン管理（セキュリティ強化）
+- **使い方**:
+  - 通常登録時：ユーザー作成後、検証メールを送信しトークンを発行
+  - Google OAuth連携時：既存アカウントへの連携前にメール所有権確認
+  - トークン有効期限：1時間（`expires_at`）
+  - 検証完了後：トークンを削除し`users.email_verified_at`を更新
+- **重要カラム**:
+  - `token`: crypto.randomBytes(32)で生成した64文字のランダム文字列
+  - `email`: ユニークキー、検証対象のメールアドレス
+  - `expires_at`: トークン有効期限（1時間後）
+- **セキュリティ対策**:
+  - `allowDangerousEmailAccountLinking`を使用せず、メール検証で本人確認
+  - 期限切れトークンは自動削除される
+  - 同一メールアドレスの古いトークンは新規発行時に削除
 
 #### **釣り場・位置情報系**
 
@@ -466,6 +491,7 @@ WHERE l.id = ${locationId};
 | ---------------- | --------------------- | ------------------------------------- |
 | **認証系**       | `users`               | ユーザー情報（認証+プロフィール統合） |
 |                  | `identities`          | OAuth連携（Google等）                 |
+|                  | `verification_tokens` | メール検証トークン（TTL: 1時間）      |
 | **釣り場系**     | `locations`           | 釣り場マスタ                          |
 |                  | `ports`               | 港マスタ（潮汐API用）                 |
 | **キャッシュ系** | `weather_cache`       | 天気データキャッシュ（TTL: 30分）     |
@@ -536,3 +562,21 @@ sequenceDiagram
     Auth-->>API: ユーザー情報
     API-->>Frontend: レスポンス
 ```
+
+### メール検証によるセキュリティ強化
+
+- **脅威**: `allowDangerousEmailAccountLinking: true`により、攻撃者が被害者のメールアドレスでGoogleアカウントを作成し、既存アカウントを乗っ取ることが可能だった
+- **対策**: メール検証トークンシステムの実装
+  - 通常登録時：ユーザー作成後、検証メールを送信（`users.email_verified_at`はnull）
+  - Google OAuth連携時：既存アカウント連携前に`email_verified_at`をチェック
+  - 未検証の場合：検証メールを送信し、サインインを拒否（AccessDenied）
+  - 検証完了後：`users.email_verified_at`を更新し、アカウント連携を許可
+- **トークン管理**:
+  - 64文字のランダム文字列（`crypto.randomBytes(32)`）
+  - 有効期限1時間
+  - 検証完了またはタイムアウト時に自動削除
+- **実装ファイル**:
+  - [src/lib/email.ts](src/lib/email.ts): Resend APIでメール送信
+  - [src/lib/token.ts](src/lib/token.ts): トークン生成・検証・削除
+  - [src/app/api/auth/verify-email/route.ts](src/app/api/auth/verify-email/route.ts): 検証エンドポイント
+  - [src/auth/index.ts](src/auth/index.ts): signInコールバックで検証状態チェック

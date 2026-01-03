@@ -377,6 +377,7 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   users: 'users',
   identities: 'identities',
+  verification_tokens: 'verification_tokens',
   locations: 'locations',
   ports: 'ports',
   weather_cache: 'weather_cache',
@@ -407,6 +408,7 @@ export type TypeMap<
     modelProps:
       | 'users'
       | 'identities'
+      | 'verification_tokens'
       | 'locations'
       | 'ports'
       | 'weather_cache'
@@ -562,6 +564,82 @@ export type TypeMap<
         count: {
           args: Prisma.identitiesCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.IdentitiesCountAggregateOutputType> | number;
+        };
+      };
+    };
+    verification_tokens: {
+      payload: Prisma.$verification_tokensPayload<ExtArgs>;
+      fields: Prisma.verification_tokensFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.verification_tokensFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.verification_tokensFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        findFirst: {
+          args: Prisma.verification_tokensFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.verification_tokensFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        findMany: {
+          args: Prisma.verification_tokensFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>[];
+        };
+        create: {
+          args: Prisma.verification_tokensCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        createMany: {
+          args: Prisma.verification_tokensCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.verification_tokensCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>[];
+        };
+        delete: {
+          args: Prisma.verification_tokensDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        update: {
+          args: Prisma.verification_tokensUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        deleteMany: {
+          args: Prisma.verification_tokensDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.verification_tokensUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.verification_tokensUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>[];
+        };
+        upsert: {
+          args: Prisma.verification_tokensUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        aggregate: {
+          args: Prisma.Verification_tokensAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateVerification_tokens>;
+        };
+        groupBy: {
+          args: Prisma.verification_tokensGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Verification_tokensGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.verification_tokensCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Verification_tokensCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -1158,6 +1236,17 @@ export const IdentitiesScalarFieldEnum = {
 export type IdentitiesScalarFieldEnum =
   (typeof IdentitiesScalarFieldEnum)[keyof typeof IdentitiesScalarFieldEnum];
 
+export const Verification_tokensScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  token: 'token',
+  expires_at: 'expires_at',
+  created_at: 'created_at',
+} as const;
+
+export type Verification_tokensScalarFieldEnum =
+  (typeof Verification_tokensScalarFieldEnum)[keyof typeof Verification_tokensScalarFieldEnum];
+
 export const LocationsScalarFieldEnum = {
   id: 'id',
   name: 'name',
@@ -1466,6 +1555,7 @@ export type PrismaClientOptions = (
 export type GlobalOmitConfig = {
   users?: Prisma.usersOmit;
   identities?: Prisma.identitiesOmit;
+  verification_tokens?: Prisma.verification_tokensOmit;
   locations?: Prisma.locationsOmit;
   ports?: Prisma.portsOmit;
   weather_cache?: Prisma.weather_cacheOmit;
