@@ -58,7 +58,7 @@ flowchart TD
 
 ## 🔑 Credentials認証シーケンス図
 
-### 新規登録フロー
+### 新規登録フロー（メール検証付き）
 
 ```mermaid
 sequenceDiagram
@@ -68,6 +68,8 @@ sequenceDiagram
     participant Validation as Zod Validator
     participant Bcrypt as bcrypt
     participant DB as Prisma + PostgreSQL
+    participant Token as Token Generator
+    participant Email as Resend
 
     User->>UI: 名前、メール、パスワード入力
     UI->>UI: パスワード強度チェック<br/>(リアルタイム)
@@ -91,15 +93,29 @@ sequenceDiagram
             Action->>Bcrypt: パスワードハッシュ化
             Bcrypt-->>Action: ハッシュ値
 
-            Action->>DB: トランザクション開始
-            Action->>DB: auth_users作成<br/>(encrypted_password)
-            Action->>DB: public_users作成
-            Action->>DB: トランザクションコミット
+            Action->>DB: users作成<br/>(password_hash, email_verified_at=NULL)
             DB-->>Action: 成功
+
+            Note over Action,Email: メール検証フロー
+            Action->>Token: 検証トークン生成(1時間有効)
+            Token-->>Action: token
+            Action->>DB: verification_tokens保存
+            DB-->>Action: 成功
+
+            Action->>Email: 検証メール送信<br/>(purpose: 'signup')
+            Email-->>User: メール送信
 
             Action-->>UI: 登録成功
             UI->>UI: /loginへリダイレクト
-            UI-->>User: ログインページ表示
+            UI-->>User: ログインページ表示<br/>※メール確認を促すメッセージ
+
+            User->>User: メール確認
+            User->>User: 検証リンククリック
+            User->>UI: /api/auth/verify-email?token=xxx
+            UI->>DB: トークン検証・email_verified_at更新
+            DB-->>UI: 成功
+            UI->>UI: /auth/verification-successへ
+            UI-->>User: 検証完了メッセージ
         end
     end
 ```
@@ -226,7 +242,7 @@ sequenceDiagram
     end
 ```
 
-### 既存ユーザーアカウント連携フロー
+### 既存ユーザーアカウント連携フロー（メール検証付き）
 
 ```mermaid
 sequenceDiagram
@@ -235,11 +251,13 @@ sequenceDiagram
     participant NextAuth as NextAuth Client
     participant Google as Google OAuth
     participant Callback as /api/auth/callback/google
-    participant AuthTS as /src/auth.ts signIn()
+    participant AuthTS as /src/auth/index.ts signIn()
     participant DB as Prisma + PostgreSQL
+    participant Token as Token Generator
+    participant Email as Resend
     participant Session as セッション管理
 
-    Note over User: user@example.com で<br/>Credentials登録済み
+    Note over User: user@example.com で<br/>Credentials登録済み<br/>(email_verified_at=NULL)
 
     User->>UI: "Googleでログイン"<br/>ボタンクリック
     UI->>NextAuth: signIn('google', {callbackUrl})
@@ -254,22 +272,55 @@ sequenceDiagram
     Callback->>AuthTS: signIn({ user, account })
     AuthTS->>AuthTS: provider === 'google'?
     AuthTS->>DB: findUnique(email)
-    DB-->>AuthTS: existingAuthUser<br/>(Credentials登録済み)
+    DB-->>AuthTS: existingUser<br/>(Credentials登録済み)
 
     Note over AuthTS,DB: 既存ユーザー検出
     AuthTS->>DB: identities.findUnique(<br/>provider_id, provider)
     DB-->>AuthTS: null (未連携)
 
-    Note over AuthTS,DB: アカウント連携処理
+    AuthTS->>AuthTS: email_verified_at確認
+
+    alt メール未検証
+        Note over AuthTS,Email: メール検証フロー開始
+        AuthTS->>Token: 検証トークン生成(1時間有効)
+        Token-->>AuthTS: token
+        AuthTS->>DB: verification_tokens保存
+        DB-->>AuthTS: 成功
+
+        AuthTS->>Email: 検証メール送信<br/>(purpose: 'social-link')
+        Email-->>User: メール送信
+
+        AuthTS-->>Callback: false (AccessDenied)
+        Callback-->>UI: エラー
+        UI-->>User: "メール確認が必要です"
+
+        User->>User: メール確認
+        User->>User: 検証リンククリック
+        User->>UI: /api/auth/verify-email?token=xxx
+        UI->>DB: トークン検証・email_verified_at更新
+        DB-->>UI: 成功
+        UI->>UI: /auth/verification-successへ
+        UI-->>User: "検証完了。再度Googleログインしてください"
+
+        User->>UI: "Googleでログイン"再試行
+        UI->>NextAuth: signIn('google', {callbackUrl})
+        NextAuth->>Google: OAuth認証リクエスト
+        Google->>Callback: リダイレクト
+        Callback->>AuthTS: signIn({ user, account })
+        AuthTS->>DB: findUnique(email)
+        DB-->>AuthTS: existingUser<br/>(email_verified_at あり)
+    end
+
+    Note over AuthTS,DB: メール検証済み → アカウント連携
     AuthTS->>DB: identities.create({<br/>provider='google',<br/>user_id,<br/>provider_id,<br/>identity_data})
     DB-->>AuthTS: 成功
 
-    AuthTS->>DB: auth_users.update(<br/>is_sso_user=true)
+    AuthTS->>DB: users.update(<br/>is_sso_user=true)
     DB-->>AuthTS: 成功
 
     AuthTS-->>Callback: true
     Callback->>AuthTS: jwt({ token, user })
-    AuthTS->>AuthTS: token.id = existingAuthUser.id
+    AuthTS->>AuthTS: token.id = existingUser.id
     AuthTS-->>Callback: token
 
     Callback->>Session: セッション作成
