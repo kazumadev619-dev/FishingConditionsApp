@@ -1,5 +1,6 @@
 // API エラーの種類を定義
 import { withCache, generateCacheKey } from './cache';
+import { logger } from './logger';
 
 export enum ApiErrorType {
   TIMEOUT = 'TIMEOUT', // リクエストタイムアウト
@@ -66,7 +67,7 @@ class ApiClient {
 
     // APIキーが必要なのに未設定の場合、警告を出して無効化
     if (requireApiKey && !apiKey) {
-      console.warn(`[ApiClient] API key not configured for ${baseUrl}. Requests will fail.`);
+      logger.warn({ baseUrl }, 'API key not configured. Requests will fail');
       this.isConfigured = false;
     }
   }
@@ -219,8 +220,9 @@ class ApiClient {
         // リトライ可能かつ、リトライ回数が残っている場合
         if (error.retryable && attempt < maxRetries) {
           const delay = this.getBackoffDelay(attempt);
-          console.warn(
-            `[API] Retry attempt ${attempt + 1}/${maxRetries} for ${endpoint} after ${delay}ms`,
+          logger.warn(
+            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay },
+            'Retrying API request',
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
           return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
@@ -243,8 +245,9 @@ class ApiClient {
         // タイムアウトもリトライ対象
         if (attempt < maxRetries) {
           const delay = this.getBackoffDelay(attempt);
-          console.warn(
-            `[API] Retry attempt ${attempt + 1}/${maxRetries} after timeout (${delay}ms)`,
+          logger.warn(
+            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay, reason: 'timeout' },
+            'Retrying API request after timeout',
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
           return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
@@ -264,8 +267,9 @@ class ApiClient {
 
         if (networkError.retryable && attempt < maxRetries) {
           const delay = this.getBackoffDelay(attempt);
-          console.warn(
-            `[API] Retry attempt ${attempt + 1}/${maxRetries} after network error (${delay}ms)`,
+          logger.warn(
+            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay, reason: 'network_error' },
+            'Retrying API request after network error',
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
           return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);

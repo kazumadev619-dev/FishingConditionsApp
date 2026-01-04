@@ -1,5 +1,6 @@
 import { randomBytes } from 'crypto';
 import prisma from '@/lib/prisma';
+import { logger, maskEmail } from '@/lib/logger';
 
 /**
  * ランダムなトークンを生成
@@ -36,7 +37,7 @@ export async function createVerificationToken(email: string): Promise<string> {
 
     return token;
   } catch (error) {
-    console.error('Failed to create verification token:', error);
+    logger.error({ err: error, email: maskEmail(email) }, 'Failed to create verification token');
     throw new Error('Failed to create verification token');
   }
 }
@@ -67,7 +68,7 @@ export async function verifyToken(token: string): Promise<string | null> {
 
     return verificationToken.email;
   } catch (error) {
-    console.error('Failed to verify token:', error);
+    logger.error({ err: error }, 'Failed to verify token');
     return null;
   }
 }
@@ -82,7 +83,7 @@ export async function deleteVerificationToken(token: string): Promise<void> {
       where: { token },
     });
   } catch (error) {
-    console.error('Failed to delete verification token:', error);
+    logger.warn({ err: error }, 'Failed to delete verification token');
     // 削除失敗してもエラーにはしない（すでに削除されている可能性がある）
   }
 }

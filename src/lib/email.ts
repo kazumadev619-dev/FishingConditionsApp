@@ -1,6 +1,7 @@
 import { Resend } from 'resend';
 import { render } from '@react-email/components';
 import VerificationEmail from '@/emails/verification-email';
+import { logger } from './logger';
 
 // Resendクライアントを遅延初期化（ビルド時エラーを回避）
 let resendClient: Resend | null = null;
@@ -43,14 +44,14 @@ export async function sendVerificationEmail(
     });
 
     if (error) {
-      console.error('Failed to send verification email:', error);
+      logger.error({ error }, 'Failed to send verification email');
       return false;
     }
 
-    console.log('Verification email sent successfully:', data);
+    logger.info({ data }, 'Verification email sent successfully');
     return true;
   } catch (error) {
-    console.error('Error sending verification email:', error);
+    logger.error({ error }, 'Error sending verification email');
     return false;
   }
 }

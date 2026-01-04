@@ -10,6 +10,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { searchLocations, isLocationSearchConfigured } from '@/lib/locationService';
+import { logger } from '@/lib/logger';
 
 /**
  * 検索クエリのバリデーション関数
@@ -145,7 +146,7 @@ export async function GET(request: NextRequest) {
     // エラーハンドリング
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    console.error('[API] GET /api/locations/search error:', error);
+    logger.error({ err: error }, 'Location search API error');
 
     return NextResponse.json(
       {

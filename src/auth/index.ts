@@ -8,6 +8,7 @@ import { baseAuthConfig } from './config';
 import { randomUUID } from 'crypto';
 import { createVerificationToken } from '@/lib/token';
 import { sendVerificationEmail } from '@/lib/email';
+import { logger, maskEmail } from '@/lib/logger';
 
 /**
  * Node Runtime用の認証設定
@@ -34,7 +35,7 @@ async function getUser(email: string) {
     });
     return user;
   } catch (error) {
-    console.error('Failed to fetch user:', error);
+    logger.error({ email: maskEmail(email), error }, 'Failed to fetch user from database');
     return null;
   }
 }
@@ -59,7 +60,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         const { email, password } = parsedCredentials.data;
         const user = await getUser(email);
         if (!user || !user.password_hash) {
-          console.log('User not found or password hash missing.');
+          logger.warn(
+            { email: maskEmail(email) },
+            'User authentication failed: user not found or password hash missing',
+          );
           return null;
         }
 
@@ -69,7 +73,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return user;
         }
 
-        console.log('Invalid credentials');
+        logger.warn({ email: maskEmail(email) }, 'User authentication failed: invalid credentials');
         return null;
       },
     }),
@@ -111,9 +115,15 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
                   const token = await createVerificationToken(email);
                   const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`;
                   await sendVerificationEmail(email, verificationUrl, 'social-link');
-                  console.log('Verification email sent to:', email);
+                  logger.info(
+                    { email: maskEmail(email) },
+                    'Verification email sent for social account linking',
+                  );
                 } catch (error) {
-                  console.error('Failed to send verification email:', error);
+                  logger.error(
+                    { email: maskEmail(email), error },
+                    'Failed to send verification email',
+                  );
                 }
                 // サインインを拒否（メール検証待ち）
                 return false;
@@ -179,7 +189,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return true;
           }
         } catch (error) {
-          console.error('Google sign-in error:', error);
+          logger.error({ email: maskEmail(email), error }, 'Google sign-in error');
           return false;
         }
       }
