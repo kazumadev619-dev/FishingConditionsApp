@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyToken, deleteVerificationToken } from '@/lib/token';
 import prisma from '@/lib/prisma';
+import { logger } from '@/lib/logger';
 
 /**
  * メール検証エンドポイント
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
     // 検証成功ページにリダイレクト
     return NextResponse.redirect(new URL('/auth/verification-success', request.url));
   } catch (error) {
-    console.error('Email verification error:', error);
+    logger.error({ err: error }, 'Email verification error');
     return NextResponse.redirect(
       new URL('/auth/verification-error?error=server_error', request.url),
     );

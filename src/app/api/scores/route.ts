@@ -8,6 +8,7 @@ import { getCurrentWeather } from '@/lib/openWeatherService';
 import { getTideData } from '@/lib/tideService';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { withCache, generateCacheKey, CACHE_TTL, CACHE_PREFIX } from '@/lib/cache';
+import { logger } from '@/lib/logger';
 import type { ScoringResponse } from '@/types/scoring';
 
 /**
@@ -85,7 +86,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[Scores API] Error:', error);
+    logger.error({ err: error }, 'Scores API error');
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 

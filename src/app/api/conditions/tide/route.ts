@@ -12,6 +12,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getTideData } from '@/lib/tideService';
+import { logger } from '@/lib/logger';
 
 /**
  * バリデーション用の正規表現
@@ -131,7 +132,7 @@ export async function GET(request: NextRequest) {
     // エラーハンドリング
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
 
-    console.error('[API] GET /api/conditions/tide error:', error);
+    logger.error({ err: error }, 'Tide API error');
 
     return NextResponse.json(
       {

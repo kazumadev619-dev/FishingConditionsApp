@@ -1,5 +1,6 @@
 import { GeocodingResponse } from '@/types/google.maps';
 import { googleMapsClient } from './apiClient';
+import { logger } from './logger';
 
 /**
  * 住所文字列を使用してジオコーディングを実行し、緯度経度などの情報を取得します。
@@ -30,7 +31,7 @@ export const geocode = async (address: string): Promise<GeocodingResponse> => {
 
     return data;
   } catch (error) {
-    console.error('An error occurred in the geocode function:', error);
+    logger.error({ err: error, address }, 'Geocode function error');
     throw error; // エラーを再スローして、呼び出し元で処理できるようにする
   }
 };

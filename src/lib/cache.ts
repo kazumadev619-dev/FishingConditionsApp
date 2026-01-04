@@ -3,6 +3,8 @@
  * @see https://docs.upstash.com/redis/sdks/ts/getstarted
  */
 
+import { logger } from './logger';
+
 // キャッシュのTTL定数（秒単位）
 export const CACHE_TTL = {
   WEATHER: 30 * 60, // 30分
@@ -35,7 +37,7 @@ class CacheClient {
     if (url && token) {
       this.config = { url, token };
     } else {
-      console.warn('[Cache] Upstash Redis is not configured. Caching disabled.');
+      logger.warn('Upstash Redis is not configured. Caching disabled.');
     }
   }
 
@@ -65,14 +67,14 @@ class CacheClient {
       });
 
       if (!response.ok) {
-        console.error(`[Cache] Redis command failed: ${response.status}`);
+        logger.error({ status: response.status }, 'Redis command failed');
         return null;
       }
 
       const data = await response.json();
       return data.result as T;
     } catch (error) {
-      console.error('[Cache] Redis command error:', error);
+      logger.error({ error }, 'Redis command error');
       return null;
     }
   }
@@ -91,8 +93,8 @@ class CacheClient {
 
     try {
       return JSON.parse(result) as T;
-    } catch {
-      console.error(`[Cache] Failed to parse cached data for key: ${key}`);
+    } catch (error) {
+      logger.error({ key, error }, 'Failed to parse cached data');
       return null;
     }
   }
@@ -173,18 +175,18 @@ export async function withCache<T>(
   const cached = await cache.get<T>(key);
 
   if (cached !== null) {
-    console.log(`[Cache] HIT: ${key}`);
+    logger.debug({ key }, 'Cache hit');
     return { data: cached, fromCache: true };
   }
 
-  console.log(`[Cache] MISS: ${key}`);
+  logger.debug({ key }, 'Cache miss');
 
   // fetcherでデータを取得
   const data = await fetcher();
 
   // キャッシュに保存（非同期、エラーは無視）
   cache.set(key, data, ttlSeconds).catch((error) => {
-    console.error(`[Cache] Failed to cache data for key ${key}:`, error);
+    logger.error({ key, error }, 'Failed to cache data');
   });
 
   return { data, fromCache: false };

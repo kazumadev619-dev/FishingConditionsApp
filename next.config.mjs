@@ -8,6 +8,8 @@ const nextConfig = {
   turbopack: {
     root: './',
   },
+  // pinoのビルドエラー回避: ネイティブモジュールをバンドルから除外
+  serverExternalPackages: ['pino', 'pino-pretty'],
 };
 
 // --- PWA Config (Disabled) ---

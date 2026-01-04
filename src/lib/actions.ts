@@ -10,6 +10,7 @@ import { redirect } from 'next/navigation';
 import { randomUUID } from 'crypto';
 import { createVerificationToken } from '@/lib/token';
 import { sendVerificationEmail } from '@/lib/email';
+import { logger, maskEmail } from '@/lib/logger';
 
 const SignupFormSchema = z.object({
   name: z.string().min(2, { message: '名前は2文字以上で入力してください。' }),
@@ -67,21 +68,24 @@ export async function signup(_prevState: string | undefined, formData: FormData)
       const emailSent = await sendVerificationEmail(normalizedEmail, verificationUrl);
 
       if (!emailSent) {
-        console.error('Failed to send verification email to:', normalizedEmail);
+        logger.error({ email: maskEmail(normalizedEmail) }, 'Failed to send verification email');
       }
     } catch (emailError) {
       // メール送信失敗してもユーザー登録は成功させる
-      console.error('Email sending error during signup:', emailError);
+      logger.error(
+        { email: maskEmail(normalizedEmail), error: emailError },
+        'Email sending error during signup',
+      );
     }
   } catch (error) {
-    console.error('Signup error:', error);
+    logger.error({ error }, 'Signup error');
 
     // Prisma Known Request Error (P2002, P2003, P2025 等)
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
       switch (error.code) {
         case 'P1001': {
           // Database server connection error
-          console.error('データベース接続エラー:', error.message);
+          logger.error({ message: error.message }, 'Database connection error');
           return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';
         }
 
@@ -96,31 +100,31 @@ export async function signup(_prevState: string | undefined, formData: FormData)
 
         case 'P2003': {
           // Foreign key constraint violation
-          console.error('データの関連付けに失敗', error.code);
+          logger.error({ code: error.code }, 'Foreign key constraint violation');
           return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';
         }
 
         case 'P2025': {
           // Record not found
-          console.log('必要なデータが見つかりません', error.code);
+          logger.error({ code: error.code }, 'Required data not found');
           return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';
         }
 
         default:
-          console.error('Unhandled Prisma error code:', error.code);
+          logger.error({ code: error.code }, 'Unhandled Prisma error code');
           return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';
       }
     }
 
     // Prisma Validation Error
     if (error instanceof Prisma.PrismaClientValidationError) {
-      console.error('Prisma validation error:', error.message);
+      logger.error({ message: error.message }, 'Prisma validation error');
       return 'データの検証に失敗しました。入力内容を確認してください。';
     }
 
     // Generic error fallback
     if (error instanceof Error) {
-      console.error('Unexpected error:', error.message);
+      logger.error({ message: error.message }, 'Unexpected error');
     }
 
     return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';

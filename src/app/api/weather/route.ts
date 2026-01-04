@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
 import { ApiError } from '@/lib/apiClient';
 import { logApiError } from '@/lib/apiErrorUtils';
+import { logger } from '@/lib/logger';
 
 /**
  * 座標パラメータのバリデーション
@@ -50,7 +51,7 @@ function validateCoordinates(
 export async function GET(request: NextRequest) {
   // APIキーのチェック
   if (!isWeatherApiConfigured()) {
-    console.error('[Weather API] OPENWEATHERMAP_API_KEY is not configured');
+    logger.error('OPENWEATHERMAP_API_KEY is not configured');
     return NextResponse.json(
       { error: 'Weather API is not configured', code: 'API_NOT_CONFIGURED' },
       { status: 503 },
@@ -130,7 +131,7 @@ export async function GET(request: NextRequest) {
     }
 
     // 予期しないエラー
-    console.error('[Weather API] Unexpected error:', error);
+    logger.error({ err: error }, 'Weather API unexpected error');
 
     return NextResponse.json(
       {
