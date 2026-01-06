@@ -3,8 +3,14 @@
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Home, MapPin, ChevronDown, Waves, User } from 'lucide-react';
-import { useSession } from 'next-auth/react';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { Home, MapPin, ChevronDown, Waves, User, LogOut } from 'lucide-react';
+import { useSession, signOut } from 'next-auth/react';
 
 const sidebarItems = [
   {
@@ -36,6 +42,10 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
       ...prev,
       [title]: !prev[title],
     }));
+  };
+
+  const handleLogout = async () => {
+    await signOut({ callbackUrl: '/login' });
   };
 
   return (
@@ -103,16 +113,25 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
           </div>
         </ScrollArea>
 
-        {/* User Profile */}
+        {/* User Profile Dropdown */}
         <div className="border-t p-3">
-          <div className="space-y-1">
-            <button className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium hover:bg-muted">
-              <div className="flex items-center gap-3">
-                <User className="h-6 w-6" />
-                <span className="truncate">{session?.user?.email || 'ユーザー'}</span>
-              </div>
-            </button>
-          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+                <div className="flex items-center gap-3">
+                  <User className="h-6 w-6" />
+                  <span className="truncate">{session?.user?.email || 'ユーザー'}</span>
+                </div>
+                <ChevronDown className="h-4 w-4 opacity-50" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>ログアウト</span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
     </div>
