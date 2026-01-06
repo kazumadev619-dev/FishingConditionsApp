@@ -6,7 +6,7 @@ import eslintConfigPrettier from 'eslint-config-prettier';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
 
 export default [
-  { files: ['**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'] },
+  // グローバルignore設定
   {
     ignores: [
       '**/build/',
@@ -19,15 +19,27 @@ export default [
     ],
   },
 
-  // Typescript configuration
+  // JavaScript/CommonJS configuration
   {
-    name: 'eslint/recommended-typescript',
+    files: ['**/*.{js,mjs,cjs}'],
+    name: 'eslint/recommended-javascript',
     rules: js.configs.recommended.rules,
   },
-  ...tseslint.configs.recommended,
 
-  // React configuration
+  // TypeScript configuration (TypeScriptファイルにのみ適用)
   {
+    files: ['**/*.{ts,mts,cts,tsx}'],
+    name: 'eslint/recommended-typescript',
+    ...js.configs.recommended,
+  },
+  ...tseslint.configs.recommended.map((config) => ({
+    ...config,
+    files: ['**/*.{ts,mts,cts,tsx}'],
+  })),
+
+  // React configuration (JSX/TSXファイルにのみ適用)
+  {
+    files: ['**/*.{jsx,tsx}'],
     name: 'eslint/recommended-react',
     plugins: {
       react: pluginReact,
@@ -41,6 +53,7 @@ export default [
     },
   },
   {
+    files: ['**/*.{jsx,tsx}'],
     name: 'react/hooks/recommended',
     plugins: {
       'react-hooks': eslintPluginReactHooks,
@@ -48,8 +61,9 @@ export default [
     rules: eslintPluginReactHooks.configs.recommended.rules,
   },
 
-  // Next.js configuration
+  // Next.js configuration (Next.js関連ファイルに適用)
   {
+    files: ['**/*.{js,mjs,cjs,ts,mts,cts,jsx,tsx}'],
     name: 'next/core-web-vitals',
     plugins: {
       '@next/next': eslintPluginNext,
@@ -66,9 +80,9 @@ export default [
     ...eslintConfigPrettier,
   },
 
-  // Project config files
+  // Project config files (CommonJS)
   {
-    files: ['commitlint.config.js', 'postcss.config.js'],
+    files: ['commitlint.config.js'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'commonjs',
@@ -78,8 +92,9 @@ export default [
       },
     },
   },
+  // Project config files (ESM)
   {
-    files: ['next.config.mjs'],
+    files: ['postcss.config.js', 'next.config.mjs'],
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'module',
@@ -89,8 +104,9 @@ export default [
     },
   },
 
-  // Project custom rules
+  // Project custom rules (TypeScriptファイルのみ)
   {
+    files: ['**/*.{ts,mts,cts,tsx}'],
     name: 'project-custom',
     rules: {
       '@typescript-eslint/no-empty-object-type': 'off',
