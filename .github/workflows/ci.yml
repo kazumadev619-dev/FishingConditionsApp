@@ -84,19 +84,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # 4. Prisma Clientの生成（ビルド前に必要）
+      # 4. 環境変数のセットアップ（ビルド用）
+      - name: Setup environment variables for build
+        run: cp .env.example .env
+
+      # 5. Prisma Clientの生成（ビルド前に必要）
       - name: Generate Prisma Client
         run: npx prisma generate
-        env:
-          # スキーマのみ使用するのでDATABASE_URLは不要だがPrismaが要求するためダミー設定
-          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/dummy
 
-      # 5. Next.jsビルド
+      # 6. Next.jsビルド
       - name: Build Next.js application
         run: npm run build
-        env:
-          # ビルド時は環境変数を使用しない（静的ビルド検証のため）
-          SKIP_ENV_VALIDATION: true
 
   # ============================================
   # CIサマリー
