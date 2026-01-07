@@ -1267,6 +1267,7 @@ export const PortsScalarFieldEnum = {
   id: 'id',
   name: 'name',
   prefecture_code: 'prefecture_code',
+  prefecture_name: 'prefecture_name',
   port_code: 'port_code',
   latitude: 'latitude',
   longitude: 'longitude',

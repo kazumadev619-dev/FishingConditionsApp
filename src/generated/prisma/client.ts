@@ -54,7 +54,7 @@ export type users = Prisma.usersModel;
 export type identities = Prisma.identitiesModel;
 /**
  * Model verification_tokens
- * メール検証トークン
+ * メール検証トークン（アカウント連携時の検証用）
  */
 export type verification_tokens = Prisma.verification_tokensModel;
 /**

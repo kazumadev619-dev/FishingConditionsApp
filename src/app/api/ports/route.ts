@@ -24,6 +24,7 @@ export async function GET(request: Request) {
         id: true,
         name: true,
         prefecture_code: true,
+        prefecture_name: true,
         port_code: true,
         latitude: true,
         longitude: true,

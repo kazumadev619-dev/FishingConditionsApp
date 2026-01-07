@@ -19,6 +19,7 @@ interface Port {
   id: string;
   name: string;
   prefecture_code: string;
+  prefecture_name: string | null;
   port_code: string;
   latitude: number | null;
   longitude: number | null;
@@ -73,16 +74,14 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
     const prefMap = new Map<string, string>();
 
     allPorts.forEach((port) => {
-      if (!prefMap.has(port.prefecture_code)) {
-        // CSVのデータ構造上、都道府県名は取得できないのでコードのみ
-        // 将来的にはDBに都道府県名カラムを追加するか、別マスタを用意する
-        prefMap.set(port.prefecture_code, `都道府県コード: ${port.prefecture_code}`);
+      if (!prefMap.has(port.prefecture_code) && port.prefecture_name) {
+        prefMap.set(port.prefecture_code, port.prefecture_name);
       }
     });
 
     return Array.from(prefMap.entries())
       .map(([code, name]) => ({ code, name }))
-      .sort((a, b) => a.code.localeCompare(b.code));
+      .sort((a, b) => parseInt(a.code, 10) - parseInt(b.code, 10));
   }, [allPorts]);
 
   // 選択された都道府県の港一覧をフィルタリング

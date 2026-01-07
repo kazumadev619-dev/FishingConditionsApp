@@ -92,6 +92,7 @@ model ports {
   id              String   @id @default(uuid()) @db.Uuid
   name            String   @db.VarChar(100)
   prefecture_code String   @db.VarChar(10)
+  prefecture_name String?  @db.VarChar(50)
   port_code       String   @db.VarChar(10)
   latitude        Float?
   longitude       Float?
