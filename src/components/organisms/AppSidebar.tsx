@@ -9,9 +9,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Home, MapPin, ChevronDown, Waves, User, LogOut, Search } from 'lucide-react';
+import { Home, MapPin, ChevronDown, Waves, User, LogOut, Search, Clock } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { LocationSearchTabs } from '@/components/organisms/LocationSearchTabs';
+import { SearchHistory } from '@/components/organisms/SearchHistory';
 
 const sidebarItems = [
   {
@@ -25,7 +26,7 @@ const sidebarItems = [
     items: [
       { title: '検索', icon: <Search className="h-4 w-4" />, component: 'search' },
       { title: 'お気に入り', url: '#' },
-      { title: '履歴', url: '#' },
+      { title: '履歴', icon: <Clock className="h-4 w-4" />, component: 'history' },
     ],
   },
 ];
@@ -103,6 +104,17 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                         return (
                           <div key={subItem.title} className="px-3 py-2">
                             <LocationSearchTabs />
+                          </div>
+                        );
+                      }
+                      if ('component' in subItem && subItem.component === 'history') {
+                        return (
+                          <div key={subItem.title} className="px-3 py-2">
+                            <div className="mb-2 flex items-center gap-2 text-sm font-medium">
+                              {subItem.icon}
+                              <span>{subItem.title}</span>
+                            </div>
+                            <SearchHistory />
                           </div>
                         );
                       }
