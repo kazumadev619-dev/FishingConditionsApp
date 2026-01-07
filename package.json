@@ -20,6 +20,8 @@
     "prisma:seed": "dotenv -e .env.local -- node --import tsx/esm prisma/seed.ts",
     "prisma:studio": "dotenv -e .env.local -- prisma studio",
     "prisma:reset": "dotenv -e .env.local -- prisma migrate reset",
+    "update-port-coords": "dotenv -e .env.local -- node --import tsx/esm scripts/update-port-coordinates.ts",
+    "update-port-coords:dry-run": "dotenv -e .env.local -- node --import tsx/esm scripts/update-port-coordinates.ts --dry-run",
     "docker:restart": "cd docker && docker compose restart app",
     "docker:dev": "cd docker && docker compose --env-file ../.env.local up -d",
     "docker:dev:build": "cd docker && docker compose --env-file ../.env.local up -d --build",
