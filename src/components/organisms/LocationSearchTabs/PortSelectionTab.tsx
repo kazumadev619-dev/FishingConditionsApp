@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { MapPin, Loader2, Anchor } from 'lucide-react';
 import {
@@ -13,7 +13,6 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
-import { PREFECTURES } from '@/lib/prefectures';
 import { logger } from '@/lib/logger';
 
 interface Port {
@@ -25,6 +24,11 @@ interface Port {
   longitude: number | null;
 }
 
+interface Prefecture {
+  code: string;
+  name: string;
+}
+
 interface PortSelectionTabProps {
   onPortSelect?: (port: Port) => void;
 }
@@ -33,41 +37,61 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [selectedPrefecture, setSelectedPrefecture] = useState<string>('');
-  const [ports, setPorts] = useState<Port[]>([]);
+  const [allPorts, setAllPorts] = useState<Port[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // 都道府県選択時に港一覧を取得
+  // 初回マウント時に全港を取得
   useEffect(() => {
-    const fetchPorts = async () => {
-      if (!selectedPrefecture) {
-        setPorts([]);
-        return;
-      }
-
+    const fetchAllPorts = async () => {
       setIsLoading(true);
       setError(null);
 
       try {
-        const response = await fetch(`/api/ports?prefecture_code=${selectedPrefecture}`);
+        const response = await fetch('/api/ports');
 
         if (!response.ok) {
           throw new Error('港情報の取得に失敗しました');
         }
 
         const data = await response.json();
-        setPorts(data.ports || []);
+        setAllPorts(data.ports || []);
       } catch (err) {
-        logger.error({ err }, 'Failed to fetch ports');
+        logger.error({ err }, 'Failed to fetch all ports');
         setError(err instanceof Error ? err.message : 'エラーが発生しました');
-        setPorts([]);
+        setAllPorts([]);
       } finally {
         setIsLoading(false);
       }
     };
 
-    fetchPorts();
-  }, [selectedPrefecture]);
+    fetchAllPorts();
+  }, []);
+
+  // 都道府県一覧を生成（港データから重複なしで抽出）
+  const prefectures = useMemo<Prefecture[]>(() => {
+    const prefMap = new Map<string, string>();
+
+    allPorts.forEach((port) => {
+      if (!prefMap.has(port.prefecture_code)) {
+        // CSVのデータ構造上、都道府県名は取得できないのでコードのみ
+        // 将来的にはDBに都道府県名カラムを追加するか、別マスタを用意する
+        prefMap.set(port.prefecture_code, `都道府県コード: ${port.prefecture_code}`);
+      }
+    });
+
+    return Array.from(prefMap.entries())
+      .map(([code, name]) => ({ code, name }))
+      .sort((a, b) => a.code.localeCompare(b.code));
+  }, [allPorts]);
+
+  // 選択された都道府県の港一覧をフィルタリング
+  const filteredPorts = useMemo(() => {
+    if (!selectedPrefecture) {
+      return [];
+    }
+    return allPorts.filter((port) => port.prefecture_code === selectedPrefecture);
+  }, [allPorts, selectedPrefecture]);
 
   const handleSelectPort = useCallback(
     async (port: Port) => {
@@ -121,12 +145,12 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
     <div className="space-y-3">
       {/* 都道府県選択 */}
       <Select value={selectedPrefecture} onValueChange={setSelectedPrefecture}>
-        <SelectTrigger>
+        <SelectTrigger disabled={isLoading || allPorts.length === 0}>
           <SelectValue placeholder="都道府県を選択" />
         </SelectTrigger>
         <SelectContent>
           <ScrollArea className="h-[200px]">
-            {PREFECTURES.map((pref) => (
+            {prefectures.map((pref) => (
               <SelectItem key={pref.code} value={pref.code}>
                 {pref.name}
               </SelectItem>
@@ -148,10 +172,10 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
       )}
 
       {/* 港リスト */}
-      {!isLoading && ports.length > 0 && (
+      {!isLoading && filteredPorts.length > 0 && (
         <ScrollArea className="h-[300px] rounded-lg border">
           <div className="p-2 space-y-1">
-            {ports.map((port) => (
+            {filteredPorts.map((port) => (
               <button
                 key={port.id}
                 onClick={() => handleSelectPort(port)}
@@ -164,7 +188,7 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
                 )}
               >
                 <div className="flex items-start gap-2">
-                  <Anchor className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
+                  <Anchor className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-sm">{port.name}</div>
                     {(!port.latitude || !port.longitude) && (
@@ -179,16 +203,16 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
       )}
 
       {/* 空状態 */}
-      {!isLoading && selectedPrefecture && ports.length === 0 && !error && (
+      {!isLoading && selectedPrefecture && filteredPorts.length === 0 && !error && (
         <div className="text-center py-8 text-sm text-muted-foreground">
           この都道府県に登録されている港がありません
         </div>
       )}
 
       {/* ヘルプテキスト */}
-      {!selectedPrefecture && (
+      {!selectedPrefecture && !isLoading && !error && (
         <div className="flex items-start gap-2 text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-          <MapPin className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
           <div>
             港マスタから選択すると、確実に潮汐データを取得できます。都道府県を選択してください。
           </div>
