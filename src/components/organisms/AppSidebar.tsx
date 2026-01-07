@@ -9,8 +9,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Home, MapPin, ChevronDown, Waves, User, LogOut } from 'lucide-react';
+import { Home, MapPin, ChevronDown, Waves, User, LogOut, Search } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
+import { LocationSearchTabs } from '@/components/organisms/LocationSearchTabs';
 
 const sidebarItems = [
   {
@@ -22,9 +23,9 @@ const sidebarItems = [
     title: '釣り場',
     icon: <MapPin />,
     items: [
+      { title: '検索', icon: <Search className="h-4 w-4" />, component: 'search' },
       { title: 'お気に入り', url: '#' },
       { title: '履歴', url: '#' },
-      { title: '新しい釣り場', url: '#' },
     ],
   },
 ];
@@ -97,15 +98,24 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
 
                 {item.items && expandedItems[item.title] && (
                   <div className="mt-1 ml-6 space-y-1 border-l pl-3">
-                    {item.items.map((subItem) => (
-                      <a
-                        key={subItem.title}
-                        href={subItem.url}
-                        className="flex items-center justify-between rounded-2xl px-3 py-2 text-sm hover:bg-muted"
-                      >
-                        {subItem.title}
-                      </a>
-                    ))}
+                    {item.items.map((subItem) => {
+                      if ('component' in subItem && subItem.component === 'search') {
+                        return (
+                          <div key={subItem.title} className="px-3 py-2">
+                            <LocationSearchTabs />
+                          </div>
+                        );
+                      }
+                      return (
+                        <a
+                          key={subItem.title}
+                          href={subItem.url}
+                          className="flex items-center justify-between rounded-2xl px-3 py-2 text-sm hover:bg-muted"
+                        >
+                          {subItem.title}
+                        </a>
+                      );
+                    })}
                   </div>
                 )}
               </div>
