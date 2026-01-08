@@ -32,17 +32,17 @@ interface SearchHistoryResponse {
 }
 
 export function SearchHistory() {
-  const { data: session, status } = useSession();
+  const { status } = useSession();
   const router = useRouter();
   const [history, setHistory] = useState<SearchHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (status === 'authenticated' && session?.user) {
+    if (status === 'authenticated') {
       fetchSearchHistory();
     }
-  }, [status, session]);
+  }, [status]);
 
   const fetchSearchHistory = async () => {
     setIsLoading(true);

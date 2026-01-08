@@ -1,6 +1,7 @@
 'use client';
 
 import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { logger } from '@/lib/logger';
 
 interface FishingLocationMapProps {
   latitude: number;
@@ -8,11 +9,6 @@ interface FishingLocationMapProps {
   locationName: string;
   height?: string;
 }
-
-const customMapContainerStyle = {
-  width: '100%',
-  height: '400px', // デフォルト値
-};
 
 // Next.jsの環境変数からAPIキーとMap IDを取得
 const GOOGLE_MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '';
@@ -34,14 +30,14 @@ export function FishingLocationMap({
     fullscreenControl: true,
   };
 
-  const currentMapContainerStyle = {
-    ...customMapContainerStyle,
+  const mapContainerStyle = {
+    width: '100%',
     height,
   };
 
   // APIキーとMap IDがない場合はマップを表示しない
   if (!GOOGLE_MAPS_API_KEY || !GOOGLE_MAPS_MAP_ID) {
-    console.error('Google Maps API Key or Map ID is not set.');
+    logger.error('Google Maps API Key or Map ID is not set.');
     return (
       <div className="flex items-center justify-center h-[400px] bg-muted rounded-lg">
         <p className="text-destructive">
@@ -55,9 +51,9 @@ export function FishingLocationMap({
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="maps-sdk-react-components">
       <Map
         mapId={GOOGLE_MAPS_MAP_ID}
-        style={currentMapContainerStyle}
-        defaultCenter={center}
-        defaultZoom={14}
+        style={mapContainerStyle}
+        center={center}
+        zoom={14}
         gestureHandling={'greedy'}
         disableDefaultUI={!mapOptions.disableDefaultUI}
         zoomControl={mapOptions.zoomControl}
