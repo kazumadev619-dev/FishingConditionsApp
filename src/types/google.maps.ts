@@ -16,6 +16,7 @@ export interface GeocodingResult {
   formatted_address: string;
   geometry: Geometry;
   place_id: string;
+  name?: string;
   plus_code?: PlusCode;
   types: string[];
 }
