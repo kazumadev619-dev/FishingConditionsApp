@@ -28,60 +28,15 @@ type LocationData = {
 
 /**
  * URLクエリパラメータから釣り場情報を解決
- * 優先順位: locationId > portId > lat&lng > デフォルト
+ * 優先順位: portId > lat&lng > デフォルト
  */
 async function resolveLocation(searchParams: {
-  locationId?: string;
   portId?: string;
   lat?: string;
   lng?: string;
+  name?: string;
 }): Promise<LocationData> {
-  // パターン1: locationId指定
-  if (searchParams.locationId) {
-    try {
-      const location = await prisma.locations.findUnique({
-        where: { id: searchParams.locationId },
-        include: { port: true },
-      });
-
-      if (!location) {
-        logger.warn({ locationId: searchParams.locationId }, 'Location not found');
-        return DEFAULT_LOCATION;
-      }
-
-      // portが紐づいている場合はそれを使用
-      if (location.port) {
-        return {
-          name: location.name,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          prefectureCode: location.port.prefecture_code,
-          portCode: location.port.port_code,
-        };
-      }
-
-      // portが紐づいていない場合は最寄り港を検索
-      const nearestPort = await findNearestPort(location.latitude, location.longitude);
-      if (nearestPort) {
-        return {
-          name: location.name,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          prefectureCode: nearestPort.prefecture_code,
-          portCode: nearestPort.port_code,
-        };
-      }
-
-      // 最寄り港も見つからない場合はデフォルト（潮汐データなし対応は今後）
-      logger.warn({ locationId: searchParams.locationId }, 'No port mapping found for location');
-      return DEFAULT_LOCATION;
-    } catch (error) {
-      logger.error({ err: error, locationId: searchParams.locationId }, 'Error resolving location');
-      return DEFAULT_LOCATION;
-    }
-  }
-
-  // パターン2: portId指定
+  // パターン1: portId指定
   if (searchParams.portId) {
     try {
       const port = await prisma.ports.findUnique({
@@ -93,7 +48,6 @@ async function resolveLocation(searchParams: {
         return DEFAULT_LOCATION;
       }
 
-      // portsテーブルに緯度経度がない場合はエラー
       if (!port.latitude || !port.longitude) {
         logger.warn({ portId: searchParams.portId }, 'Port has no coordinates');
         return DEFAULT_LOCATION;
@@ -112,7 +66,7 @@ async function resolveLocation(searchParams: {
     }
   }
 
-  // パターン3: lat&lng指定（一時的な使用）
+  // パターン2: lat&lng指定
   if (searchParams.lat && searchParams.lng) {
     try {
       const lat = parseFloat(searchParams.lat);
@@ -128,7 +82,7 @@ async function resolveLocation(searchParams: {
       const nearestPort = await findNearestPort(lat, lng);
       if (nearestPort) {
         return {
-          name: `指定地点 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          name: searchParams.name || `指定地点 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
           latitude: lat,
           longitude: lng,
           prefectureCode: nearestPort.prefecture_code,
@@ -148,16 +102,16 @@ async function resolveLocation(searchParams: {
     }
   }
 
-  // パターン4: デフォルト
+  // パターン3: デフォルト
   return DEFAULT_LOCATION;
 }
 
 type PageProps = {
   searchParams: Promise<{
-    locationId?: string;
     portId?: string;
     lat?: string;
     lng?: string;
+    name?: string;
   }>;
 };
 

@@ -83,11 +83,6 @@ export type tide_cache = Prisma.tide_cacheModel;
  */
 export type user_favorites = Prisma.user_favoritesModel;
 /**
- * Model user_search_history
- * 検索履歴
- */
-export type user_search_history = Prisma.user_search_historyModel;
-/**
  * Model user_settings
  * ユーザー設定
  */

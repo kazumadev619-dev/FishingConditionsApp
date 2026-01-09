@@ -6,7 +6,6 @@ import { Search, MapPin, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { useSession } from 'next-auth/react';
 import { logger } from '@/lib/logger';
 
 interface SearchResult {
@@ -23,7 +22,6 @@ interface FreeSearchTabProps {
 
 export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
   const router = useRouter();
-  const { data: session } = useSession();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -75,52 +73,27 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
   }, [debouncedQuery]);
 
   const handleSelectLocation = useCallback(
-    async (result: SearchResult) => {
+    (result: SearchResult) => {
       const location = {
         lat: result.latitude,
         lng: result.longitude,
         name: result.name || result.formatted_address,
       };
 
-      // ログイン済みの場合はlocationsに保存
-      if (session?.user) {
-        try {
-          const response = await fetch('/api/locations', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name: location.name,
-              latitude: location.lat,
-              longitude: location.lng,
-              address: result.formatted_address,
-            }),
-          });
+      // URLパラメータで直接 dashboard に遷移
+      const params = new URLSearchParams({
+        lat: location.lat.toString(),
+        lng: location.lng.toString(),
+        name: location.name,
+      });
 
-          if (!response.ok) {
-            throw new Error('釣り場の保存に失敗しました');
-          }
-
-          const savedLocation = await response.json();
-
-          // 保存したlocationIdでダッシュボードに遷移
-          router.push(`/dashboard?locationId=${savedLocation.id}`);
-        } catch (err) {
-          logger.error({ err }, 'Failed to save location');
-          // 保存失敗時も座標で遷移
-          router.push(`/dashboard?lat=${location.lat}&lng=${location.lng}`);
-        }
-      } else {
-        // 未ログイン時は座標のみでダッシュボードに遷移
-        router.push(`/dashboard?lat=${location.lat}&lng=${location.lng}`);
-      }
+      router.push(`/dashboard?${params.toString()}`);
 
       if (onLocationSelect) {
         onLocationSelect(location);
       }
     },
-    [router, session, onLocationSelect],
+    [router, onLocationSelect],
   );
 
   return (

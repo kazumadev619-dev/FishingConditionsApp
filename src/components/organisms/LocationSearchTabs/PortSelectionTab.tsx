@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { useSession } from 'next-auth/react';
 import { logger } from '@/lib/logger';
 
 interface Port {
@@ -35,7 +34,6 @@ interface PortSelectionTabProps {
 
 export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
   const router = useRouter();
-  const { data: session } = useSession();
   const [selectedPrefecture, setSelectedPrefecture] = useState<string>('');
   const [selectedPortId, setSelectedPortId] = useState<string>('');
   const [allPorts, setAllPorts] = useState<Port[]>([]);
@@ -93,7 +91,7 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
   }, [allPorts, selectedPrefecture]);
 
   const handlePortChange = useCallback(
-    async (portId: string) => {
+    (portId: string) => {
       setSelectedPortId(portId);
 
       const port = allPorts.find((p) => p.id === portId);
@@ -106,45 +104,14 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
         return;
       }
 
-      // ログイン済みの場合はlocationsに保存
-      if (session?.user) {
-        try {
-          const response = await fetch('/api/locations', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name: port.name,
-              latitude: port.latitude,
-              longitude: port.longitude,
-              port_id: port.id,
-            }),
-          });
-
-          if (!response.ok) {
-            throw new Error('釣り場の保存に失敗しました');
-          }
-
-          const savedLocation = await response.json();
-
-          // 保存したlocationIdでダッシュボードに遷移
-          router.push(`/dashboard?locationId=${savedLocation.id}`);
-        } catch (err) {
-          logger.error({ err }, 'Failed to save location');
-          // 保存失敗時もportIdで遷移
-          router.push(`/dashboard?portId=${port.id}`);
-        }
-      } else {
-        // 未ログイン時はportIdでダッシュボードに遷移
-        router.push(`/dashboard?portId=${port.id}`);
-      }
+      // portId で直接 dashboard に遷移
+      router.push(`/dashboard?portId=${port.id}`);
 
       if (onPortSelect) {
         onPortSelect(port);
       }
     },
-    [allPorts, router, session, onPortSelect],
+    [allPorts, router, onPortSelect],
   );
 
   return (
