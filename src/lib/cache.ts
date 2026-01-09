@@ -175,11 +175,8 @@ export async function withCache<T>(
   const cached = await cache.get<T>(key);
 
   if (cached !== null) {
-    logger.debug({ key }, 'Cache hit');
     return { data: cached, fromCache: true };
   }
-
-  logger.debug({ key }, 'Cache miss');
 
   // fetcherでデータを取得
   const data = await fetcher();

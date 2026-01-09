@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
-import { MapPin, Loader2, Anchor } from 'lucide-react';
+import { Loader2, Anchor } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -212,16 +212,6 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
       {!isLoading && selectedPrefecture && filteredPorts.length === 0 && !error && (
         <div className="text-center py-8 text-sm text-muted-foreground">
           この都道府県に登録されている港がありません
-        </div>
-      )}
-
-      {/* ヘルプテキスト */}
-      {!selectedPrefecture && !isLoading && !error && (
-        <div className="flex items-start gap-2 text-xs text-muted-foreground p-3 bg-muted/50 rounded-lg">
-          <MapPin className="h-4 w-4 mt-0.5 shrink-0" />
-          <div>
-            港マスタから選択すると、確実に潮汐データを取得できます。都道府県を選択してください。
-          </div>
         </div>
       )}
     </div>
