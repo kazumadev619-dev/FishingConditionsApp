@@ -11,7 +11,6 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
 import { useSession } from 'next-auth/react';
 import { logger } from '@/lib/logger';
 
@@ -38,6 +37,7 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
   const router = useRouter();
   const { data: session } = useSession();
   const [selectedPrefecture, setSelectedPrefecture] = useState<string>('');
+  const [selectedPortId, setSelectedPortId] = useState<string>('');
   const [allPorts, setAllPorts] = useState<Port[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -92,8 +92,15 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
     return allPorts.filter((port) => port.prefecture_code === selectedPrefecture);
   }, [allPorts, selectedPrefecture]);
 
-  const handleSelectPort = useCallback(
-    async (port: Port) => {
+  const handlePortChange = useCallback(
+    async (portId: string) => {
+      setSelectedPortId(portId);
+
+      const port = allPorts.find((p) => p.id === portId);
+      if (!port) {
+        return;
+      }
+
       if (!port.latitude || !port.longitude) {
         logger.error({ portId: port.id }, 'Port has no coordinates');
         return;
@@ -137,7 +144,7 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
         onPortSelect(port);
       }
     },
-    [router, session, onPortSelect],
+    [allPorts, router, session, onPortSelect],
   );
 
   return (
@@ -170,35 +177,35 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
         <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
       )}
 
-      {/* 港リスト */}
+      {/* 港選択 */}
       {!isLoading && filteredPorts.length > 0 && (
-        <ScrollArea className="h-[300px] rounded-lg border">
-          <div className="p-2 space-y-1">
-            {filteredPorts.map((port) => (
-              <button
-                key={port.id}
-                onClick={() => handleSelectPort(port)}
-                disabled={!port.latitude || !port.longitude}
-                className={cn(
-                  'w-full text-left rounded-lg p-3 transition-colors',
-                  'hover:bg-accent hover:text-accent-foreground',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
-                  'disabled:opacity-50 disabled:cursor-not-allowed',
-                )}
-              >
-                <div className="flex items-start gap-2">
-                  <Anchor className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm">{port.name}</div>
-                    {(!port.latitude || !port.longitude) && (
-                      <div className="text-xs text-muted-foreground">座標情報なし</div>
-                    )}
+        <Select value={selectedPortId} onValueChange={handlePortChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="港を選択" />
+          </SelectTrigger>
+          <SelectContent>
+            <ScrollArea className="h-[300px]">
+              {filteredPorts.map((port) => (
+                <SelectItem
+                  key={port.id}
+                  value={port.id}
+                  disabled={!port.latitude || !port.longitude}
+                  className="flex items-start gap-2"
+                >
+                  <div className="flex items-start gap-2 w-full">
+                    <Anchor className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-sm">{port.name}</div>
+                      {(!port.latitude || !port.longitude) && (
+                        <div className="text-xs text-muted-foreground">座標情報なし</div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </ScrollArea>
+                </SelectItem>
+              ))}
+            </ScrollArea>
+          </SelectContent>
+        </Select>
       )}
 
       {/* 空状態 */}
