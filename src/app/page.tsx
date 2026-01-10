@@ -61,5 +61,5 @@ export default async function Home() {
     },
   };
 
-  return <DashboardGrid data={dashboardData} />;
+  return <DashboardGrid data={dashboardData} location={DEFAULT_LOCATION} />;
 }

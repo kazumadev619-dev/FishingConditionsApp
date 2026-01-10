@@ -19,8 +19,8 @@ export const { auth } = NextAuth({
       const isOnAuth = nextUrl.pathname === '/login' || nextUrl.pathname === '/register';
       const isOnRoot = nextUrl.pathname === '/';
 
-      // 未ログイン & ダッシュボードアクセス → ログインページへ
-      if (isOnDashboard && !isLoggedIn) {
+      // 未ログイン & (ダッシュボード or ルート) → ログインページへ
+      if ((isOnDashboard || isOnRoot) && !isLoggedIn) {
         return false; // /login へリダイレクト
       }
 
@@ -34,7 +34,7 @@ export const { auth } = NextAuth({
         return Response.redirect(new URL('/dashboard', nextUrl));
       }
 
-      // 未ログイン & ルート → そのまま表示（ランディングページ）
+      // その他のケースはアクセス許可
       return true;
     },
   },

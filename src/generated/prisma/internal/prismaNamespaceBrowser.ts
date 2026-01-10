@@ -56,7 +56,6 @@ export const ModelName = {
   weather_cache: 'weather_cache',
   tide_cache: 'tide_cache',
   user_favorites: 'user_favorites',
-  user_search_history: 'user_search_history',
   user_settings: 'user_settings',
 } as const;
 
@@ -135,6 +134,7 @@ export const PortsScalarFieldEnum = {
   id: 'id',
   name: 'name',
   prefecture_code: 'prefecture_code',
+  prefecture_name: 'prefecture_name',
   port_code: 'port_code',
   latitude: 'latitude',
   longitude: 'longitude',
@@ -175,16 +175,6 @@ export const User_favoritesScalarFieldEnum = {
 
 export type User_favoritesScalarFieldEnum =
   (typeof User_favoritesScalarFieldEnum)[keyof typeof User_favoritesScalarFieldEnum];
-
-export const User_search_historyScalarFieldEnum = {
-  id: 'id',
-  user_id: 'user_id',
-  location_id: 'location_id',
-  searched_at: 'searched_at',
-} as const;
-
-export type User_search_historyScalarFieldEnum =
-  (typeof User_search_historyScalarFieldEnum)[keyof typeof User_search_historyScalarFieldEnum];
 
 export const User_settingsScalarFieldEnum = {
   id: 'id',

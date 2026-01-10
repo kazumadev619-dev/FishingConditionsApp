@@ -26,7 +26,6 @@ model users {
   // リレーション
   identities      identities[]
   favorites       user_favorites[]
-  search_history  user_search_history[]
   settings        user_settings?
 }
 
@@ -78,10 +77,9 @@ model locations {
   updated_at    DateTime      @default(now()) @updatedAt @db.Timestamptz(6)
 
   // リレーション
-  port           ports?                @relation(fields: [port_id], references: [id])
+  port           ports?           @relation(fields: [port_id], references: [id])
   weather_cache  weather_cache[]
   favorites      user_favorites[]
-  search_history user_search_history[]
 
   @@index([latitude, longitude])
   @@index([prefecture])
@@ -92,6 +90,7 @@ model ports {
   id              String   @id @default(uuid()) @db.Uuid
   name            String   @db.VarChar(100)
   prefecture_code String   @db.VarChar(10)
+  prefecture_name String?  @db.VarChar(50)
   port_code       String   @db.VarChar(10)
   latitude        Float?
   longitude       Float?
@@ -168,21 +167,6 @@ model user_favorites {
 
   @@unique([user_id, location_id])
   @@index([user_id])
-}
-
-/// 検索履歴
-model user_search_history {
-  id          String   @id @default(uuid()) @db.Uuid
-  user_id     String   @db.Uuid
-  location_id String   @db.Uuid
-  searched_at DateTime @default(now()) @db.Timestamptz(6)
-
-  // リレーション
-  user     users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  location locations @relation(fields: [location_id], references: [id], onDelete: Cascade)
-
-  @@index([user_id, searched_at(sort: Desc)])
-  @@index([location_id])
 }
 
 /// ユーザー設定

@@ -11,7 +11,7 @@ export function LocationSearchTabs() {
       <TabsList className="grid w-full grid-cols-2">
         <TabsTrigger value="free" className="flex items-center gap-2">
           <Search className="h-4 w-4" />
-          <span>自由検索</span>
+          <span>検索</span>
         </TabsTrigger>
         <TabsTrigger value="port" className="flex items-center gap-2">
           <Anchor className="h-4 w-4" />
@@ -33,3 +33,4 @@ export function LocationSearchTabs() {
 // Re-export sub-components if needed
 export { FreeSearchTab } from './FreeSearchTab';
 export { PortSelectionTab } from './PortSelectionTab';
+export { FavoriteTab } from './FavoriteTab';

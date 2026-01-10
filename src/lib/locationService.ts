@@ -39,6 +39,7 @@ function formatLocationResult(result: GeocodingResult): LocationSearchResult {
 
   return {
     place_id: result.place_id,
+    name: result.name,
     formatted_address: result.formatted_address,
     latitude: result.geometry.location.lat,
     longitude: result.geometry.location.lng,

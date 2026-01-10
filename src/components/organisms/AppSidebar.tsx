@@ -9,9 +9,10 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Home, MapPin, ChevronDown, Waves, User, LogOut, Search } from 'lucide-react';
+import { Home, MapPin, ChevronDown, Waves, User, LogOut, Search, Heart } from 'lucide-react';
 import { useSession, signOut } from 'next-auth/react';
 import { LocationSearchTabs } from '@/components/organisms/LocationSearchTabs';
+import { FavoritesModal } from '@/components/organisms/FavoritesModal';
 
 const sidebarItems = [
   {
@@ -24,8 +25,7 @@ const sidebarItems = [
     icon: <MapPin />,
     items: [
       { title: '検索', icon: <Search className="h-4 w-4" />, component: 'search' },
-      { title: 'お気に入り', url: '#' },
-      { title: '履歴', url: '#' },
+      { title: 'お気に入り', icon: <Heart className="h-4 w-4" />, component: 'favorites' },
     ],
   },
 ];
@@ -37,6 +37,7 @@ interface AppSidebarProps {
 export function AppSidebar({ isOpen }: AppSidebarProps) {
   const { data: session } = useSession();
   const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
+  const [isFavoritesModalOpen, setIsFavoritesModalOpen] = useState(false);
 
   const toggleExpanded = (title: string) => {
     setExpandedItems((prev) => ({
@@ -106,15 +107,33 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                           </div>
                         );
                       }
-                      return (
-                        <a
-                          key={subItem.title}
-                          href={subItem.url}
-                          className="flex items-center justify-between rounded-2xl px-3 py-2 text-sm hover:bg-muted"
-                        >
-                          {subItem.title}
-                        </a>
-                      );
+
+                      if ('component' in subItem && subItem.component === 'favorites') {
+                        return (
+                          <button
+                            key={subItem.title}
+                            onClick={() => setIsFavoritesModalOpen(true)}
+                            className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm hover:bg-muted"
+                          >
+                            {subItem.icon}
+                            <span>{subItem.title}</span>
+                          </button>
+                        );
+                      }
+
+                      if ('url' in subItem && typeof subItem.url === 'string') {
+                        return (
+                          <a
+                            key={subItem.title}
+                            href={subItem.url}
+                            className="flex items-center justify-between rounded-2xl px-3 py-2 text-sm hover:bg-muted"
+                          >
+                            {subItem.title}
+                          </a>
+                        );
+                      }
+
+                      return null;
                     })}
                   </div>
                 )}
@@ -144,6 +163,9 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
           </DropdownMenu>
         </div>
       </div>
+
+      {/* お気に入りモーダル */}
+      <FavoritesModal open={isFavoritesModalOpen} onOpenChange={setIsFavoritesModalOpen} />
     </div>
   );
 }

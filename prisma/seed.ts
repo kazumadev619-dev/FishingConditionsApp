@@ -21,6 +21,7 @@ const prisma = new PrismaClient({ adapter });
  */
 function parsePortsCSV(csvContent: string): Array<{
   prefecture_code: string;
+  prefecture_name: string;
   port_code: string;
   name: string;
 }> {
@@ -32,8 +33,9 @@ function parsePortsCSV(csvContent: string): Array<{
     const [prefectureCode, portCode, prefectureName, portName] = line.split(',');
     return {
       prefecture_code: prefectureCode?.trim() || '',
+      prefecture_name: prefectureName?.trim() || '',
       port_code: portCode?.trim() || '',
-      name: `${prefectureName?.trim() || ''}・${portName?.trim() || ''}`,
+      name: portName?.trim() || '',
     };
   });
 }
@@ -71,12 +73,12 @@ async function seedPorts() {
     const valuesList = ports
       .map(
         (port) =>
-          `('${randomUUID()}', '${escapeSql(port.prefecture_code)}', '${escapeSql(port.port_code)}', '${escapeSql(port.name)}', NULL, NULL, now())`
+          `('${randomUUID()}', '${escapeSql(port.prefecture_code)}', '${escapeSql(port.prefecture_name)}', '${escapeSql(port.port_code)}', '${escapeSql(port.name)}', NULL, NULL, now())`
       )
       .join(', ');
 
     const insertQuery = `
-      INSERT INTO "ports" (id, prefecture_code, port_code, name, latitude, longitude, created_at)
+      INSERT INTO "ports" (id, prefecture_code, prefecture_name, port_code, name, latitude, longitude, created_at)
       VALUES ${valuesList}
       ON CONFLICT (prefecture_code, port_code) DO NOTHING
     `;

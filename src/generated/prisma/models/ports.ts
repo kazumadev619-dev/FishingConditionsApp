@@ -39,6 +39,7 @@ export type PortsMinAggregateOutputType = {
   id: string | null;
   name: string | null;
   prefecture_code: string | null;
+  prefecture_name: string | null;
   port_code: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -49,6 +50,7 @@ export type PortsMaxAggregateOutputType = {
   id: string | null;
   name: string | null;
   prefecture_code: string | null;
+  prefecture_name: string | null;
   port_code: string | null;
   latitude: number | null;
   longitude: number | null;
@@ -59,6 +61,7 @@ export type PortsCountAggregateOutputType = {
   id: number;
   name: number;
   prefecture_code: number;
+  prefecture_name: number;
   port_code: number;
   latitude: number;
   longitude: number;
@@ -80,6 +83,7 @@ export type PortsMinAggregateInputType = {
   id?: true;
   name?: true;
   prefecture_code?: true;
+  prefecture_name?: true;
   port_code?: true;
   latitude?: true;
   longitude?: true;
@@ -90,6 +94,7 @@ export type PortsMaxAggregateInputType = {
   id?: true;
   name?: true;
   prefecture_code?: true;
+  prefecture_name?: true;
   port_code?: true;
   latitude?: true;
   longitude?: true;
@@ -100,6 +105,7 @@ export type PortsCountAggregateInputType = {
   id?: true;
   name?: true;
   prefecture_code?: true;
+  prefecture_name?: true;
   port_code?: true;
   latitude?: true;
   longitude?: true;
@@ -198,6 +204,7 @@ export type PortsGroupByOutputType = {
   id: string;
   name: string;
   prefecture_code: string;
+  prefecture_name: string | null;
   port_code: string;
   latitude: number | null;
   longitude: number | null;
@@ -228,6 +235,7 @@ export type portsWhereInput = {
   id?: Prisma.UuidFilter<'ports'> | string;
   name?: Prisma.StringFilter<'ports'> | string;
   prefecture_code?: Prisma.StringFilter<'ports'> | string;
+  prefecture_name?: Prisma.StringNullableFilter<'ports'> | string | null;
   port_code?: Prisma.StringFilter<'ports'> | string;
   latitude?: Prisma.FloatNullableFilter<'ports'> | number | null;
   longitude?: Prisma.FloatNullableFilter<'ports'> | number | null;
@@ -240,6 +248,7 @@ export type portsOrderByWithRelationInput = {
   id?: Prisma.SortOrder;
   name?: Prisma.SortOrder;
   prefecture_code?: Prisma.SortOrder;
+  prefecture_name?: Prisma.SortOrderInput | Prisma.SortOrder;
   port_code?: Prisma.SortOrder;
   latitude?: Prisma.SortOrderInput | Prisma.SortOrder;
   longitude?: Prisma.SortOrderInput | Prisma.SortOrder;
@@ -257,6 +266,7 @@ export type portsWhereUniqueInput = Prisma.AtLeast<
     NOT?: Prisma.portsWhereInput | Prisma.portsWhereInput[];
     name?: Prisma.StringFilter<'ports'> | string;
     prefecture_code?: Prisma.StringFilter<'ports'> | string;
+    prefecture_name?: Prisma.StringNullableFilter<'ports'> | string | null;
     port_code?: Prisma.StringFilter<'ports'> | string;
     latitude?: Prisma.FloatNullableFilter<'ports'> | number | null;
     longitude?: Prisma.FloatNullableFilter<'ports'> | number | null;
@@ -271,6 +281,7 @@ export type portsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder;
   name?: Prisma.SortOrder;
   prefecture_code?: Prisma.SortOrder;
+  prefecture_name?: Prisma.SortOrderInput | Prisma.SortOrder;
   port_code?: Prisma.SortOrder;
   latitude?: Prisma.SortOrderInput | Prisma.SortOrder;
   longitude?: Prisma.SortOrderInput | Prisma.SortOrder;
@@ -289,6 +300,7 @@ export type portsScalarWhereWithAggregatesInput = {
   id?: Prisma.UuidWithAggregatesFilter<'ports'> | string;
   name?: Prisma.StringWithAggregatesFilter<'ports'> | string;
   prefecture_code?: Prisma.StringWithAggregatesFilter<'ports'> | string;
+  prefecture_name?: Prisma.StringNullableWithAggregatesFilter<'ports'> | string | null;
   port_code?: Prisma.StringWithAggregatesFilter<'ports'> | string;
   latitude?: Prisma.FloatNullableWithAggregatesFilter<'ports'> | number | null;
   longitude?: Prisma.FloatNullableWithAggregatesFilter<'ports'> | number | null;
@@ -299,6 +311,7 @@ export type portsCreateInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -311,6 +324,7 @@ export type portsUncheckedCreateInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -323,6 +337,7 @@ export type portsUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -335,6 +350,7 @@ export type portsUncheckedUpdateInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -347,6 +363,7 @@ export type portsCreateManyInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -357,6 +374,7 @@ export type portsUpdateManyMutationInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -367,6 +385,7 @@ export type portsUncheckedUpdateManyInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -387,6 +406,7 @@ export type portsCountOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   name?: Prisma.SortOrder;
   prefecture_code?: Prisma.SortOrder;
+  prefecture_name?: Prisma.SortOrder;
   port_code?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
@@ -402,6 +422,7 @@ export type portsMaxOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   name?: Prisma.SortOrder;
   prefecture_code?: Prisma.SortOrder;
+  prefecture_name?: Prisma.SortOrder;
   port_code?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
@@ -412,6 +433,7 @@ export type portsMinOrderByAggregateInput = {
   id?: Prisma.SortOrder;
   name?: Prisma.SortOrder;
   prefecture_code?: Prisma.SortOrder;
+  prefecture_name?: Prisma.SortOrder;
   port_code?: Prisma.SortOrder;
   latitude?: Prisma.SortOrder;
   longitude?: Prisma.SortOrder;
@@ -494,6 +516,7 @@ export type portsCreateWithoutLocationsInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -505,6 +528,7 @@ export type portsUncheckedCreateWithoutLocationsInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -544,6 +568,7 @@ export type portsUpdateWithoutLocationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -555,6 +580,7 @@ export type portsUncheckedUpdateWithoutLocationsInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -566,6 +592,7 @@ export type portsCreateWithoutTide_cacheInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -577,6 +604,7 @@ export type portsUncheckedCreateWithoutTide_cacheInput = {
   id?: string;
   name: string;
   prefecture_code: string;
+  prefecture_name?: string | null;
   port_code: string;
   latitude?: number | null;
   longitude?: number | null;
@@ -616,6 +644,7 @@ export type portsUpdateWithoutTide_cacheInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -627,6 +656,7 @@ export type portsUncheckedUpdateWithoutTide_cacheInput = {
   id?: Prisma.StringFieldUpdateOperationsInput | string;
   name?: Prisma.StringFieldUpdateOperationsInput | string;
   prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
+  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   port_code?: Prisma.StringFieldUpdateOperationsInput | string;
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
@@ -687,6 +717,7 @@ export type portsSelect<
     id?: boolean;
     name?: boolean;
     prefecture_code?: boolean;
+    prefecture_name?: boolean;
     port_code?: boolean;
     latitude?: boolean;
     longitude?: boolean;
@@ -705,6 +736,7 @@ export type portsSelectCreateManyAndReturn<
     id?: boolean;
     name?: boolean;
     prefecture_code?: boolean;
+    prefecture_name?: boolean;
     port_code?: boolean;
     latitude?: boolean;
     longitude?: boolean;
@@ -720,6 +752,7 @@ export type portsSelectUpdateManyAndReturn<
     id?: boolean;
     name?: boolean;
     prefecture_code?: boolean;
+    prefecture_name?: boolean;
     port_code?: boolean;
     latitude?: boolean;
     longitude?: boolean;
@@ -732,6 +765,7 @@ export type portsSelectScalar = {
   id?: boolean;
   name?: boolean;
   prefecture_code?: boolean;
+  prefecture_name?: boolean;
   port_code?: boolean;
   latitude?: boolean;
   longitude?: boolean;
@@ -741,7 +775,14 @@ export type portsSelectScalar = {
 export type portsOmit<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetOmit<
-  'id' | 'name' | 'prefecture_code' | 'port_code' | 'latitude' | 'longitude' | 'created_at',
+  | 'id'
+  | 'name'
+  | 'prefecture_code'
+  | 'prefecture_name'
+  | 'port_code'
+  | 'latitude'
+  | 'longitude'
+  | 'created_at',
   ExtArgs['result']['ports']
 >;
 export type portsInclude<
@@ -771,6 +812,7 @@ export type $portsPayload<
       id: string;
       name: string;
       prefecture_code: string;
+      prefecture_name: string | null;
       port_code: string;
       latitude: number | null;
       longitude: number | null;
@@ -1341,6 +1383,7 @@ export interface portsFieldRefs {
   readonly id: Prisma.FieldRef<'ports', 'String'>;
   readonly name: Prisma.FieldRef<'ports', 'String'>;
   readonly prefecture_code: Prisma.FieldRef<'ports', 'String'>;
+  readonly prefecture_name: Prisma.FieldRef<'ports', 'String'>;
   readonly port_code: Prisma.FieldRef<'ports', 'String'>;
   readonly latitude: Prisma.FieldRef<'ports', 'Float'>;
   readonly longitude: Prisma.FieldRef<'ports', 'Float'>;

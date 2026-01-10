@@ -6,19 +6,14 @@ import { Search, MapPin, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import { useSession } from 'next-auth/react';
 import { logger } from '@/lib/logger';
 
 interface SearchResult {
   place_id: string;
   formatted_address: string;
   name: string;
-  geometry: {
-    location: {
-      lat: number;
-      lng: number;
-    };
-  };
+  latitude: number;
+  longitude: number;
 }
 
 interface FreeSearchTabProps {
@@ -27,7 +22,6 @@ interface FreeSearchTabProps {
 
 export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
   const router = useRouter();
-  const { data: session } = useSession();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -79,52 +73,27 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
   }, [debouncedQuery]);
 
   const handleSelectLocation = useCallback(
-    async (result: SearchResult) => {
+    (result: SearchResult) => {
       const location = {
-        lat: result.geometry.location.lat,
-        lng: result.geometry.location.lng,
+        lat: result.latitude,
+        lng: result.longitude,
         name: result.name || result.formatted_address,
       };
 
-      // ログイン済みの場合はlocationsに保存
-      if (session?.user) {
-        try {
-          const response = await fetch('/api/locations', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              name: location.name,
-              latitude: location.lat,
-              longitude: location.lng,
-              address: result.formatted_address,
-            }),
-          });
+      // URLパラメータで直接 dashboard に遷移
+      const params = new URLSearchParams({
+        lat: location.lat.toString(),
+        lng: location.lng.toString(),
+        name: location.name,
+      });
 
-          if (!response.ok) {
-            throw new Error('釣り場の保存に失敗しました');
-          }
-
-          const savedLocation = await response.json();
-
-          // 保存したlocationIdでダッシュボードに遷移
-          router.push(`/dashboard?locationId=${savedLocation.id}`);
-        } catch (err) {
-          logger.error({ err }, 'Failed to save location');
-          // 保存失敗時も座標で遷移
-          router.push(`/dashboard?lat=${location.lat}&lng=${location.lng}`);
-        }
-      } else {
-        // 未ログイン時は座標のみでダッシュボードに遷移
-        router.push(`/dashboard?lat=${location.lat}&lng=${location.lng}`);
-      }
+      router.push(`/dashboard?${params.toString()}`);
 
       if (onLocationSelect) {
         onLocationSelect(location);
       }
     },
-    [router, session, onLocationSelect],
+    [router, onLocationSelect],
   );
 
   return (
@@ -134,10 +103,10 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           type="text"
-          placeholder="場所を検索（例: 東京湾、横浜港）"
+          placeholder="場所を検索"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          className="pl-9"
+          className="pl-9 text-sm"
         />
         {isLoading && (
           <Loader2 className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 animate-spin text-muted-foreground" />
@@ -146,28 +115,30 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
 
       {/* エラーメッセージ */}
       {error && (
-        <div className="rounded-lg bg-destructive/10 p-3 text-sm text-destructive">{error}</div>
+        <div className="rounded-lg bg-destructive/10 p-2 text-xs text-destructive wrap-break-word">
+          {error}
+        </div>
       )}
 
       {/* 検索結果 */}
       {results.length > 0 && (
-        <ScrollArea className="h-[300px] rounded-lg border">
-          <div className="p-2 space-y-1">
+        <ScrollArea className="h-[200px] rounded-lg border">
+          <div className="p-1 space-y-1">
             {results.map((result) => (
               <button
                 key={result.place_id}
                 onClick={() => handleSelectLocation(result)}
                 className={cn(
-                  'w-full text-left rounded-lg p-3 transition-colors',
+                  'w-full text-left rounded-lg p-2 transition-colors',
                   'hover:bg-accent hover:text-accent-foreground',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring',
                 )}
               >
                 <div className="flex items-start gap-2">
-                  <MapPin className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-sm truncate">{result.name}</div>
-                    <div className="text-xs text-muted-foreground truncate">
+                  <MapPin className="h-3 w-3 mt-0.5 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0 overflow-hidden">
+                    <div className="font-medium text-xs truncate">{result.name}</div>
+                    <div className="text-[10px] text-muted-foreground line-clamp-2 break-all">
                       {result.formatted_address}
                     </div>
                   </div>
@@ -180,15 +151,8 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
 
       {/* 空状態 */}
       {!isLoading && query.length >= 2 && results.length === 0 && !error && (
-        <div className="text-center py-8 text-sm text-muted-foreground">
+        <div className="text-center py-4 text-xs text-muted-foreground">
           検索結果が見つかりませんでした
-        </div>
-      )}
-
-      {/* ヘルプテキスト */}
-      {query.length === 0 && (
-        <div className="text-xs text-muted-foreground p-3">
-          任意の場所を検索できます。最寄りの潮汐観測港が自動的にマッピングされます。
         </div>
       )}
     </div>

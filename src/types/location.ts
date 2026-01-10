@@ -8,6 +8,8 @@
 export interface LocationSearchResult {
   /** Google Maps Place ID */
   place_id: string;
+  /** 場所の名前（存在する場合） */
+  name?: string;
   /** フォーマット済みの住所 */
   formatted_address: string;
   /** 緯度 */

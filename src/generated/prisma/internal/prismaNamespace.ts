@@ -383,7 +383,6 @@ export const ModelName = {
   weather_cache: 'weather_cache',
   tide_cache: 'tide_cache',
   user_favorites: 'user_favorites',
-  user_search_history: 'user_search_history',
   user_settings: 'user_settings',
 } as const;
 
@@ -414,7 +413,6 @@ export type TypeMap<
       | 'weather_cache'
       | 'tide_cache'
       | 'user_favorites'
-      | 'user_search_history'
       | 'user_settings';
     txIsolationLevel: TransactionIsolationLevel;
   };
@@ -1017,82 +1015,6 @@ export type TypeMap<
         };
       };
     };
-    user_search_history: {
-      payload: Prisma.$user_search_historyPayload<ExtArgs>;
-      fields: Prisma.user_search_historyFieldRefs;
-      operations: {
-        findUnique: {
-          args: Prisma.user_search_historyFindUniqueArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload> | null;
-        };
-        findUniqueOrThrow: {
-          args: Prisma.user_search_historyFindUniqueOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        findFirst: {
-          args: Prisma.user_search_historyFindFirstArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload> | null;
-        };
-        findFirstOrThrow: {
-          args: Prisma.user_search_historyFindFirstOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        findMany: {
-          args: Prisma.user_search_historyFindManyArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>[];
-        };
-        create: {
-          args: Prisma.user_search_historyCreateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        createMany: {
-          args: Prisma.user_search_historyCreateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        createManyAndReturn: {
-          args: Prisma.user_search_historyCreateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>[];
-        };
-        delete: {
-          args: Prisma.user_search_historyDeleteArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        update: {
-          args: Prisma.user_search_historyUpdateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        deleteMany: {
-          args: Prisma.user_search_historyDeleteManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateMany: {
-          args: Prisma.user_search_historyUpdateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateManyAndReturn: {
-          args: Prisma.user_search_historyUpdateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>[];
-        };
-        upsert: {
-          args: Prisma.user_search_historyUpsertArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        aggregate: {
-          args: Prisma.User_search_historyAggregateArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.AggregateUser_search_history>;
-        };
-        groupBy: {
-          args: Prisma.user_search_historyGroupByArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.User_search_historyGroupByOutputType>[];
-        };
-        count: {
-          args: Prisma.user_search_historyCountArgs<ExtArgs>;
-          result:
-            | runtime.Types.Utils.Optional<Prisma.User_search_historyCountAggregateOutputType>
-            | number;
-        };
-      };
-    };
     user_settings: {
       payload: Prisma.$user_settingsPayload<ExtArgs>;
       fields: Prisma.user_settingsFieldRefs;
@@ -1267,6 +1189,7 @@ export const PortsScalarFieldEnum = {
   id: 'id',
   name: 'name',
   prefecture_code: 'prefecture_code',
+  prefecture_name: 'prefecture_name',
   port_code: 'port_code',
   latitude: 'latitude',
   longitude: 'longitude',
@@ -1307,16 +1230,6 @@ export const User_favoritesScalarFieldEnum = {
 
 export type User_favoritesScalarFieldEnum =
   (typeof User_favoritesScalarFieldEnum)[keyof typeof User_favoritesScalarFieldEnum];
-
-export const User_search_historyScalarFieldEnum = {
-  id: 'id',
-  user_id: 'user_id',
-  location_id: 'location_id',
-  searched_at: 'searched_at',
-} as const;
-
-export type User_search_historyScalarFieldEnum =
-  (typeof User_search_historyScalarFieldEnum)[keyof typeof User_search_historyScalarFieldEnum];
 
 export const User_settingsScalarFieldEnum = {
   id: 'id',
@@ -1561,7 +1474,6 @@ export type GlobalOmitConfig = {
   weather_cache?: Prisma.weather_cacheOmit;
   tide_cache?: Prisma.tide_cacheOmit;
   user_favorites?: Prisma.user_favoritesOmit;
-  user_search_history?: Prisma.user_search_historyOmit;
   user_settings?: Prisma.user_settingsOmit;
 };
 
