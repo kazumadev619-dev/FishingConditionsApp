@@ -1,5 +1,6 @@
 'use client';
 
+import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import { ScoreCard } from '@/components/molecules/ScoreCard';
 import { TideCard } from '@/components/molecules/TideCard';
@@ -37,6 +38,7 @@ interface DashboardGridProps {
 }
 
 export function DashboardGrid({ data, location }: DashboardGridProps) {
+  const router = useRouter();
   const { isFavorite, addFavorite, removeFavorite, isLoading } = useFavorites();
 
   const handleToggleFavorite = async () => {
@@ -46,19 +48,25 @@ export function DashboardGrid({ data, location }: DashboardGridProps) {
         await removeFavorite(locationId);
       } else {
         // locationIdがある場合はそれを使用、ない場合はsourceから作成
+        let newLocationId: string;
         if (location.id) {
-          await addFavorite(location.id);
+          newLocationId = await addFavorite(location.id);
         } else if (location.source?.type === 'port' && location.source.portId) {
-          await addFavorite(undefined, location.source.portId);
+          newLocationId = await addFavorite(undefined, location.source.portId);
         } else if (location.source?.type === 'coordinates' && location.source.coordinates) {
-          await addFavorite(
+          newLocationId = await addFavorite(
             undefined,
             undefined,
             location.source.coordinates.lat,
             location.source.coordinates.lng,
             location.source.coordinates.name,
           );
+        } else {
+          return;
         }
+
+        // 新しいlocationIdでURLを更新（portIdや座標ではなくlocationIdで管理）
+        router.replace(`/dashboard?locationId=${newLocationId}`);
       }
     } catch {
       // エラーはuseFavorites内でログ出力済み

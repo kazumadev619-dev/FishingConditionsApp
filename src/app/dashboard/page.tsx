@@ -80,6 +80,14 @@ async function resolveLocation(searchParams: {
         longitude: location.longitude,
         prefectureCode,
         portCode,
+        source: {
+          type: 'coordinates' as const,
+          coordinates: {
+            lat: location.latitude,
+            lng: location.longitude,
+            name: location.name,
+          },
+        },
       };
     } catch (error) {
       logger.error({ err: error, locationId: searchParams.locationId }, 'Error resolving location');

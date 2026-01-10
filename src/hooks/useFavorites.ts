@@ -2,19 +2,20 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { logger } from '@/lib/logger';
-import type { FavoriteLocation, FavoritesResponse } from '@/types/favorites';
+import type { FavoriteLocation, FavoritesResponse, FavoriteAddResponse } from '@/types/favorites';
 
 interface UseFavoritesReturn {
   favorites: FavoriteLocation[];
   isLoading: boolean;
   error: string | null;
+  /** お気に入り追加。成功時は登録されたlocationIdを返す */
   addFavorite: (
     locationId?: string,
     portId?: string,
     lat?: number,
     lng?: number,
     name?: string,
-  ) => Promise<void>;
+  ) => Promise<string>;
   removeFavorite: (locationId: string) => Promise<void>;
   isFavorite: (locationId: string) => boolean;
   refetch: () => void;
@@ -58,7 +59,13 @@ export function useFavorites(): UseFavoritesReturn {
 
   // お気に入りに追加
   const addFavorite = useCallback(
-    async (locationId?: string, portId?: string, lat?: number, lng?: number, name?: string) => {
+    async (
+      locationId?: string,
+      portId?: string,
+      lat?: number,
+      lng?: number,
+      name?: string,
+    ): Promise<string> => {
       // 楽観的UI更新（仮のお気に入りを追加）
       const tempFavorite: FavoriteLocation = {
         id: 'temp',
@@ -109,8 +116,13 @@ export function useFavorites(): UseFavoritesReturn {
           throw new Error(errorData.error || 'お気に入りの追加に失敗しました');
         }
 
+        // APIから登録されたlocationIdを取得
+        const data: FavoriteAddResponse = await response.json();
+
         // 成功したら最新のデータを取得
         await fetchFavorites();
+
+        return data.locationId;
       } catch (err) {
         logger.error({ err, locationId, portId, lat, lng }, 'Failed to add favorite');
 

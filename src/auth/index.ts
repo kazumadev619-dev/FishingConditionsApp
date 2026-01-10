@@ -196,15 +196,64 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return true;
     },
-    async jwt({ token, user }) {
-      if (user) {
-        token.id = user.id;
+    async jwt({ token, user, account }) {
+      // 初回ログイン時
+      if (user && account) {
+        token.email = user.email; // emailを保存（トークン更新時に使用）
+        if (account.provider === 'google') {
+          // Google認証時はDBからユーザーIDを取得
+          const dbUser = await prisma.users.findUnique({
+            where: { email: user.email?.toLowerCase().trim() },
+            select: { id: true },
+          });
+          if (dbUser) {
+            token.id = dbUser.id;
+          } else {
+            // DBからユーザーが見つからない場合はエラーログを記録
+            logger.error(
+              { email: user.email ? maskEmail(user.email) : 'unknown' },
+              'JWT callback: User not found in DB after Google sign-in',
+            );
+            // 空文字列を設定（後続処理でエラー検知可能にする）
+            token.id = '';
+          }
+        } else {
+          // Credentials認証時はそのまま使用（DBから取得したユーザーなのでIDは正しい）
+          token.id = user.id;
+        }
+      }
+      // 既存トークンの修正（GoogleのIDがセットされている古いトークンの場合）
+      // UUID形式（36文字、ハイフン区切り）でない場合はDBから再取得
+      else if (token.email && token.id) {
+        const tokenId = token.id as string;
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+          tokenId,
+        );
+        if (!isUUID) {
+          const dbUser = await prisma.users.findUnique({
+            where: { email: (token.email as string).toLowerCase().trim() },
+            select: { id: true },
+          });
+          if (dbUser) {
+            token.id = dbUser.id;
+          }
+        }
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
+        const tokenId = token.id as string;
+        // UUID形式の検証
+        const isValidUUID =
+          tokenId &&
+          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tokenId);
+        if (isValidUUID) {
+          session.user.id = tokenId;
+        } else {
+          logger.error({ tokenId }, 'Session callback: Invalid user ID in token');
+          session.user.id = ''; // 無効なIDの場合は空文字列
+        }
       }
       return session;
     },

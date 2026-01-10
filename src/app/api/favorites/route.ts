@@ -10,7 +10,12 @@ import { auth } from '@/auth';
 import prisma from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
 import { logger } from '@/lib/logger';
-import type { FavoriteRequest, FavoritesResponse, FavoriteLocation } from '@/types/favorites';
+import type {
+  FavoriteRequest,
+  FavoritesResponse,
+  FavoriteLocation,
+  FavoriteAddResponse,
+} from '@/types/favorites';
 
 /**
  * 座標を小数点4桁に丸める（約11m精度）
@@ -24,16 +29,22 @@ function roundCoordinate(coord: number): number {
  */
 export async function GET(): Promise<NextResponse<FavoritesResponse | { error: string }>> {
   try {
-    // 認証チェック
+    // セッションからユーザーIDを取得（ログイン前提のアプリなので認証チェックは省略）
     const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = session?.user?.id;
+
+    // UUID形式の検証（無効なセッションの場合はエラー）
+    const isValidUUID =
+      userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    if (!isValidUUID) {
+      logger.error({ userId }, 'GET favorites: Invalid user ID in session');
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 
     // お気に入り一覧を取得（location情報を含む）
     const favorites = await prisma.user_favorites.findMany({
       where: {
-        user_id: session.user.id,
+        user_id: userId,
       },
       include: {
         location: true,
@@ -75,12 +86,18 @@ export async function GET(): Promise<NextResponse<FavoritesResponse | { error: s
  */
 export async function POST(
   request: NextRequest,
-): Promise<NextResponse<{ success: boolean } | { error: string }>> {
+): Promise<NextResponse<FavoriteAddResponse | { error: string }>> {
   try {
-    // 認証チェック
+    // セッションからユーザーIDを取得（ログイン前提のアプリなので認証チェックは省略）
     const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = session?.user?.id;
+
+    // UUID形式の検証（無効なセッションの場合はエラー）
+    const isValidUUID =
+      userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    if (!isValidUUID) {
+      logger.error({ userId }, 'POST favorites: Invalid user ID in session');
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 
     // リクエストボディを取得
@@ -196,12 +213,12 @@ export async function POST(
     // お気に入りを追加
     await prisma.user_favorites.create({
       data: {
-        user_id: session.user.id,
+        user_id: userId,
         location_id: finalLocationId,
       },
     });
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true, locationId: finalLocationId });
   } catch (error) {
     logger.error({ error }, 'Failed to add favorite');
 
@@ -213,7 +230,14 @@ export async function POST(
           return NextResponse.json({ error: 'Already added to favorites' }, { status: 409 });
         }
         case 'P2003': {
-          // 外部キー制約違反（locationIdが存在しない）
+          // 外部キー制約違反
+          const meta = error.meta as { constraint?: string } | undefined;
+          const constraint = meta?.constraint;
+          if (constraint?.includes('user_id')) {
+            // user_id外部キー制約違反 - ユーザーが存在しない
+            return NextResponse.json({ error: 'User not found' }, { status: 401 });
+          }
+          // location_id外部キー制約違反 - ロケーションが存在しない
           return NextResponse.json({ error: 'Location not found' }, { status: 404 });
         }
         default:
@@ -234,10 +258,16 @@ export async function DELETE(
   request: NextRequest,
 ): Promise<NextResponse<{ success: boolean } | { error: string }>> {
   try {
-    // 認証チェック
+    // セッションからユーザーIDを取得（ログイン前提のアプリなので認証チェックは省略）
     const session = await auth();
-    if (!session?.user?.id) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    const userId = session?.user?.id;
+
+    // UUID形式の検証（無効なセッションの場合はエラー）
+    const isValidUUID =
+      userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
+    if (!isValidUUID) {
+      logger.error({ userId }, 'DELETE favorites: Invalid user ID in session');
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 
     // クエリパラメータから locationId を取得
@@ -251,7 +281,7 @@ export async function DELETE(
     // お気に入りを削除
     const result = await prisma.user_favorites.deleteMany({
       where: {
-        user_id: session.user.id,
+        user_id: userId,
         location_id: locationId,
       },
     });

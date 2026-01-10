@@ -49,3 +49,13 @@ export interface FavoritesResponse {
   /** 取得件数 */
   count: number;
 }
+
+/**
+ * お気に入り追加のレスポンス
+ */
+export interface FavoriteAddResponse {
+  /** 成功フラグ */
+  success: boolean;
+  /** 登録された釣り場ID（URL更新用） */
+  locationId: string;
+}
