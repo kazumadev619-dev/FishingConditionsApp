@@ -21,8 +21,9 @@ export interface SunInfo {
  * 月の情報を表すインターフェース
  */
 export interface MoonInfo {
-  age: number; // 月齢
-  title: string; // 月の名称 (例: "新月")
+  brightness: string; // 輝度 (例: "64.7")
+  age: string; // 月齢 (例: "9.1")
+  title: string; // 潮の種類 (例: "長潮", "大潮")
 }
 
 /**

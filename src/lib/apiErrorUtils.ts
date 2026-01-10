@@ -1,4 +1,5 @@
 import { ApiError, ApiErrorType } from './apiClient';
+import { logger } from './logger';
 
 // ApiError インスタンスかどうかを判定
 export function isApiError(error: unknown): error is ApiError {
@@ -46,7 +47,7 @@ export function logApiError(error: ApiError, context?: Record<string, unknown>):
     timestamp: new Date().toISOString(),
     ...context,
   };
-  console.log('[API Error]', logData);
+  logger.error(logData, 'API request failed');
 }
 
 /**
@@ -68,7 +69,7 @@ export async function retryWithBackoff<T>(
 
       if (attempt < maxRetries - 1) {
         const delay = initialDelay * Math.pow(2, attempt);
-        console.warn(`[Retry] Attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+        logger.warn({ attempt: attempt + 1, delayMs: delay }, 'Retry attempt failed, retrying...');
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
     }

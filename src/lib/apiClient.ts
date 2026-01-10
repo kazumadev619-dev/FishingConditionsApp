@@ -1,4 +1,7 @@
 // API エラーの種類を定義
+import { withCache, generateCacheKey } from './cache';
+import { logger } from './logger';
+
 export enum ApiErrorType {
   TIMEOUT = 'TIMEOUT', // リクエストタイムアウト
   RATE_LIMITED = 'RATE_LIMITED', // API レート制限（429）
@@ -20,10 +23,15 @@ export class ApiError extends Error {
   }
 }
 
-interface RequestOptions extends RequestInit {
+interface RequestOptions extends Omit<RequestInit, 'cache'> {
   params?: Record<string, string>;
   timeout?: number; // ミリ秒単位のタイムアウト（デフォルト: 10000）
   retries?: number; // リトライ回数（デフォルト: 3）
+  cache?: {
+    ttl: number; // TTL（秒）
+    key?: string; // キャッシュキー（省略時は自動生成）
+    prefix?: string; // キャッシュキーのプレフィックス
+  };
 }
 
 // リトライ可能なHTTPステータスコード
@@ -38,6 +46,8 @@ class ApiClient {
   // APIキーをクエリパラメータとして渡すか、ヘッダーで渡すかを指定
   private keyLocation: 'query' | 'header';
   private keyName: string;
+  // APIクライアントが正しく設定されているかを示すフラグ
+  private isConfigured: boolean = true;
 
   // デフォルト設定
   private readonly DEFAULT_TIMEOUT_MS = 10000; // 10秒
@@ -48,11 +58,25 @@ class ApiClient {
     apiKey: string,
     keyLocation: 'query' | 'header' = 'header', // デフォルトはヘッダー
     keyName: string = 'X-API-Key', // デフォルトのヘッダー/クエリ名
+    requireApiKey: boolean = true, // APIキーが必須かどうか
   ) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
     this.keyLocation = keyLocation;
     this.keyName = keyName;
+
+    // APIキーが必要なのに未設定の場合、警告を出して無効化
+    if (requireApiKey && !apiKey) {
+      logger.warn({ baseUrl }, 'API key not configured. Requests will fail');
+      this.isConfigured = false;
+    }
+  }
+
+  /**
+   * APIクライアントが正しく設定されているかチェック
+   */
+  public isAvailable(): boolean {
+    return this.isConfigured;
   }
 
   /**
@@ -125,10 +149,35 @@ class ApiClient {
     options: RequestOptions = {},
     attempt: number = 0,
   ): Promise<T> {
-    const timeout = options.timeout ?? this.DEFAULT_TIMEOUT_MS;
-    const maxRetries = options.retries ?? this.DEFAULT_RETRIES;
+    // APIクライアントが無効な場合、即座にエラーをスロー
+    if (!this.isConfigured) {
+      throw new ApiError(
+        'API client is not configured. Please check your environment variables.',
+        ApiErrorType.CLIENT_ERROR,
+        undefined,
+        false, // リトライ不可
+      );
+    }
 
-    const { params, headers, ...rest } = options;
+    // キャッシング処理（最初のリクエストのみ）
+    const { cache: cacheOptions, ...restOptions } = options;
+
+    if (cacheOptions && attempt === 0) {
+      const cacheKey =
+        cacheOptions.key ||
+        generateCacheKey(cacheOptions.prefix || 'api', restOptions.params || {});
+
+      return (
+        await withCache(cacheKey, cacheOptions.ttl, () =>
+          this.request<T>(endpoint, restOptions, attempt),
+        )
+      ).data;
+    }
+
+    const timeout = restOptions.timeout ?? this.DEFAULT_TIMEOUT_MS;
+    const maxRetries = restOptions.retries ?? this.DEFAULT_RETRIES;
+
+    const { params, headers, ...rest } = restOptions;
     const url = new URL(`${this.baseUrl}${endpoint}`);
 
     // 既存のクエリパラメータを追加
@@ -171,11 +220,12 @@ class ApiClient {
         // リトライ可能かつ、リトライ回数が残っている場合
         if (error.retryable && attempt < maxRetries) {
           const delay = this.getBackoffDelay(attempt);
-          console.warn(
-            `[API] Retry attempt ${attempt + 1}/${maxRetries} for ${endpoint} after ${delay}ms`,
+          logger.warn(
+            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay },
+            'Retrying API request',
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, options, attempt + 1);
+          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
         }
 
         throw error;
@@ -195,11 +245,12 @@ class ApiClient {
         // タイムアウトもリトライ対象
         if (attempt < maxRetries) {
           const delay = this.getBackoffDelay(attempt);
-          console.warn(
-            `[API] Retry attempt ${attempt + 1}/${maxRetries} after timeout (${delay}ms)`,
+          logger.warn(
+            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay, reason: 'timeout' },
+            'Retrying API request after timeout',
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, options, attempt + 1);
+          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
         }
 
         throw timeoutError;
@@ -216,11 +267,12 @@ class ApiClient {
 
         if (networkError.retryable && attempt < maxRetries) {
           const delay = this.getBackoffDelay(attempt);
-          console.warn(
-            `[API] Retry attempt ${attempt + 1}/${maxRetries} after network error (${delay}ms)`,
+          logger.warn(
+            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay, reason: 'network_error' },
+            'Retrying API request after network error',
           );
           await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, options, attempt + 1);
+          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
         }
 
         throw networkError;
@@ -265,6 +317,7 @@ export const openWeatherMapClient = new ApiClient(
   process.env.OPENWEATHERMAP_API_KEY || '',
   'query', // OpenWeatherMapはキーをクエリ(appid)で渡す
   'appid',
+  true, // APIキー必須
 );
 
 export const googleMapsClient = new ApiClient(
@@ -272,10 +325,14 @@ export const googleMapsClient = new ApiClient(
   process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
   'query', // Google Maps APIはキーをクエリ(key)で渡す
   'key',
+  true, // APIキー必須
 );
 
 // tide736.net のAPIクライアントインスタンスをエクスポート
 export const tide736Client = new ApiClient(
-  'https://api.tide736.net/api', // tide736.net のベースURL
-  '', // APIキーは不要
+  'https://tide736.net/api', // tide736.net のベースURL
+  '',
+  'query',
+  '',
+  false, // APIキー不要
 );

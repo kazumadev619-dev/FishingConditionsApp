@@ -9,11 +9,11 @@
  */
 export type * from './models/users';
 export type * from './models/identities';
+export type * from './models/verification_tokens';
 export type * from './models/locations';
 export type * from './models/ports';
 export type * from './models/weather_cache';
 export type * from './models/tide_cache';
 export type * from './models/user_favorites';
-export type * from './models/user_search_history';
 export type * from './models/user_settings';
 export type * from './commonInputTypes';

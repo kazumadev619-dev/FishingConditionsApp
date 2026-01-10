@@ -15,7 +15,7 @@ RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma/
-COPY .env ./
+COPY .env.local ./.env
 
 # 依存関係インストール & Prisma Client 生成
 RUN npm ci && npx prisma generate

@@ -53,6 +53,11 @@ export type users = Prisma.usersModel;
  */
 export type identities = Prisma.identitiesModel;
 /**
+ * Model verification_tokens
+ * メール検証トークン（アカウント連携時の検証用）
+ */
+export type verification_tokens = Prisma.verification_tokensModel;
+/**
  * Model locations
  * 釣り場マスタ
  */
@@ -77,11 +82,6 @@ export type tide_cache = Prisma.tide_cacheModel;
  * お気に入り釣り場
  */
 export type user_favorites = Prisma.user_favoritesModel;
-/**
- * Model user_search_history
- * 検索履歴
- */
-export type user_search_history = Prisma.user_search_historyModel;
 /**
  * Model user_settings
  * ユーザー設定

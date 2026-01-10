@@ -9,25 +9,45 @@
 - **プロバイダー**:
   - `Credentials` プロバイダー: メールアドレスとパスワードによる認証
   - `Google` プロバイダー: GoogleアカウントでのOAuth認証
-- **データベース**: `PostgreSQL` を使用し、ユーザー情報は `auth_users` テーブルに格納されます（Prisma ORM経由）。
+- **データベース**: `PostgreSQL` を使用し、ユーザー情報は `users` テーブルに格納されます（Prisma ORM経由）。
 - **パスワードハッシュ化**: `bcrypt` を使用してパスワードを安全にハッシュ化し、保存・比較しています。
-- **アカウント連携**: メールアドレスで既存アカウントと自動連携
+- **メール検証**: Resend + React Email による検証メール送信（通常登録・Google連携時）
+- **アカウント連携**: メールアドレスで既存アカウントと連携（メール検証必須）
 
 ## 主要ファイル
 
-- `src/auth.ts`: `next-auth` のメイン設定ファイル。`Credentials`と`Google`プロバイダーの設定、`signIn`コールバックでのアカウント連携ロジックを定義しています。
-- `src/auth.config.ts`: 認証に関する設定（ログインページのパス、リダイレクト処理、アクセス制御など）を定義しています。
+### 認証設定（Edge/Node分離アーキテクチャ）
+
+- `src/auth/config.ts`: **共通設定**。session戦略、pages設定など、Edge/Node両方で使用可能な設定のみを定義。
+- `src/auth/edge.ts`: **Edge Runtime用**。`authorized`コールバック（アクセス制御）を含む。`proxy.ts`から使用。
+- `src/auth/index.ts`: **Node Runtime用**。Prismaを使用したDB操作、`Credentials`/`Google`プロバイダー、`signIn`コールバックを定義。
+- `src/proxy.ts`: Next.js 16のProxy（旧middleware）。`edge.ts`の`auth`を使用してアクセス制御を実行。
+
+### メール検証関連
+
+- `src/lib/email.ts`: Resendを使用したメール送信ユーティリティ
+- `src/lib/token.ts`: トークン生成・検証・削除ロジック（有効期限1時間）
+- `src/emails/verification-email.tsx`: React Emailテンプレート（通常登録・Google連携用）
+- `src/app/api/auth/verify-email/route.ts`: トークン検証エンドポイント
+- `src/app/auth/verification-success/page.tsx`: 検証成功ページ
+- `src/app/auth/verification-error/page.tsx`: 検証失敗ページ
+
+### その他
+
 - `src/app/api/auth/[...nextauth]/route.ts`: `next-auth` が使用するAPIルートです。
 - `src/lib/actions.ts`: ユーザー登録 (`signup`) やログイン (`authenticate`) のためのサーバーアクションを定義しています。
 - `src/types/next-auth.d.ts`: Next-Authの型拡張（セッション/JWTトークンにユーザーIDを追加）。
 
 ## 認証フロー
 
-### 1. ユーザー登録
+### 1. ユーザー登録（通常登録）
 
 1.  ユーザーが登録ページ (`/register`) で情報を入力します。
-2.  `registerUser` サーバーアクションが呼び出されます。
-3.  `bcrypt` を使ってパスワードをハッシュ化し、新しいユーザー情報を `auth_users` テーブルに保存します。
+2.  `signup` サーバーアクションが呼び出されます。
+3.  `bcrypt` を使ってパスワードをハッシュ化し、新しいユーザー情報を `users` テーブルに保存します（`email_verified_at` は NULL）。
+4.  検証トークンを生成し、Resendでメールを送信します。
+5.  ユーザーはメール内のリンクをクリックして検証を完了します。
+6.  `/api/auth/verify-email` エンドポイントで `email_verified_at` が更新されます。
 
 ### 2. ログイン
 
@@ -41,7 +61,7 @@
 
 ### 3. アクセス制御
 
-`src/auth.config.ts` の `authorized` コールバックでアクセス制御を行っています。
+`src/auth/edge.ts` の `authorized` コールバックでアクセス制御を行っています（Edge Runtime専用）。
 
 - `/dashboard` で始まるパスへのアクセスには認証が必要です。未認証のユーザーはログインページ (`/login`) にリダイレクトされます。
 - 認証済みのユーザーがログインページ (`/login`) や登録ページ (`/register`) にアクセスすると、ダッシュボード (`/dashboard`) に自動的にリダイレクトされます。
@@ -51,53 +71,78 @@
 1. ユーザーがログインページ (`/login`) または登録ページ (`/register`) で「Googleでログイン」ボタンをクリックします。
 2. `signIn('google', { callbackUrl: '/dashboard' })` が呼び出され、Google OAuth画面へリダイレクトされます。
 3. ユーザーがGoogleアカウントで認証します。
-4. `/api/auth/callback/google` へリダイレクトされ、`src/auth.ts` の `signIn` コールバックが実行されます。
-5. **既存ユーザーの場合**:
+4. `/api/auth/callback/google` へリダイレクトされ、`src/auth/index.ts` の `signIn` コールバックが実行されます。
+5. **既存ユーザーの場合（メール未検証）**:
    - メールアドレスで既存ユーザーを検索
+   - `email_verified_at` が NULL の場合、サインイン拒否（AccessDenied）
+   - 検証トークンを生成し、Resendでメールを送信（`purpose: 'social-link'`）
+   - ユーザーはメール内のリンクをクリックして検証を完了
+   - 検証完了後、再度Google認証を試みると成功
+6. **既存ユーザーの場合（メール検証済み）**:
    - `identities` テーブルに新規レコード追加（アカウント連携）
-   - `auth_users.is_sso_user` を `true` に更新
-6. **新規ユーザーの場合**:
-   - Prismaトランザクションで `auth_users`, `public_users`, `identities` を同時作成
-   - `encrypted_password` は `NULL`（パスワード不要）
-7. セッション作成、`/dashboard` へリダイレクト
+   - `users.is_sso_user` を `true` に更新
+7. **新規ユーザーの場合**:
+   - Prismaトランザクションで `users`, `identities` を同時作成
+   - `password_hash` は `NULL`（パスワード不要）
+   - `email_verified_at` に現在時刻を設定（Google検証済み）
+8. セッション作成、`/dashboard` へリダイレクト
 
 ## アカウント連携
 
-### メールアドレスによる自動連携
+### メールアドレスによる安全な連携
 
-`allowDangerousEmailAccountLinking: true` 設定により、同一メールアドレスのアカウントを自動連携します。
+メール検証を必須とすることで、セキュアなアカウント連携を実現しています。
 
-**例**:
+**フロー**:
 1. ユーザーがメール/パスワードで登録（`user@example.com`）
-2. 後日、同じメールアドレスのGoogleアカウントでログイン
-3. 既存アカウントと自動連携される（`identities` テーブルに新規レコード追加）
-4. 次回以降、メール/パスワードとGoogleどちらでもログイン可能
+2. 検証メールを受信し、リンクをクリック（`email_verified_at` 更新）
+3. 後日、同じメールアドレスのGoogleアカウントでログインを試みる
+4. メール検証済みのため、アカウント連携が成功（`identities` テーブルに新規レコード追加）
+5. 次回以降、メール/パスワードとGoogleどちらでもログイン可能
 
-### セキュリティ考慮事項
+### セキュリティ強化
 
-- **GoogleのOAuth認証**: Google側でメール所有権が確認されているため、なりすましリスクは低い
-- **残存リスク**: 攻撃者がターゲットのメールアドレスのGoogleアカウントを持っている場合のみ影響
-- **将来対応**: 独自のメール検証機能追加、二段階認証実装
+- ✅ **メール所有確認必須**: 通常登録・Google連携時の両方でメール検証を実施
+- ✅ **トークン有効期限**: 検証トークンは1時間で失効
+- ✅ **使用済みトークン削除**: 検証完了後、トークンを自動削除
+- ✅ **アカウント乗っ取り防止**: メール所有確認なしのアカウント連携を防止
+- ✅ **Resend使用**: 信頼性の高いメール配信サービス
 
 ## データベーススキーマ
 
-### `auth.users` (auth_users)
+### `users`
 
-- `encrypted_password`: `String?` (NULL許可、OAuth専用ユーザー対応)
-- `is_sso_user`: `Boolean` (デフォルト: false、OAuthユーザー識別)
-- `email_confirmed_at`: OAuth認証時に自動設定
+統合ユーザーテーブル（認証+プロフィール情報）:
+- `id`: UUID (主キー)
+- `email`: String (ユニーク、正規化済み)
+- `password_hash`: String? (NULL許可、OAuth専用ユーザー対応)
+- `name`: String?
+- `avatar_url`: String?
+- `is_sso_user`: Boolean (デフォルト: false、OAuthユーザー識別)
+- `email_verified_at`: DateTime? (メール検証完了日時)
+- `created_at`: DateTime
+- `updated_at`: DateTime
 
-### `auth.identities`
+### `identities`
 
 プロバイダー別の認証情報を管理:
-- `provider_id`: GoogleアカウントのユニークID
-- `provider`: `"google"`
-- `identity_data`: JSON（email, name, pictureを保存）
-- ユニーク制約: `(provider_id, provider)`
+- `id`: UUID (主キー)
+- `user_id`: UUID (外部キー → users.id)
+- `provider`: String (`"google"`)
+- `provider_id`: String (GoogleアカウントのユニークID)
+- `identity_data`: JSON (email, name, pictureを保存)
+- `last_sign_in_at`: DateTime?
+- ユニーク制約: `(provider, provider_id)`
 
-### `public.users` (public_users)
+### `verification_tokens`
 
-アプリケーション用ユーザープロファイル（`auth_users.id` と同じUUIDを使用）
+メール検証トークン管理:
+- `id`: UUID (主キー)
+- `email`: String (検証対象メールアドレス)
+- `token`: String (ユニーク、64文字の16進数文字列)
+- `expires_at`: DateTime (有効期限、1時間後)
+- `created_at`: DateTime
+- インデックス: `email`, `expires_at`
 
 ## 環境変数
 
@@ -110,7 +155,20 @@ AUTH_GOOGLE_SECRET="your_google_client_secret"
 
 # Auth.js基本設定
 AUTH_SECRET="npx auth secretで生成"
-AUTH_URL="http://localhost:3000"  # 本番環境では実際のURL
+NEXTAUTH_URL="http://localhost:3000"  # 本番環境では実際のURL
+```
+
+### メール検証設定
+
+```bash
+# Resend API Key（https://resend.com/ で取得）
+RESEND_API_KEY="re_xxxxxxxxxxxxx"
+
+# 送信元メールアドレス（Resendで検証済みドメイン）
+EMAIL_FROM="noreply@yourdomain.com"
+
+# 開発時は Resend のテストドメインも使用可能
+# EMAIL_FROM="onboarding@resend.dev"
 ```
 
 ### Google Cloud Console設定

@@ -77,12 +77,12 @@ export type PrismaVersion = {
 };
 
 /**
- * Prisma Client JS version: 7.1.0
- * Query Engine version: ab635e6b9d606fa5c8fb8b1a7f909c3c3c1c98ba
+ * Prisma Client JS version: 7.2.0
+ * Query Engine version: 0c8ef2ce45c83248ab3df073180d5eda9e8be7a3
  */
 export const prismaVersion: PrismaVersion = {
-  client: '7.1.0',
-  engine: 'ab635e6b9d606fa5c8fb8b1a7f909c3c3c1c98ba',
+  client: '7.2.0',
+  engine: '0c8ef2ce45c83248ab3df073180d5eda9e8be7a3',
 };
 
 /**
@@ -377,12 +377,12 @@ type FieldRefInputType<Model, FieldType> = Model extends never ? never : FieldRe
 export const ModelName = {
   users: 'users',
   identities: 'identities',
+  verification_tokens: 'verification_tokens',
   locations: 'locations',
   ports: 'ports',
   weather_cache: 'weather_cache',
   tide_cache: 'tide_cache',
   user_favorites: 'user_favorites',
-  user_search_history: 'user_search_history',
   user_settings: 'user_settings',
 } as const;
 
@@ -407,12 +407,12 @@ export type TypeMap<
     modelProps:
       | 'users'
       | 'identities'
+      | 'verification_tokens'
       | 'locations'
       | 'ports'
       | 'weather_cache'
       | 'tide_cache'
       | 'user_favorites'
-      | 'user_search_history'
       | 'user_settings';
     txIsolationLevel: TransactionIsolationLevel;
   };
@@ -562,6 +562,82 @@ export type TypeMap<
         count: {
           args: Prisma.identitiesCountArgs<ExtArgs>;
           result: runtime.Types.Utils.Optional<Prisma.IdentitiesCountAggregateOutputType> | number;
+        };
+      };
+    };
+    verification_tokens: {
+      payload: Prisma.$verification_tokensPayload<ExtArgs>;
+      fields: Prisma.verification_tokensFieldRefs;
+      operations: {
+        findUnique: {
+          args: Prisma.verification_tokensFindUniqueArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload> | null;
+        };
+        findUniqueOrThrow: {
+          args: Prisma.verification_tokensFindUniqueOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        findFirst: {
+          args: Prisma.verification_tokensFindFirstArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload> | null;
+        };
+        findFirstOrThrow: {
+          args: Prisma.verification_tokensFindFirstOrThrowArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        findMany: {
+          args: Prisma.verification_tokensFindManyArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>[];
+        };
+        create: {
+          args: Prisma.verification_tokensCreateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        createMany: {
+          args: Prisma.verification_tokensCreateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        createManyAndReturn: {
+          args: Prisma.verification_tokensCreateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>[];
+        };
+        delete: {
+          args: Prisma.verification_tokensDeleteArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        update: {
+          args: Prisma.verification_tokensUpdateArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        deleteMany: {
+          args: Prisma.verification_tokensDeleteManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateMany: {
+          args: Prisma.verification_tokensUpdateManyArgs<ExtArgs>;
+          result: BatchPayload;
+        };
+        updateManyAndReturn: {
+          args: Prisma.verification_tokensUpdateManyAndReturnArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>[];
+        };
+        upsert: {
+          args: Prisma.verification_tokensUpsertArgs<ExtArgs>;
+          result: runtime.Types.Utils.PayloadToResult<Prisma.$verification_tokensPayload>;
+        };
+        aggregate: {
+          args: Prisma.Verification_tokensAggregateArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.AggregateVerification_tokens>;
+        };
+        groupBy: {
+          args: Prisma.verification_tokensGroupByArgs<ExtArgs>;
+          result: runtime.Types.Utils.Optional<Prisma.Verification_tokensGroupByOutputType>[];
+        };
+        count: {
+          args: Prisma.verification_tokensCountArgs<ExtArgs>;
+          result:
+            | runtime.Types.Utils.Optional<Prisma.Verification_tokensCountAggregateOutputType>
+            | number;
         };
       };
     };
@@ -939,82 +1015,6 @@ export type TypeMap<
         };
       };
     };
-    user_search_history: {
-      payload: Prisma.$user_search_historyPayload<ExtArgs>;
-      fields: Prisma.user_search_historyFieldRefs;
-      operations: {
-        findUnique: {
-          args: Prisma.user_search_historyFindUniqueArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload> | null;
-        };
-        findUniqueOrThrow: {
-          args: Prisma.user_search_historyFindUniqueOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        findFirst: {
-          args: Prisma.user_search_historyFindFirstArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload> | null;
-        };
-        findFirstOrThrow: {
-          args: Prisma.user_search_historyFindFirstOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        findMany: {
-          args: Prisma.user_search_historyFindManyArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>[];
-        };
-        create: {
-          args: Prisma.user_search_historyCreateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        createMany: {
-          args: Prisma.user_search_historyCreateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        createManyAndReturn: {
-          args: Prisma.user_search_historyCreateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>[];
-        };
-        delete: {
-          args: Prisma.user_search_historyDeleteArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        update: {
-          args: Prisma.user_search_historyUpdateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        deleteMany: {
-          args: Prisma.user_search_historyDeleteManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateMany: {
-          args: Prisma.user_search_historyUpdateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateManyAndReturn: {
-          args: Prisma.user_search_historyUpdateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>[];
-        };
-        upsert: {
-          args: Prisma.user_search_historyUpsertArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$user_search_historyPayload>;
-        };
-        aggregate: {
-          args: Prisma.User_search_historyAggregateArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.AggregateUser_search_history>;
-        };
-        groupBy: {
-          args: Prisma.user_search_historyGroupByArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.User_search_historyGroupByOutputType>[];
-        };
-        count: {
-          args: Prisma.user_search_historyCountArgs<ExtArgs>;
-          result:
-            | runtime.Types.Utils.Optional<Prisma.User_search_historyCountAggregateOutputType>
-            | number;
-        };
-      };
-    };
     user_settings: {
       payload: Prisma.$user_settingsPayload<ExtArgs>;
       fields: Prisma.user_settingsFieldRefs;
@@ -1158,6 +1158,17 @@ export const IdentitiesScalarFieldEnum = {
 export type IdentitiesScalarFieldEnum =
   (typeof IdentitiesScalarFieldEnum)[keyof typeof IdentitiesScalarFieldEnum];
 
+export const Verification_tokensScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  token: 'token',
+  expires_at: 'expires_at',
+  created_at: 'created_at',
+} as const;
+
+export type Verification_tokensScalarFieldEnum =
+  (typeof Verification_tokensScalarFieldEnum)[keyof typeof Verification_tokensScalarFieldEnum];
+
 export const LocationsScalarFieldEnum = {
   id: 'id',
   name: 'name',
@@ -1178,6 +1189,7 @@ export const PortsScalarFieldEnum = {
   id: 'id',
   name: 'name',
   prefecture_code: 'prefecture_code',
+  prefecture_name: 'prefecture_name',
   port_code: 'port_code',
   latitude: 'latitude',
   longitude: 'longitude',
@@ -1218,16 +1230,6 @@ export const User_favoritesScalarFieldEnum = {
 
 export type User_favoritesScalarFieldEnum =
   (typeof User_favoritesScalarFieldEnum)[keyof typeof User_favoritesScalarFieldEnum];
-
-export const User_search_historyScalarFieldEnum = {
-  id: 'id',
-  user_id: 'user_id',
-  location_id: 'location_id',
-  searched_at: 'searched_at',
-} as const;
-
-export type User_search_historyScalarFieldEnum =
-  (typeof User_search_historyScalarFieldEnum)[keyof typeof User_search_historyScalarFieldEnum];
 
 export const User_settingsScalarFieldEnum = {
   id: 'id',
@@ -1466,12 +1468,12 @@ export type PrismaClientOptions = (
 export type GlobalOmitConfig = {
   users?: Prisma.usersOmit;
   identities?: Prisma.identitiesOmit;
+  verification_tokens?: Prisma.verification_tokensOmit;
   locations?: Prisma.locationsOmit;
   ports?: Prisma.portsOmit;
   weather_cache?: Prisma.weather_cacheOmit;
   tide_cache?: Prisma.tide_cacheOmit;
   user_favorites?: Prisma.user_favoritesOmit;
-  user_search_history?: Prisma.user_search_historyOmit;
   user_settings?: Prisma.user_settingsOmit;
 };
 

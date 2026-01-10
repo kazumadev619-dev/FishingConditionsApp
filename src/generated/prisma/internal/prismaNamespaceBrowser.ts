@@ -50,12 +50,12 @@ export const AnyNull = runtime.AnyNull;
 export const ModelName = {
   users: 'users',
   identities: 'identities',
+  verification_tokens: 'verification_tokens',
   locations: 'locations',
   ports: 'ports',
   weather_cache: 'weather_cache',
   tide_cache: 'tide_cache',
   user_favorites: 'user_favorites',
-  user_search_history: 'user_search_history',
   user_settings: 'user_settings',
 } as const;
 
@@ -103,6 +103,17 @@ export const IdentitiesScalarFieldEnum = {
 export type IdentitiesScalarFieldEnum =
   (typeof IdentitiesScalarFieldEnum)[keyof typeof IdentitiesScalarFieldEnum];
 
+export const Verification_tokensScalarFieldEnum = {
+  id: 'id',
+  email: 'email',
+  token: 'token',
+  expires_at: 'expires_at',
+  created_at: 'created_at',
+} as const;
+
+export type Verification_tokensScalarFieldEnum =
+  (typeof Verification_tokensScalarFieldEnum)[keyof typeof Verification_tokensScalarFieldEnum];
+
 export const LocationsScalarFieldEnum = {
   id: 'id',
   name: 'name',
@@ -123,6 +134,7 @@ export const PortsScalarFieldEnum = {
   id: 'id',
   name: 'name',
   prefecture_code: 'prefecture_code',
+  prefecture_name: 'prefecture_name',
   port_code: 'port_code',
   latitude: 'latitude',
   longitude: 'longitude',
@@ -163,16 +175,6 @@ export const User_favoritesScalarFieldEnum = {
 
 export type User_favoritesScalarFieldEnum =
   (typeof User_favoritesScalarFieldEnum)[keyof typeof User_favoritesScalarFieldEnum];
-
-export const User_search_historyScalarFieldEnum = {
-  id: 'id',
-  user_id: 'user_id',
-  location_id: 'location_id',
-  searched_at: 'searched_at',
-} as const;
-
-export type User_search_historyScalarFieldEnum =
-  (typeof User_search_historyScalarFieldEnum)[keyof typeof User_search_historyScalarFieldEnum];
 
 export const User_settingsScalarFieldEnum = {
   id: 'id',

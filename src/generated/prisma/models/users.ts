@@ -212,7 +212,6 @@ export type usersWhereInput = {
   updated_at?: Prisma.DateTimeFilter<'users'> | Date | string;
   identities?: Prisma.IdentitiesListRelationFilter;
   favorites?: Prisma.User_favoritesListRelationFilter;
-  search_history?: Prisma.User_search_historyListRelationFilter;
   settings?: Prisma.XOR<
     Prisma.User_settingsNullableScalarRelationFilter,
     Prisma.user_settingsWhereInput
@@ -231,7 +230,6 @@ export type usersOrderByWithRelationInput = {
   updated_at?: Prisma.SortOrder;
   identities?: Prisma.identitiesOrderByRelationAggregateInput;
   favorites?: Prisma.user_favoritesOrderByRelationAggregateInput;
-  search_history?: Prisma.user_search_historyOrderByRelationAggregateInput;
   settings?: Prisma.user_settingsOrderByWithRelationInput;
 };
 
@@ -251,7 +249,6 @@ export type usersWhereUniqueInput = Prisma.AtLeast<
     updated_at?: Prisma.DateTimeFilter<'users'> | Date | string;
     identities?: Prisma.IdentitiesListRelationFilter;
     favorites?: Prisma.User_favoritesListRelationFilter;
-    search_history?: Prisma.User_search_historyListRelationFilter;
     settings?: Prisma.XOR<
       Prisma.User_settingsNullableScalarRelationFilter,
       Prisma.user_settingsWhereInput
@@ -302,7 +299,6 @@ export type usersCreateInput = {
   updated_at?: Date | string;
   identities?: Prisma.identitiesCreateNestedManyWithoutUserInput;
   favorites?: Prisma.user_favoritesCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyCreateNestedManyWithoutUserInput;
   settings?: Prisma.user_settingsCreateNestedOneWithoutUserInput;
 };
 
@@ -318,7 +314,6 @@ export type usersUncheckedCreateInput = {
   updated_at?: Date | string;
   identities?: Prisma.identitiesUncheckedCreateNestedManyWithoutUserInput;
   favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutUserInput;
   settings?: Prisma.user_settingsUncheckedCreateNestedOneWithoutUserInput;
 };
 
@@ -334,7 +329,6 @@ export type usersUpdateInput = {
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   identities?: Prisma.identitiesUpdateManyWithoutUserNestedInput;
   favorites?: Prisma.user_favoritesUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUpdateManyWithoutUserNestedInput;
   settings?: Prisma.user_settingsUpdateOneWithoutUserNestedInput;
 };
 
@@ -350,7 +344,6 @@ export type usersUncheckedUpdateInput = {
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   identities?: Prisma.identitiesUncheckedUpdateManyWithoutUserNestedInput;
   favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutUserNestedInput;
   settings?: Prisma.user_settingsUncheckedUpdateOneWithoutUserNestedInput;
 };
 
@@ -503,32 +496,6 @@ export type usersUpdateOneRequiredWithoutFavoritesNestedInput = {
   >;
 };
 
-export type usersCreateNestedOneWithoutSearch_historyInput = {
-  create?: Prisma.XOR<
-    Prisma.usersCreateWithoutSearch_historyInput,
-    Prisma.usersUncheckedCreateWithoutSearch_historyInput
-  >;
-  connectOrCreate?: Prisma.usersCreateOrConnectWithoutSearch_historyInput;
-  connect?: Prisma.usersWhereUniqueInput;
-};
-
-export type usersUpdateOneRequiredWithoutSearch_historyNestedInput = {
-  create?: Prisma.XOR<
-    Prisma.usersCreateWithoutSearch_historyInput,
-    Prisma.usersUncheckedCreateWithoutSearch_historyInput
-  >;
-  connectOrCreate?: Prisma.usersCreateOrConnectWithoutSearch_historyInput;
-  upsert?: Prisma.usersUpsertWithoutSearch_historyInput;
-  connect?: Prisma.usersWhereUniqueInput;
-  update?: Prisma.XOR<
-    Prisma.XOR<
-      Prisma.usersUpdateToOneWithWhereWithoutSearch_historyInput,
-      Prisma.usersUpdateWithoutSearch_historyInput
-    >,
-    Prisma.usersUncheckedUpdateWithoutSearch_historyInput
-  >;
-};
-
 export type usersCreateNestedOneWithoutSettingsInput = {
   create?: Prisma.XOR<
     Prisma.usersCreateWithoutSettingsInput,
@@ -566,7 +533,6 @@ export type usersCreateWithoutIdentitiesInput = {
   created_at?: Date | string;
   updated_at?: Date | string;
   favorites?: Prisma.user_favoritesCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyCreateNestedManyWithoutUserInput;
   settings?: Prisma.user_settingsCreateNestedOneWithoutUserInput;
 };
 
@@ -581,7 +547,6 @@ export type usersUncheckedCreateWithoutIdentitiesInput = {
   created_at?: Date | string;
   updated_at?: Date | string;
   favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutUserInput;
   settings?: Prisma.user_settingsUncheckedCreateNestedOneWithoutUserInput;
 };
 
@@ -624,7 +589,6 @@ export type usersUpdateWithoutIdentitiesInput = {
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   favorites?: Prisma.user_favoritesUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUpdateManyWithoutUserNestedInput;
   settings?: Prisma.user_settingsUpdateOneWithoutUserNestedInput;
 };
 
@@ -639,7 +603,6 @@ export type usersUncheckedUpdateWithoutIdentitiesInput = {
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutUserNestedInput;
   settings?: Prisma.user_settingsUncheckedUpdateOneWithoutUserNestedInput;
 };
 
@@ -654,7 +617,6 @@ export type usersCreateWithoutFavoritesInput = {
   created_at?: Date | string;
   updated_at?: Date | string;
   identities?: Prisma.identitiesCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyCreateNestedManyWithoutUserInput;
   settings?: Prisma.user_settingsCreateNestedOneWithoutUserInput;
 };
 
@@ -669,7 +631,6 @@ export type usersUncheckedCreateWithoutFavoritesInput = {
   created_at?: Date | string;
   updated_at?: Date | string;
   identities?: Prisma.identitiesUncheckedCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutUserInput;
   settings?: Prisma.user_settingsUncheckedCreateNestedOneWithoutUserInput;
 };
 
@@ -712,7 +673,6 @@ export type usersUpdateWithoutFavoritesInput = {
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   identities?: Prisma.identitiesUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUpdateManyWithoutUserNestedInput;
   settings?: Prisma.user_settingsUpdateOneWithoutUserNestedInput;
 };
 
@@ -727,95 +687,6 @@ export type usersUncheckedUpdateWithoutFavoritesInput = {
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   identities?: Prisma.identitiesUncheckedUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutUserNestedInput;
-  settings?: Prisma.user_settingsUncheckedUpdateOneWithoutUserNestedInput;
-};
-
-export type usersCreateWithoutSearch_historyInput = {
-  id?: string;
-  email: string;
-  password_hash?: string | null;
-  name?: string | null;
-  avatar_url?: string | null;
-  is_sso_user?: boolean;
-  email_verified_at?: Date | string | null;
-  created_at?: Date | string;
-  updated_at?: Date | string;
-  identities?: Prisma.identitiesCreateNestedManyWithoutUserInput;
-  favorites?: Prisma.user_favoritesCreateNestedManyWithoutUserInput;
-  settings?: Prisma.user_settingsCreateNestedOneWithoutUserInput;
-};
-
-export type usersUncheckedCreateWithoutSearch_historyInput = {
-  id?: string;
-  email: string;
-  password_hash?: string | null;
-  name?: string | null;
-  avatar_url?: string | null;
-  is_sso_user?: boolean;
-  email_verified_at?: Date | string | null;
-  created_at?: Date | string;
-  updated_at?: Date | string;
-  identities?: Prisma.identitiesUncheckedCreateNestedManyWithoutUserInput;
-  favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutUserInput;
-  settings?: Prisma.user_settingsUncheckedCreateNestedOneWithoutUserInput;
-};
-
-export type usersCreateOrConnectWithoutSearch_historyInput = {
-  where: Prisma.usersWhereUniqueInput;
-  create: Prisma.XOR<
-    Prisma.usersCreateWithoutSearch_historyInput,
-    Prisma.usersUncheckedCreateWithoutSearch_historyInput
-  >;
-};
-
-export type usersUpsertWithoutSearch_historyInput = {
-  update: Prisma.XOR<
-    Prisma.usersUpdateWithoutSearch_historyInput,
-    Prisma.usersUncheckedUpdateWithoutSearch_historyInput
-  >;
-  create: Prisma.XOR<
-    Prisma.usersCreateWithoutSearch_historyInput,
-    Prisma.usersUncheckedCreateWithoutSearch_historyInput
-  >;
-  where?: Prisma.usersWhereInput;
-};
-
-export type usersUpdateToOneWithWhereWithoutSearch_historyInput = {
-  where?: Prisma.usersWhereInput;
-  data: Prisma.XOR<
-    Prisma.usersUpdateWithoutSearch_historyInput,
-    Prisma.usersUncheckedUpdateWithoutSearch_historyInput
-  >;
-};
-
-export type usersUpdateWithoutSearch_historyInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  email?: Prisma.StringFieldUpdateOperationsInput | string;
-  password_hash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  avatar_url?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  is_sso_user?: Prisma.BoolFieldUpdateOperationsInput | boolean;
-  email_verified_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  identities?: Prisma.identitiesUpdateManyWithoutUserNestedInput;
-  favorites?: Prisma.user_favoritesUpdateManyWithoutUserNestedInput;
-  settings?: Prisma.user_settingsUpdateOneWithoutUserNestedInput;
-};
-
-export type usersUncheckedUpdateWithoutSearch_historyInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  email?: Prisma.StringFieldUpdateOperationsInput | string;
-  password_hash?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  avatar_url?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  is_sso_user?: Prisma.BoolFieldUpdateOperationsInput | boolean;
-  email_verified_at?: Prisma.NullableDateTimeFieldUpdateOperationsInput | Date | string | null;
-  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  identities?: Prisma.identitiesUncheckedUpdateManyWithoutUserNestedInput;
-  favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutUserNestedInput;
   settings?: Prisma.user_settingsUncheckedUpdateOneWithoutUserNestedInput;
 };
 
@@ -831,7 +702,6 @@ export type usersCreateWithoutSettingsInput = {
   updated_at?: Date | string;
   identities?: Prisma.identitiesCreateNestedManyWithoutUserInput;
   favorites?: Prisma.user_favoritesCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyCreateNestedManyWithoutUserInput;
 };
 
 export type usersUncheckedCreateWithoutSettingsInput = {
@@ -846,7 +716,6 @@ export type usersUncheckedCreateWithoutSettingsInput = {
   updated_at?: Date | string;
   identities?: Prisma.identitiesUncheckedCreateNestedManyWithoutUserInput;
   favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutUserInput;
-  search_history?: Prisma.user_search_historyUncheckedCreateNestedManyWithoutUserInput;
 };
 
 export type usersCreateOrConnectWithoutSettingsInput = {
@@ -889,7 +758,6 @@ export type usersUpdateWithoutSettingsInput = {
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   identities?: Prisma.identitiesUpdateManyWithoutUserNestedInput;
   favorites?: Prisma.user_favoritesUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUpdateManyWithoutUserNestedInput;
 };
 
 export type usersUncheckedUpdateWithoutSettingsInput = {
@@ -904,7 +772,6 @@ export type usersUncheckedUpdateWithoutSettingsInput = {
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   identities?: Prisma.identitiesUncheckedUpdateManyWithoutUserNestedInput;
   favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutUserNestedInput;
-  search_history?: Prisma.user_search_historyUncheckedUpdateManyWithoutUserNestedInput;
 };
 
 /**
@@ -914,7 +781,6 @@ export type usersUncheckedUpdateWithoutSettingsInput = {
 export type UsersCountOutputType = {
   identities: number;
   favorites: number;
-  search_history: number;
 };
 
 export type UsersCountOutputTypeSelect<
@@ -922,7 +788,6 @@ export type UsersCountOutputTypeSelect<
 > = {
   identities?: boolean | UsersCountOutputTypeCountIdentitiesArgs;
   favorites?: boolean | UsersCountOutputTypeCountFavoritesArgs;
-  search_history?: boolean | UsersCountOutputTypeCountSearch_historyArgs;
 };
 
 /**
@@ -955,15 +820,6 @@ export type UsersCountOutputTypeCountFavoritesArgs<
   where?: Prisma.user_favoritesWhereInput;
 };
 
-/**
- * UsersCountOutputType without action
- */
-export type UsersCountOutputTypeCountSearch_historyArgs<
-  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {
-  where?: Prisma.user_search_historyWhereInput;
-};
-
 export type usersSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
@@ -979,7 +835,6 @@ export type usersSelect<
     updated_at?: boolean;
     identities?: boolean | Prisma.users$identitiesArgs<ExtArgs>;
     favorites?: boolean | Prisma.users$favoritesArgs<ExtArgs>;
-    search_history?: boolean | Prisma.users$search_historyArgs<ExtArgs>;
     settings?: boolean | Prisma.users$settingsArgs<ExtArgs>;
     _count?: boolean | Prisma.UsersCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -1051,7 +906,6 @@ export type usersInclude<
 > = {
   identities?: boolean | Prisma.users$identitiesArgs<ExtArgs>;
   favorites?: boolean | Prisma.users$favoritesArgs<ExtArgs>;
-  search_history?: boolean | Prisma.users$search_historyArgs<ExtArgs>;
   settings?: boolean | Prisma.users$settingsArgs<ExtArgs>;
   _count?: boolean | Prisma.UsersCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -1069,7 +923,6 @@ export type $usersPayload<
   objects: {
     identities: Prisma.$identitiesPayload<ExtArgs>[];
     favorites: Prisma.$user_favoritesPayload<ExtArgs>[];
-    search_history: Prisma.$user_search_historyPayload<ExtArgs>[];
     settings: Prisma.$user_settingsPayload<ExtArgs> | null;
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -1615,17 +1468,6 @@ export interface Prisma__usersClient<
       >
     | Null
   >;
-  search_history<T extends Prisma.users$search_historyArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.users$search_historyArgs<ExtArgs>>,
-  ): Prisma.PrismaPromise<
-    | runtime.Types.Result.GetResult<
-        Prisma.$user_search_historyPayload<ExtArgs>,
-        T,
-        'findMany',
-        GlobalOmitOptions
-      >
-    | Null
-  >;
   settings<T extends Prisma.users$settingsArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.users$settingsArgs<ExtArgs>>,
   ): Prisma.Prisma__user_settingsClient<
@@ -2145,36 +1987,6 @@ export type users$favoritesArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.User_favoritesScalarFieldEnum | Prisma.User_favoritesScalarFieldEnum[];
-};
-
-/**
- * users.search_history
- */
-export type users$search_historyArgs<
-  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {
-  /**
-   * Select specific fields to fetch from the user_search_history
-   */
-  select?: Prisma.user_search_historySelect<ExtArgs> | null;
-  /**
-   * Omit specific fields from the user_search_history
-   */
-  omit?: Prisma.user_search_historyOmit<ExtArgs> | null;
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.user_search_historyInclude<ExtArgs> | null;
-  where?: Prisma.user_search_historyWhereInput;
-  orderBy?:
-    | Prisma.user_search_historyOrderByWithRelationInput
-    | Prisma.user_search_historyOrderByWithRelationInput[];
-  cursor?: Prisma.user_search_historyWhereUniqueInput;
-  take?: number;
-  skip?: number;
-  distinct?:
-    | Prisma.User_search_historyScalarFieldEnum
-    | Prisma.User_search_historyScalarFieldEnum[];
 };
 
 /**
