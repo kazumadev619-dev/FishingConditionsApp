@@ -6,6 +6,8 @@ import { TideCard } from '@/components/molecules/TideCard';
 import { WeatherCard } from '@/components/molecules/WeatherCard';
 import { TimeScoreCard } from '@/components/molecules/TimeScoreCard';
 import { FishingLocationMap } from '@/components/molecules/FishingLocationMap';
+import { FavoriteButton } from '@/components/atoms/FavoriteButton';
+import { useFavorites } from '@/hooks/useFavorites';
 import type { DashboardData } from '@/types/dashboard';
 import {
   cardVariants,
@@ -19,9 +21,50 @@ import { DASHBOARD_LABELS } from '@/constants/labels';
 
 interface DashboardGridProps {
   data: DashboardData;
+  location: {
+    id?: string;
+    name: string;
+    latitude: number;
+    longitude: number;
+    prefectureCode: string;
+    portCode: string;
+    source?: {
+      type: 'port' | 'coordinates';
+      portId?: string;
+      coordinates?: { lat: number; lng: number; name: string };
+    };
+  };
 }
 
-export function DashboardGrid({ data }: DashboardGridProps) {
+export function DashboardGrid({ data, location }: DashboardGridProps) {
+  const { isFavorite, addFavorite, removeFavorite, isLoading } = useFavorites();
+
+  const handleToggleFavorite = async () => {
+    try {
+      const locationId = location.id || '';
+      if (isFavorite(locationId)) {
+        await removeFavorite(locationId);
+      } else {
+        // locationIdがある場合はそれを使用、ない場合はsourceから作成
+        if (location.id) {
+          await addFavorite(location.id);
+        } else if (location.source?.type === 'port' && location.source.portId) {
+          await addFavorite(undefined, location.source.portId);
+        } else if (location.source?.type === 'coordinates' && location.source.coordinates) {
+          await addFavorite(
+            undefined,
+            undefined,
+            location.source.coordinates.lat,
+            location.source.coordinates.lng,
+            location.source.coordinates.name,
+          );
+        }
+      }
+    } catch {
+      // エラーはuseFavorites内でログ出力済み
+    }
+  };
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <motion.div
@@ -30,9 +73,17 @@ export function DashboardGrid({ data }: DashboardGridProps) {
         animate={headerAnimation.animate}
         transition={headerAnimation.transition}
       >
-        <h1 className="text-3xl font-bold mb-2">
-          {data.location.name} {DASHBOARD_LABELS.LOCATION_SUFFIX}
-        </h1>
+        <div className="flex justify-between items-center mb-2">
+          <h1 className="text-3xl font-bold">
+            {data.location.name} {DASHBOARD_LABELS.LOCATION_SUFFIX}
+          </h1>
+          <FavoriteButton
+            isFavorite={isFavorite(location.id || '')}
+            isLoading={isLoading}
+            onToggle={handleToggleFavorite}
+            size="lg"
+          />
+        </div>
         <p className="text-sm text-muted-foreground">
           {DASHBOARD_LABELS.LAST_UPDATED} {data.fishingScore.calculatedAt.toLocaleString('ja-JP')}
         </p>

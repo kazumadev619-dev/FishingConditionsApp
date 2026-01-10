@@ -19,23 +19,74 @@ const DEFAULT_LOCATION = {
 };
 
 type LocationData = {
+  id?: string;
   name: string;
   latitude: number;
   longitude: number;
   prefectureCode: string;
   portCode: string;
+  source?: {
+    type: 'port' | 'coordinates';
+    portId?: string;
+    coordinates?: { lat: number; lng: number; name: string };
+  };
 };
 
 /**
  * URLクエリパラメータから釣り場情報を解決
- * 優先順位: portId > lat&lng > デフォルト
+ * 優先順位: locationId > portId > lat&lng > デフォルト
  */
 async function resolveLocation(searchParams: {
+  locationId?: string;
   portId?: string;
   lat?: string;
   lng?: string;
   name?: string;
 }): Promise<LocationData> {
+  // パターン0: locationId指定（お気に入りから遷移した場合など）
+  if (searchParams.locationId) {
+    try {
+      const location = await prisma.locations.findUnique({
+        where: { id: searchParams.locationId },
+        include: { port: true },
+      });
+
+      if (!location) {
+        logger.warn({ locationId: searchParams.locationId }, 'Location not found');
+        return DEFAULT_LOCATION;
+      }
+
+      // portがある場合はそれを使用、ない場合は最寄りを検索
+      let prefectureCode: string;
+      let portCode: string;
+
+      if (location.port) {
+        prefectureCode = location.port.prefecture_code;
+        portCode = location.port.port_code;
+      } else {
+        const nearestPort = await findNearestPort(location.latitude, location.longitude);
+        if (!nearestPort) {
+          logger.warn({ locationId: searchParams.locationId }, 'No nearest port found');
+          return DEFAULT_LOCATION;
+        }
+        prefectureCode = nearestPort.prefecture_code;
+        portCode = nearestPort.port_code;
+      }
+
+      return {
+        id: location.id,
+        name: location.name,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        prefectureCode,
+        portCode,
+      };
+    } catch (error) {
+      logger.error({ err: error, locationId: searchParams.locationId }, 'Error resolving location');
+      return DEFAULT_LOCATION;
+    }
+  }
+
   // パターン1: portId指定
   if (searchParams.portId) {
     try {
@@ -59,6 +110,10 @@ async function resolveLocation(searchParams: {
         longitude: port.longitude,
         prefectureCode: port.prefecture_code,
         portCode: port.port_code,
+        source: {
+          type: 'port' as const,
+          portId: searchParams.portId,
+        },
       };
     } catch (error) {
       logger.error({ err: error, portId: searchParams.portId }, 'Error resolving port');
@@ -81,12 +136,17 @@ async function resolveLocation(searchParams: {
       // 最寄り港を検索
       const nearestPort = await findNearestPort(lat, lng);
       if (nearestPort) {
+        const locationName = searchParams.name || `指定地点 (${lat.toFixed(4)}, ${lng.toFixed(4)})`;
         return {
-          name: searchParams.name || `指定地点 (${lat.toFixed(4)}, ${lng.toFixed(4)})`,
+          name: locationName,
           latitude: lat,
           longitude: lng,
           prefectureCode: nearestPort.prefecture_code,
           portCode: nearestPort.port_code,
+          source: {
+            type: 'coordinates' as const,
+            coordinates: { lat, lng, name: locationName },
+          },
         };
       }
 
@@ -108,6 +168,7 @@ async function resolveLocation(searchParams: {
 
 type PageProps = {
   searchParams: Promise<{
+    locationId?: string;
     portId?: string;
     lat?: string;
     lng?: string;
@@ -158,5 +219,5 @@ export default async function DashboardPage({ searchParams }: PageProps) {
     },
   };
 
-  return <DashboardGrid data={dashboardData} />;
+  return <DashboardGrid data={dashboardData} location={location} />;
 }
