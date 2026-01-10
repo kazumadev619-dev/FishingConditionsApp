@@ -1,9 +1,8 @@
 /**
- * Upstash Redis キャッシュユーティリティ
- * @see https://docs.upstash.com/redis/sdks/ts/getstarted
+ * Redis キャッシュユーティリティ
  */
-
 import { logger } from './logger';
+import Redis from 'ioredis';
 
 // キャッシュのTTL定数（秒単位）
 export const CACHE_TTL = {
@@ -19,25 +18,28 @@ export const CACHE_PREFIX = {
   LOCATION: 'location',
 } as const;
 
-interface CacheConfig {
-  url: string;
-  token: string;
-}
-
 /**
- * Upstash Redis REST APIを使用したキャッシュクライアント
+ * ioredisを使用したキャッシュクライアント
  */
 class CacheClient {
-  private config: CacheConfig | null = null;
+  private client: Redis | null = null;
 
   constructor() {
-    const url = process.env.UPSTASH_REDIS_REST_URL;
-    const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const redisUrl = process.env.REDIS_URL;
+    if (redisUrl) {
+      this.client = new Redis(redisUrl, {
+        maxRetriesPerRequest: 3,
+        connectTimeout: 10000,
+      });
 
-    if (url && token) {
-      this.config = { url, token };
+      this.client.on('error', (err) => {
+        logger.error({ err }, 'Redis client error');
+        // 必要に応じて接続を閉じるなどの処理
+        this.client?.quit();
+        this.client = null;
+      });
     } else {
-      logger.warn('Upstash Redis is not configured. Caching disabled.');
+      logger.warn('REDIS_URL is not configured. Caching disabled.');
     }
   }
 
@@ -45,38 +47,7 @@ class CacheClient {
    * キャッシュが利用可能かどうか
    */
   public isAvailable(): boolean {
-    return this.config !== null;
-  }
-
-  /**
-   * Redis REST APIにコマンドを送信
-   */
-  private async executeCommand<T>(command: string[]): Promise<T | null> {
-    if (!this.config) {
-      return null;
-    }
-
-    try {
-      const response = await fetch(`${this.config.url}`, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.config.token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(command),
-      });
-
-      if (!response.ok) {
-        logger.error({ status: response.status }, 'Redis command failed');
-        return null;
-      }
-
-      const data = await response.json();
-      return data.result as T;
-    } catch (error) {
-      logger.error({ error }, 'Redis command error');
-      return null;
-    }
+    return this.client !== null && this.client.status === 'ready';
   }
 
   /**
@@ -85,16 +56,18 @@ class CacheClient {
    * @returns キャッシュされたデータ、またはnull
    */
   public async get<T>(key: string): Promise<T | null> {
-    const result = await this.executeCommand<string>(['GET', key]);
-
-    if (result === null) {
+    if (!this.isAvailable() || !this.client) {
       return null;
     }
 
     try {
+      const result = await this.client.get(key);
+      if (result === null) {
+        return null;
+      }
       return JSON.parse(result) as T;
     } catch (error) {
-      logger.error({ key, error }, 'Failed to parse cached data');
+      logger.error({ key, error }, 'Failed to get or parse cached data');
       return null;
     }
   }
@@ -106,15 +79,17 @@ class CacheClient {
    * @param ttlSeconds TTL（秒）
    */
   public async set<T>(key: string, value: T, ttlSeconds: number): Promise<boolean> {
-    const serialized = JSON.stringify(value);
-    const result = await this.executeCommand<string>([
-      'SET',
-      key,
-      serialized,
-      'EX',
-      String(ttlSeconds),
-    ]);
-    return result === 'OK';
+    if (!this.isAvailable() || !this.client) {
+      return false;
+    }
+    try {
+      const serialized = JSON.stringify(value);
+      const result = await this.client.set(key, serialized, 'EX', ttlSeconds);
+      return result === 'OK';
+    } catch (error) {
+      logger.error({ key, error }, 'Failed to set cache data');
+      return false;
+    }
   }
 
   /**
@@ -122,29 +97,44 @@ class CacheClient {
    * @param key キャッシュキー
    */
   public async delete(key: string): Promise<boolean> {
-    const result = await this.executeCommand<number>(['DEL', key]);
-    return result !== null && result > 0;
+    if (!this.isAvailable() || !this.client) {
+      return false;
+    }
+    try {
+      const result = await this.client.del(key);
+      return result > 0;
+    } catch (error) {
+      logger.error({ key, error }, 'Failed to delete cache data');
+      return false;
+    }
   }
 
   /**
    * パターンに一致するキーを削除（キャッシュ無効化）
+   * 本番環境でのKEYSコマンドの利用は避けるため、SCANを使用
    * @param pattern キーパターン（例: "weather:*"）
    */
   public async deleteByPattern(pattern: string): Promise<number> {
-    // SCAN + DEL でパターン削除（Upstash REST APIでは直接KEYS使用可能）
-    const keys = await this.executeCommand<string[]>(['KEYS', pattern]);
-
-    if (!keys || keys.length === 0) {
+    if (!this.isAvailable() || !this.client) {
       return 0;
     }
 
-    let deleted = 0;
-    for (const key of keys) {
-      const success = await this.delete(key);
-      if (success) deleted++;
-    }
+    let deletedCount = 0;
+    try {
+      const stream = this.client.scanStream({
+        match: pattern,
+        count: 100,
+      });
 
-    return deleted;
+      for await (const keys of stream) {
+        if (keys.length > 0) {
+          deletedCount += await this.client.del(keys);
+        }
+      }
+    } catch (error) {
+      logger.error({ pattern, error }, 'Failed to delete cache data by pattern');
+    }
+    return deletedCount;
   }
 }
 
@@ -175,11 +165,8 @@ export async function withCache<T>(
   const cached = await cache.get<T>(key);
 
   if (cached !== null) {
-    logger.debug({ key }, 'Cache hit');
     return { data: cached, fromCache: true };
   }
-
-  logger.debug({ key }, 'Cache miss');
 
   // fetcherでデータを取得
   const data = await fetcher();
