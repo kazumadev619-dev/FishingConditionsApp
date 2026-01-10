@@ -155,13 +155,6 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
           検索結果が見つかりませんでした
         </div>
       )}
-
-      {/* ヘルプテキスト */}
-      {query.length === 0 && (
-        <div className="text-[10px] text-muted-foreground p-2 wrap-break-word">
-          場所を検索できます。最寄りの潮汐観測港が自動的にマッピングされます。
-        </div>
-      )}
     </div>
   );
 }
