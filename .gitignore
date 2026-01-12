@@ -219,3 +219,9 @@ dist
 # Ignore all local history of files
 .history
 .ionide
+
+### Kubernetes ###
+# 暗号化前のSecretファイル（API KEYを含む）
+# 暗号化後の *.enc.yaml はgit管理する
+k8s/overlays/*/secret.yaml
+!k8s/overlays/*/secret.enc.yaml

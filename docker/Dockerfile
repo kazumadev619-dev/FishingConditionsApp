@@ -63,6 +63,11 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma.config.ts ./
 COPY --from=deps /app/prisma ./prisma
 
+# DB初期化スクリプトをコピー（db-init-job用）
+COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
+COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
+COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
+
 # standalone出力をコピー
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
