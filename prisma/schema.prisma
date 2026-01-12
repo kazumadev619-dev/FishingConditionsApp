@@ -77,9 +77,8 @@ model locations {
   updated_at    DateTime      @default(now()) @updatedAt @db.Timestamptz(6)
 
   // リレーション
-  port           ports?           @relation(fields: [port_id], references: [id])
-  weather_cache  weather_cache[]
-  favorites      user_favorites[]
+  port      ports?           @relation(fields: [port_id], references: [id])
+  favorites user_favorites[]
 
   @@index([latitude, longitude])
   @@index([prefecture])
@@ -97,8 +96,7 @@ model ports {
   created_at      DateTime @default(now()) @db.Timestamptz(6)
 
   // リレーション
-  locations  locations[]
-  tide_cache tide_cache[]
+  locations locations[]
 
   @@unique([prefecture_code, port_code])
   @@index([prefecture_code])
@@ -116,43 +114,9 @@ enum location_type {
 }
 
 // ============================================
-// 環境データ・キャッシュ系
-// ============================================
-
-/// 天気データキャッシュ（TTL: 30分）
-model weather_cache {
-  id          String   @id @default(uuid()) @db.Uuid
-  location_id String   @db.Uuid
-  data        Json
-  fetched_at  DateTime @default(now()) @db.Timestamptz(6)
-  expires_at  DateTime @db.Timestamptz(6)
-
-  // リレーション
-  location locations @relation(fields: [location_id], references: [id], onDelete: Cascade)
-
-  @@index([location_id])
-  @@index([expires_at])
-}
-
-/// 潮汐データキャッシュ（TTL: 6時間）
-model tide_cache {
-  id         String   @id @default(uuid()) @db.Uuid
-  port_id    String   @db.Uuid
-  date       DateTime @db.Date
-  data       Json
-  fetched_at DateTime @default(now()) @db.Timestamptz(6)
-  expires_at DateTime @db.Timestamptz(6)
-
-  // リレーション
-  port ports @relation(fields: [port_id], references: [id], onDelete: Cascade)
-
-  @@unique([port_id, date])
-  @@index([expires_at])
-}
-
-// ============================================
 // ユーザーアクション系
 // ============================================
+// NOTE: 天気・潮汐キャッシュはRedisで管理（src/lib/cache.ts参照）
 
 /// お気に入り釣り場
 model user_favorites {

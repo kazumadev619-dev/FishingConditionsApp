@@ -53,8 +53,6 @@ export const ModelName = {
   verification_tokens: 'verification_tokens',
   locations: 'locations',
   ports: 'ports',
-  weather_cache: 'weather_cache',
-  tide_cache: 'tide_cache',
   user_favorites: 'user_favorites',
   user_settings: 'user_settings',
 } as const;
@@ -143,29 +141,6 @@ export const PortsScalarFieldEnum = {
 
 export type PortsScalarFieldEnum = (typeof PortsScalarFieldEnum)[keyof typeof PortsScalarFieldEnum];
 
-export const Weather_cacheScalarFieldEnum = {
-  id: 'id',
-  location_id: 'location_id',
-  data: 'data',
-  fetched_at: 'fetched_at',
-  expires_at: 'expires_at',
-} as const;
-
-export type Weather_cacheScalarFieldEnum =
-  (typeof Weather_cacheScalarFieldEnum)[keyof typeof Weather_cacheScalarFieldEnum];
-
-export const Tide_cacheScalarFieldEnum = {
-  id: 'id',
-  port_id: 'port_id',
-  date: 'date',
-  data: 'data',
-  fetched_at: 'fetched_at',
-  expires_at: 'expires_at',
-} as const;
-
-export type Tide_cacheScalarFieldEnum =
-  (typeof Tide_cacheScalarFieldEnum)[keyof typeof Tide_cacheScalarFieldEnum];
-
 export const User_favoritesScalarFieldEnum = {
   id: 'id',
   user_id: 'user_id',
@@ -204,12 +179,6 @@ export const NullableJsonNullValueInput = {
 
 export type NullableJsonNullValueInput =
   (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput];
-
-export const JsonNullValueInput = {
-  JsonNull: 'JsonNull',
-} as const;
-
-export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput];
 
 export const QueryMode = {
   default: 'default',

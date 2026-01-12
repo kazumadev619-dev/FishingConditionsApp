@@ -241,7 +241,6 @@ export type portsWhereInput = {
   longitude?: Prisma.FloatNullableFilter<'ports'> | number | null;
   created_at?: Prisma.DateTimeFilter<'ports'> | Date | string;
   locations?: Prisma.LocationsListRelationFilter;
-  tide_cache?: Prisma.Tide_cacheListRelationFilter;
 };
 
 export type portsOrderByWithRelationInput = {
@@ -254,7 +253,6 @@ export type portsOrderByWithRelationInput = {
   longitude?: Prisma.SortOrderInput | Prisma.SortOrder;
   created_at?: Prisma.SortOrder;
   locations?: Prisma.locationsOrderByRelationAggregateInput;
-  tide_cache?: Prisma.tide_cacheOrderByRelationAggregateInput;
 };
 
 export type portsWhereUniqueInput = Prisma.AtLeast<
@@ -272,7 +270,6 @@ export type portsWhereUniqueInput = Prisma.AtLeast<
     longitude?: Prisma.FloatNullableFilter<'ports'> | number | null;
     created_at?: Prisma.DateTimeFilter<'ports'> | Date | string;
     locations?: Prisma.LocationsListRelationFilter;
-    tide_cache?: Prisma.Tide_cacheListRelationFilter;
   },
   'id' | 'prefecture_code_port_code'
 >;
@@ -317,7 +314,6 @@ export type portsCreateInput = {
   longitude?: number | null;
   created_at?: Date | string;
   locations?: Prisma.locationsCreateNestedManyWithoutPortInput;
-  tide_cache?: Prisma.tide_cacheCreateNestedManyWithoutPortInput;
 };
 
 export type portsUncheckedCreateInput = {
@@ -330,7 +326,6 @@ export type portsUncheckedCreateInput = {
   longitude?: number | null;
   created_at?: Date | string;
   locations?: Prisma.locationsUncheckedCreateNestedManyWithoutPortInput;
-  tide_cache?: Prisma.tide_cacheUncheckedCreateNestedManyWithoutPortInput;
 };
 
 export type portsUpdateInput = {
@@ -343,7 +338,6 @@ export type portsUpdateInput = {
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   locations?: Prisma.locationsUpdateManyWithoutPortNestedInput;
-  tide_cache?: Prisma.tide_cacheUpdateManyWithoutPortNestedInput;
 };
 
 export type portsUncheckedUpdateInput = {
@@ -356,7 +350,6 @@ export type portsUncheckedUpdateInput = {
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   locations?: Prisma.locationsUncheckedUpdateManyWithoutPortNestedInput;
-  tide_cache?: Prisma.tide_cacheUncheckedUpdateManyWithoutPortNestedInput;
 };
 
 export type portsCreateManyInput = {
@@ -445,11 +438,6 @@ export type portsSumOrderByAggregateInput = {
   longitude?: Prisma.SortOrder;
 };
 
-export type PortsScalarRelationFilter = {
-  is?: Prisma.portsWhereInput;
-  isNot?: Prisma.portsWhereInput;
-};
-
 export type portsCreateNestedOneWithoutLocationsInput = {
   create?: Prisma.XOR<
     Prisma.portsCreateWithoutLocationsInput,
@@ -486,32 +474,6 @@ export type NullableFloatFieldUpdateOperationsInput = {
   divide?: number;
 };
 
-export type portsCreateNestedOneWithoutTide_cacheInput = {
-  create?: Prisma.XOR<
-    Prisma.portsCreateWithoutTide_cacheInput,
-    Prisma.portsUncheckedCreateWithoutTide_cacheInput
-  >;
-  connectOrCreate?: Prisma.portsCreateOrConnectWithoutTide_cacheInput;
-  connect?: Prisma.portsWhereUniqueInput;
-};
-
-export type portsUpdateOneRequiredWithoutTide_cacheNestedInput = {
-  create?: Prisma.XOR<
-    Prisma.portsCreateWithoutTide_cacheInput,
-    Prisma.portsUncheckedCreateWithoutTide_cacheInput
-  >;
-  connectOrCreate?: Prisma.portsCreateOrConnectWithoutTide_cacheInput;
-  upsert?: Prisma.portsUpsertWithoutTide_cacheInput;
-  connect?: Prisma.portsWhereUniqueInput;
-  update?: Prisma.XOR<
-    Prisma.XOR<
-      Prisma.portsUpdateToOneWithWhereWithoutTide_cacheInput,
-      Prisma.portsUpdateWithoutTide_cacheInput
-    >,
-    Prisma.portsUncheckedUpdateWithoutTide_cacheInput
-  >;
-};
-
 export type portsCreateWithoutLocationsInput = {
   id?: string;
   name: string;
@@ -521,7 +483,6 @@ export type portsCreateWithoutLocationsInput = {
   latitude?: number | null;
   longitude?: number | null;
   created_at?: Date | string;
-  tide_cache?: Prisma.tide_cacheCreateNestedManyWithoutPortInput;
 };
 
 export type portsUncheckedCreateWithoutLocationsInput = {
@@ -533,7 +494,6 @@ export type portsUncheckedCreateWithoutLocationsInput = {
   latitude?: number | null;
   longitude?: number | null;
   created_at?: Date | string;
-  tide_cache?: Prisma.tide_cacheUncheckedCreateNestedManyWithoutPortInput;
 };
 
 export type portsCreateOrConnectWithoutLocationsInput = {
@@ -573,7 +533,6 @@ export type portsUpdateWithoutLocationsInput = {
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  tide_cache?: Prisma.tide_cacheUpdateManyWithoutPortNestedInput;
 };
 
 export type portsUncheckedUpdateWithoutLocationsInput = {
@@ -585,83 +544,6 @@ export type portsUncheckedUpdateWithoutLocationsInput = {
   latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  tide_cache?: Prisma.tide_cacheUncheckedUpdateManyWithoutPortNestedInput;
-};
-
-export type portsCreateWithoutTide_cacheInput = {
-  id?: string;
-  name: string;
-  prefecture_code: string;
-  prefecture_name?: string | null;
-  port_code: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  created_at?: Date | string;
-  locations?: Prisma.locationsCreateNestedManyWithoutPortInput;
-};
-
-export type portsUncheckedCreateWithoutTide_cacheInput = {
-  id?: string;
-  name: string;
-  prefecture_code: string;
-  prefecture_name?: string | null;
-  port_code: string;
-  latitude?: number | null;
-  longitude?: number | null;
-  created_at?: Date | string;
-  locations?: Prisma.locationsUncheckedCreateNestedManyWithoutPortInput;
-};
-
-export type portsCreateOrConnectWithoutTide_cacheInput = {
-  where: Prisma.portsWhereUniqueInput;
-  create: Prisma.XOR<
-    Prisma.portsCreateWithoutTide_cacheInput,
-    Prisma.portsUncheckedCreateWithoutTide_cacheInput
-  >;
-};
-
-export type portsUpsertWithoutTide_cacheInput = {
-  update: Prisma.XOR<
-    Prisma.portsUpdateWithoutTide_cacheInput,
-    Prisma.portsUncheckedUpdateWithoutTide_cacheInput
-  >;
-  create: Prisma.XOR<
-    Prisma.portsCreateWithoutTide_cacheInput,
-    Prisma.portsUncheckedCreateWithoutTide_cacheInput
-  >;
-  where?: Prisma.portsWhereInput;
-};
-
-export type portsUpdateToOneWithWhereWithoutTide_cacheInput = {
-  where?: Prisma.portsWhereInput;
-  data: Prisma.XOR<
-    Prisma.portsUpdateWithoutTide_cacheInput,
-    Prisma.portsUncheckedUpdateWithoutTide_cacheInput
-  >;
-};
-
-export type portsUpdateWithoutTide_cacheInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  name?: Prisma.StringFieldUpdateOperationsInput | string;
-  prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
-  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  port_code?: Prisma.StringFieldUpdateOperationsInput | string;
-  latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
-  longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
-  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  locations?: Prisma.locationsUpdateManyWithoutPortNestedInput;
-};
-
-export type portsUncheckedUpdateWithoutTide_cacheInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  name?: Prisma.StringFieldUpdateOperationsInput | string;
-  prefecture_code?: Prisma.StringFieldUpdateOperationsInput | string;
-  prefecture_name?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  port_code?: Prisma.StringFieldUpdateOperationsInput | string;
-  latitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
-  longitude?: Prisma.NullableFloatFieldUpdateOperationsInput | number | null;
-  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  locations?: Prisma.locationsUncheckedUpdateManyWithoutPortNestedInput;
 };
 
 /**
@@ -670,14 +552,12 @@ export type portsUncheckedUpdateWithoutTide_cacheInput = {
 
 export type PortsCountOutputType = {
   locations: number;
-  tide_cache: number;
 };
 
 export type PortsCountOutputTypeSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   locations?: boolean | PortsCountOutputTypeCountLocationsArgs;
-  tide_cache?: boolean | PortsCountOutputTypeCountTide_cacheArgs;
 };
 
 /**
@@ -701,15 +581,6 @@ export type PortsCountOutputTypeCountLocationsArgs<
   where?: Prisma.locationsWhereInput;
 };
 
-/**
- * PortsCountOutputType without action
- */
-export type PortsCountOutputTypeCountTide_cacheArgs<
-  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {
-  where?: Prisma.tide_cacheWhereInput;
-};
-
 export type portsSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = runtime.Types.Extensions.GetSelect<
@@ -723,7 +594,6 @@ export type portsSelect<
     longitude?: boolean;
     created_at?: boolean;
     locations?: boolean | Prisma.ports$locationsArgs<ExtArgs>;
-    tide_cache?: boolean | Prisma.ports$tide_cacheArgs<ExtArgs>;
     _count?: boolean | Prisma.PortsCountOutputTypeDefaultArgs<ExtArgs>;
   },
   ExtArgs['result']['ports']
@@ -789,7 +659,6 @@ export type portsInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   locations?: boolean | Prisma.ports$locationsArgs<ExtArgs>;
-  tide_cache?: boolean | Prisma.ports$tide_cacheArgs<ExtArgs>;
   _count?: boolean | Prisma.PortsCountOutputTypeDefaultArgs<ExtArgs>;
 };
 export type portsIncludeCreateManyAndReturn<
@@ -805,7 +674,6 @@ export type $portsPayload<
   name: 'ports';
   objects: {
     locations: Prisma.$locationsPayload<ExtArgs>[];
-    tide_cache: Prisma.$tide_cachePayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
     {
@@ -1338,17 +1206,6 @@ export interface Prisma__portsClient<
       >
     | Null
   >;
-  tide_cache<T extends Prisma.ports$tide_cacheArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.ports$tide_cacheArgs<ExtArgs>>,
-  ): Prisma.PrismaPromise<
-    | runtime.Types.Result.GetResult<
-        Prisma.$tide_cachePayload<ExtArgs>,
-        T,
-        'findMany',
-        GlobalOmitOptions
-      >
-    | Null
-  >;
   /**
    * Attaches callbacks for the resolution and/or rejection of the Promise.
    * @param onfulfilled The callback to execute when the Promise is resolved.
@@ -1826,32 +1683,6 @@ export type ports$locationsArgs<
   take?: number;
   skip?: number;
   distinct?: Prisma.LocationsScalarFieldEnum | Prisma.LocationsScalarFieldEnum[];
-};
-
-/**
- * ports.tide_cache
- */
-export type ports$tide_cacheArgs<
-  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {
-  /**
-   * Select specific fields to fetch from the tide_cache
-   */
-  select?: Prisma.tide_cacheSelect<ExtArgs> | null;
-  /**
-   * Omit specific fields from the tide_cache
-   */
-  omit?: Prisma.tide_cacheOmit<ExtArgs> | null;
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.tide_cacheInclude<ExtArgs> | null;
-  where?: Prisma.tide_cacheWhereInput;
-  orderBy?: Prisma.tide_cacheOrderByWithRelationInput | Prisma.tide_cacheOrderByWithRelationInput[];
-  cursor?: Prisma.tide_cacheWhereUniqueInput;
-  take?: number;
-  skip?: number;
-  distinct?: Prisma.Tide_cacheScalarFieldEnum | Prisma.Tide_cacheScalarFieldEnum[];
 };
 
 /**
