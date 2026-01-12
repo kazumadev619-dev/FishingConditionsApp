@@ -380,8 +380,6 @@ export const ModelName = {
   verification_tokens: 'verification_tokens',
   locations: 'locations',
   ports: 'ports',
-  weather_cache: 'weather_cache',
-  tide_cache: 'tide_cache',
   user_favorites: 'user_favorites',
   user_settings: 'user_settings',
 } as const;
@@ -410,8 +408,6 @@ export type TypeMap<
       | 'verification_tokens'
       | 'locations'
       | 'ports'
-      | 'weather_cache'
-      | 'tide_cache'
       | 'user_favorites'
       | 'user_settings';
     txIsolationLevel: TransactionIsolationLevel;
@@ -789,156 +785,6 @@ export type TypeMap<
         };
       };
     };
-    weather_cache: {
-      payload: Prisma.$weather_cachePayload<ExtArgs>;
-      fields: Prisma.weather_cacheFieldRefs;
-      operations: {
-        findUnique: {
-          args: Prisma.weather_cacheFindUniqueArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload> | null;
-        };
-        findUniqueOrThrow: {
-          args: Prisma.weather_cacheFindUniqueOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>;
-        };
-        findFirst: {
-          args: Prisma.weather_cacheFindFirstArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload> | null;
-        };
-        findFirstOrThrow: {
-          args: Prisma.weather_cacheFindFirstOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>;
-        };
-        findMany: {
-          args: Prisma.weather_cacheFindManyArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>[];
-        };
-        create: {
-          args: Prisma.weather_cacheCreateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>;
-        };
-        createMany: {
-          args: Prisma.weather_cacheCreateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        createManyAndReturn: {
-          args: Prisma.weather_cacheCreateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>[];
-        };
-        delete: {
-          args: Prisma.weather_cacheDeleteArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>;
-        };
-        update: {
-          args: Prisma.weather_cacheUpdateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>;
-        };
-        deleteMany: {
-          args: Prisma.weather_cacheDeleteManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateMany: {
-          args: Prisma.weather_cacheUpdateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateManyAndReturn: {
-          args: Prisma.weather_cacheUpdateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>[];
-        };
-        upsert: {
-          args: Prisma.weather_cacheUpsertArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$weather_cachePayload>;
-        };
-        aggregate: {
-          args: Prisma.Weather_cacheAggregateArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.AggregateWeather_cache>;
-        };
-        groupBy: {
-          args: Prisma.weather_cacheGroupByArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.Weather_cacheGroupByOutputType>[];
-        };
-        count: {
-          args: Prisma.weather_cacheCountArgs<ExtArgs>;
-          result:
-            | runtime.Types.Utils.Optional<Prisma.Weather_cacheCountAggregateOutputType>
-            | number;
-        };
-      };
-    };
-    tide_cache: {
-      payload: Prisma.$tide_cachePayload<ExtArgs>;
-      fields: Prisma.tide_cacheFieldRefs;
-      operations: {
-        findUnique: {
-          args: Prisma.tide_cacheFindUniqueArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload> | null;
-        };
-        findUniqueOrThrow: {
-          args: Prisma.tide_cacheFindUniqueOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>;
-        };
-        findFirst: {
-          args: Prisma.tide_cacheFindFirstArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload> | null;
-        };
-        findFirstOrThrow: {
-          args: Prisma.tide_cacheFindFirstOrThrowArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>;
-        };
-        findMany: {
-          args: Prisma.tide_cacheFindManyArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>[];
-        };
-        create: {
-          args: Prisma.tide_cacheCreateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>;
-        };
-        createMany: {
-          args: Prisma.tide_cacheCreateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        createManyAndReturn: {
-          args: Prisma.tide_cacheCreateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>[];
-        };
-        delete: {
-          args: Prisma.tide_cacheDeleteArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>;
-        };
-        update: {
-          args: Prisma.tide_cacheUpdateArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>;
-        };
-        deleteMany: {
-          args: Prisma.tide_cacheDeleteManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateMany: {
-          args: Prisma.tide_cacheUpdateManyArgs<ExtArgs>;
-          result: BatchPayload;
-        };
-        updateManyAndReturn: {
-          args: Prisma.tide_cacheUpdateManyAndReturnArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>[];
-        };
-        upsert: {
-          args: Prisma.tide_cacheUpsertArgs<ExtArgs>;
-          result: runtime.Types.Utils.PayloadToResult<Prisma.$tide_cachePayload>;
-        };
-        aggregate: {
-          args: Prisma.Tide_cacheAggregateArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.AggregateTide_cache>;
-        };
-        groupBy: {
-          args: Prisma.tide_cacheGroupByArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.Tide_cacheGroupByOutputType>[];
-        };
-        count: {
-          args: Prisma.tide_cacheCountArgs<ExtArgs>;
-          result: runtime.Types.Utils.Optional<Prisma.Tide_cacheCountAggregateOutputType> | number;
-        };
-      };
-    };
     user_favorites: {
       payload: Prisma.$user_favoritesPayload<ExtArgs>;
       fields: Prisma.user_favoritesFieldRefs;
@@ -1198,29 +1044,6 @@ export const PortsScalarFieldEnum = {
 
 export type PortsScalarFieldEnum = (typeof PortsScalarFieldEnum)[keyof typeof PortsScalarFieldEnum];
 
-export const Weather_cacheScalarFieldEnum = {
-  id: 'id',
-  location_id: 'location_id',
-  data: 'data',
-  fetched_at: 'fetched_at',
-  expires_at: 'expires_at',
-} as const;
-
-export type Weather_cacheScalarFieldEnum =
-  (typeof Weather_cacheScalarFieldEnum)[keyof typeof Weather_cacheScalarFieldEnum];
-
-export const Tide_cacheScalarFieldEnum = {
-  id: 'id',
-  port_id: 'port_id',
-  date: 'date',
-  data: 'data',
-  fetched_at: 'fetched_at',
-  expires_at: 'expires_at',
-} as const;
-
-export type Tide_cacheScalarFieldEnum =
-  (typeof Tide_cacheScalarFieldEnum)[keyof typeof Tide_cacheScalarFieldEnum];
-
 export const User_favoritesScalarFieldEnum = {
   id: 'id',
   user_id: 'user_id',
@@ -1259,12 +1082,6 @@ export const NullableJsonNullValueInput = {
 
 export type NullableJsonNullValueInput =
   (typeof NullableJsonNullValueInput)[keyof typeof NullableJsonNullValueInput];
-
-export const JsonNullValueInput = {
-  JsonNull: JsonNull,
-} as const;
-
-export type JsonNullValueInput = (typeof JsonNullValueInput)[keyof typeof JsonNullValueInput];
 
 export const QueryMode = {
   default: 'default',
@@ -1471,8 +1288,6 @@ export type GlobalOmitConfig = {
   verification_tokens?: Prisma.verification_tokensOmit;
   locations?: Prisma.locationsOmit;
   ports?: Prisma.portsOmit;
-  weather_cache?: Prisma.weather_cacheOmit;
-  tide_cache?: Prisma.tide_cacheOmit;
   user_favorites?: Prisma.user_favoritesOmit;
   user_settings?: Prisma.user_settingsOmit;
 };
