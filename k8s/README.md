@@ -31,8 +31,12 @@ k8s/
 minikube start --memory=4096 --cpus=2
 eval $(minikube docker-env)
 
-# 2. イメージビルド
-docker build -f docker/Dockerfile -t fishing-app:latest .
+# 2. イメージビルド（NEXT_PUBLIC_*はビルド時に埋め込み必須）
+# APIキーは .env.local または k8s/overlays/local/secret.yaml から取得
+docker build -f docker/Dockerfile \
+  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="your-api-key" \
+  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID="your-map-id" \
+  -t fishing-app:latest .
 
 # 3. SOPS設定 & デプロイ
 export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
@@ -46,7 +50,15 @@ kubectl apply -f k8s/base/db-init-job.yaml
 kubectl logs -f job/db-init -n fishing-app
 
 # 6. アクセス
-minikube tunnel  # 別ターミナルで実行
+# 方法: minikube tunnel
+# 1. /etc/hosts にホスト名を追加（初回のみ）
+#    minikube tunnel を使う場合は 127.0.0.1 を使用
+echo "127.0.0.1 fishing-app.local" | sudo tee -a /etc/hosts
+
+# 2. 別ターミナルで minikube tunnel を起動
+sudo minikube tunnel
+
+# 3. ブラウザでアクセス
 open http://fishing-app.local
 ```
 
@@ -76,7 +88,12 @@ minikube addons enable ingress
 eval $(minikube docker-env)
 
 # イメージビルド
-docker build -f docker/Dockerfile -t fishing-app:latest .
+# NEXT_PUBLIC_* はクライアントサイド（ブラウザ）で使用するため、ビルド時に埋め込む必要がある
+# APIキーは .env.local または k8s/overlays/local/secret.yaml を参照
+docker build -f docker/Dockerfile \
+  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="your-api-key" \
+  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID="your-map-id" \
+  -t fishing-app:latest .
 ```
 
 ### Step 3: Secret設定
@@ -116,11 +133,11 @@ kustomize build k8s/overlays/local --enable-alpha-plugins --enable-exec | kubect
 kubectl get pods -n fishing-app -w
 ```
 
-> **Note:** `kubectl apply -k` ではSOPSプラグインが動作しないため、`kustomize build` を使用するのだ。
+> **Note:** `kubectl apply -k` ではSOPSプラグインが動作しないため、`kustomize build` を使用する。
 
 ### Step 5: DB初期化
 
-PostgresがRunningになったことを確認してから実行するのだ。
+PostgresがRunningになったことを確認してから実行。
 
 ```bash
 # Postgres起動確認
@@ -147,22 +164,20 @@ kubectl apply -f k8s/base/db-init-job.yaml
 
 ### Step 6: アクセス
 
+#### 方法: Ingress経由
+
+Ingress経由でアクセスする場合は、`minikube tunnel` と `/etc/hosts` の設定が必要。
+
 ```bash
-# MinikubeのIPを取得
-minikube ip
+# 1. /etc/hosts にホスト名を追加（初回のみ）
+#    minikube tunnel を使う場合は 127.0.0.1 を使用
+echo "127.0.0.1 fishing-app.local" | sudo tee -a /etc/hosts
 
-# /etc/hosts に追加
-echo "$(minikube ip) fishing-app.local" | sudo tee -a /etc/hosts
+# 2. 別ターミナルで minikube tunnel を起動
+sudo minikube tunnel
 
-# ブラウザでアクセス
+# 3. ブラウザでアクセス
 open http://fishing-app.local
-```
-
-または `minikube tunnel` を使用:
-
-```bash
-minikube tunnel
-# 別ターミナルで http://fishing-app.local にアクセス
 ```
 
 ## Pod状態確認

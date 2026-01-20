@@ -20,5 +20,5 @@ configMapGenerator:
   - name: fishing-app-config
     behavior: merge
     literals:
-      - AUTH_URL=http://localhost:3001
-      - NEXTAUTH_URL=http://localhost:3001
+      - AUTH_URL=http://fishing-app.local
+      - NEXTAUTH_URL=http://fishing-app.local

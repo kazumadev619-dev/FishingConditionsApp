@@ -39,7 +39,7 @@ spec:
 
               echo ""
               echo "2/3: Running database seed..."
-              npx prisma db seed
+              npx tsx prisma/seed.ts
               echo "🟢 Seed completed!"
 
               echo ""

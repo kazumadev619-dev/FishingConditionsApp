@@ -15,7 +15,10 @@ RUN apk add --no-cache python3 make g++
 COPY package.json package-lock.json ./
 COPY prisma.config.ts ./
 COPY prisma ./prisma/
-COPY .env.local ./.env
+
+# Prisma生成用のダミー環境変数（実際の値は実行時に注入）
+# .env.localをCOPYしないことで、秘密情報がイメージに含まれるリスクを回避
+RUN echo "DATABASE_URL=postgresql://localhost:5432/dummy" > .env
 
 # 依存関係インストール & Prisma Client 生成
 RUN npm ci && npx prisma generate
@@ -33,9 +36,11 @@ COPY --from=deps /app/prisma.config.ts ./
 COPY --from=deps /app/prisma ./prisma
 COPY . .
 
-# 環境変数
+# 環境変数（NEXT_PUBLIC_*はクライアントサイドで使用するため、ビルド時に埋め込み必須）
 ARG NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+ARG NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID
 ENV NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=$NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+ENV NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=$NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # ビルド
@@ -67,6 +72,7 @@ COPY --from=deps /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
 COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
+COPY --from=builder --chown=nextjs:nodejs /app/code.csv ./code.csv
 
 # standalone出力をコピー
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./

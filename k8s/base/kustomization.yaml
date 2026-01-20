@@ -19,6 +19,11 @@ configMapGenerator:
       - NEXTAUTH_URL=http://localhost:3000
       - REDIS_URL=redis://redis:6379
 
+# ConfigMap/Secretのハッシュサフィックスを無効化
+# db-init-jobを個別にapplyできるようにするため
+generatorOptions:
+  disableNameSuffixHash: true
+
 labels:
   - pairs:
       app.kubernetes.io/managed-by: kustomize
