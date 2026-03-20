@@ -38,14 +38,62 @@ ESLintはCIのみの深い解析ツールに格下げする。
 
 #### ESLint格下げ
 - `lint-staged` から ESLint を除外（Biome + Oxlint に委譲）
+- `eslint-config-prettier` を devDependencies から削除し、`eslint.config.mts` からのインポートも除去
 - `package.json` の `lint` スクリプト（ESLint）はCI用途として維持
 - pre-commitフックはlint-stagedのBiome+Oxlintのみ実行
+
+#### lint-staged設定の更新
+```json
+"lint-staged": {
+  "src/**/*.{js,jsx,ts,tsx}": [
+    "oxlint",
+    "biome check --write"
+  ],
+  "src/**/*.{json,md}": [
+    "biome format --write"
+  ]
+}
+```
+
+#### biome.json設定（既存Prettierスタイルを踏襲）
+```json
+{
+  "$schema": "https://biomejs.dev/schemas/1.x/schema.json",
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100,
+    "lineEnding": "lf"
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "all",
+      "arrowParentheses": "always",
+      "semicolons": "always"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true
+    }
+  }
+}
+```
+
+#### CIワークフロー更新
+- `ci.yml` の "Check code formatting" ステップの名称を "Check code formatting (Biome)" に更新
+
+#### pre-pushフック
+- `.husky/pre-push` の `npm run format:check` はBiome移行後も同スクリプトを呼ぶため動作継続（スクリプト内部がBiomeに変わるのみ）
 
 ### 検証基準
 - `npm run format` でBiomeがフォーマット実行できる
 - `npm run lint:fast` でOxlintが実行できる
 - `npm run lint` でESLintが実行できる（CI用途）
 - `git commit` でpre-commitが正常に動作する
+- `git push` でpre-pushが正常に動作する
 
 ---
 
@@ -99,7 +147,7 @@ CLAUDE.mdをポインタ設計に整理し、ADRで技術的決定を記録す�
         "hooks": [
           {
             "type": "command",
-            "command": "echo $CLAUDE_TOOL_INPUT_FILE_PATH | grep -E '(biome\\.json|\\.oxlintrc\\.json|eslint\\.config)' && echo 'BLOCKED: リンター設定ファイルは直接編集禁止。変更が必要な場合はユーザーに確認してください。' && exit 1 || exit 0"
+            "command": "if echo \"$CLAUDE_TOOL_INPUT_FILE_PATH\" | grep -qE '(biome\\.json|\\.oxlintrc\\.json|eslint\\.config)'; then echo 'BLOCKED: リンター設定ファイルは直接編集禁止。変更が必要な場合はユーザーに確認してください。'; exit 2; fi"
           }
         ]
       }
@@ -108,13 +156,15 @@ CLAUDE.mdをポインタ設計に整理し、ADRで技術的決定を記録す�
 }
 ```
 
+> **注意:** `exit 2` を使用する。Claude Code Hooksでは非ゼロ終了コードでツールをブロックできる。
+
 #### CLAUDE.md整理
 - 現在75行 → 50行以下に削減
 - 詳細な説明・設計情報を削除し、docsへのポインタに置き換え
 - 残す内容: コマンド参照、禁止事項、ルーティング指示
 
 #### 初ADR
-`docs/adr/001-harness-tooling.md` を作成:
+`docs/adr/` ディレクトリを新規作成し、`docs/adr/001-harness-tooling.md` を作成:
 - **決定:** Oxlint（PostToolUse高速lint）+ Biome（フォーマット）+ ESLint（CIのみ）
 - **理由:** フィードバック速度の最適化。PostToolUse Hookでms単位の即時フィードバックを実現するため高速ツールが必要
 - **代替案:** ESLint一本化（遅い）、Biomeのみ（ESLintのルール網羅性が失われる）
