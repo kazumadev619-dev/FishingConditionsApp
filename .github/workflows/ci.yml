@@ -47,8 +47,8 @@ jobs:
       - name: Run ESLint
         run: npm run lint
 
-      # 5. Prettierフォーマットチェック
-      - name: Check code formatting
+      # 5. Biomeフォーマットチェック
+      - name: Check code formatting (Biome)
         run: npm run format:check
 
       # 6. TypeScript型チェック
