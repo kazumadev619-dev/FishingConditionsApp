@@ -1,14 +1,15 @@
+import bcrypt from 'bcrypt';
+import { randomUUID } from 'crypto';
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import Google from 'next-auth/providers/google';
 import { z } from 'zod';
-import prisma from '@/lib/prisma';
-import bcrypt from 'bcrypt';
-import { baseAuthConfig } from './config';
-import { randomUUID } from 'crypto';
-import { createVerificationToken } from '@/lib/token';
 import { sendVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
+import prisma from '@/lib/prisma';
+import { createVerificationToken } from '@/lib/token';
+import { isValidUUID } from '@/lib/validators';
+import { baseAuthConfig } from './config';
 
 /**
  * Node Runtime用の認証設定
@@ -226,10 +227,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       // UUID形式（36文字、ハイフン区切り）でない場合はDBから再取得
       else if (token.email && token.id) {
         const tokenId = token.id as string;
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
-          tokenId,
-        );
-        if (!isUUID) {
+        if (!isValidUUID(tokenId)) {
           const dbUser = await prisma.users.findUnique({
             where: { email: (token.email as string).toLowerCase().trim() },
             select: { id: true },
@@ -245,10 +243,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (session.user) {
         const tokenId = token.id as string;
         // UUID形式の検証
-        const isValidUUID =
-          tokenId &&
-          /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tokenId);
-        if (isValidUUID) {
+        if (isValidUUID(tokenId)) {
           session.user.id = tokenId;
         } else {
           logger.error({ tokenId }, 'Session callback: Invalid user ID in token');
