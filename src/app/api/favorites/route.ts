@@ -210,7 +210,7 @@ export async function POST(
     // お気に入りを追加
     await prisma.user_favorites.create({
       data: {
-        user_id: userId as string,
+        user_id: userId,
         location_id: finalLocationId,
       },
     });

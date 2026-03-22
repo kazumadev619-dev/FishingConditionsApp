@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "WebFetch(domain:nyosegawa.com)",
+      "Bash(npm install:*)",
+      "Bash(npx biome:*)",
+      "Bash(npx oxlint:*)",
+      "Bash(npm run:*)",
+      "Bash(npm uninstall:*)",
+      "mcp__plugin_serena_serena__read_file",
+      "mcp__plugin_serena_serena__activate_project",
+      "mcp__plugin_serena_serena__create_text_file",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
+    ]
+  }
+}

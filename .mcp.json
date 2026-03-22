@@ -1,0 +1,32 @@
+{
+  "mcpServers": {
+    "context7": {
+      "type": "http",
+      "url": "https://mcp.context7.com/mcp",
+      "headers": {
+        "CONTEXT7_API_KEY": "ctx7sk-e344788e-0e44-468c-bb56-c960a7635cf1",
+        "Accept": "application/json, text/event-stream"
+      }
+    },
+    "serena": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": [
+        "--from",
+        "git+https://github.com/oraios/serena",
+        "serena-mcp-server",
+        "--context",
+        "ide-assistant",
+        "--enable-web-dashboard",
+        "false",
+        "--project",
+        "${PWD}"
+      ]
+    },
+    "spec-workflow": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@pimzino/spec-workflow-mcp@latest", "."]
+    }
+  }
+}
