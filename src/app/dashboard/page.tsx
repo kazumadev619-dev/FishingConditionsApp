@@ -136,7 +136,14 @@ async function resolveLocation(searchParams: {
       const lng = parseFloat(searchParams.lng);
 
       // バリデーション
-      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      if (
+        Number.isNaN(lat) ||
+        Number.isNaN(lng) ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180
+      ) {
         logger.warn({ lat: searchParams.lat, lng: searchParams.lng }, 'Invalid coordinates');
         return DEFAULT_LOCATION;
       }
