@@ -11,23 +11,9 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
 import { getTideData } from '@/lib/tideService';
-
-/**
- * バリデーション用の正規表現
- */
-const PREFECTURE_CODE_REGEX = /^[0-9]{1,2}$/;
-const PORT_CODE_REGEX = /^[a-zA-Z0-9]+$/;
-const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-/**
- * 今日の日付を YYYY-MM-DD 形式で取得
- */
-function getTodayDateString(): string {
-  const today = new Date();
-  return today.toISOString().split('T')[0];
-}
 
 /**
  * GET ハンドラ
@@ -38,69 +24,33 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const prefectureCode = searchParams.get('prefectureCode');
     const portCode = searchParams.get('portCode');
-    const date = searchParams.get('date') || getTodayDateString();
+    const date = searchParams.get('date') || new Date().toISOString().split('T')[0];
     const range = (searchParams.get('range') as 'day' | 'week' | 'month') || 'week';
     const skipCache = searchParams.get('skipCache') === 'true';
 
     // バリデーション
     if (!prefectureCode) {
-      return NextResponse.json(
-        {
-          error: 'Missing required parameter: prefectureCode',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Missing required parameter: prefectureCode', 400);
     }
 
     if (!portCode) {
-      return NextResponse.json(
-        {
-          error: 'Missing required parameter: portCode',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Missing required parameter: portCode', 400);
     }
 
-    if (!PREFECTURE_CODE_REGEX.test(prefectureCode)) {
-      return NextResponse.json(
-        {
-          error: 'Invalid prefectureCode format',
-          status: 400,
-        },
-        { status: 400 },
-      );
+    if (!/^[0-9]{1,2}$/.test(prefectureCode)) {
+      return createErrorResponse('Invalid prefectureCode format', 400);
     }
 
-    if (!PORT_CODE_REGEX.test(portCode)) {
-      return NextResponse.json(
-        {
-          error: 'Invalid portCode format',
-          status: 400,
-        },
-        { status: 400 },
-      );
+    if (!/^[a-zA-Z0-9]+$/.test(portCode)) {
+      return createErrorResponse('Invalid portCode format', 400);
     }
 
-    if (!DATE_REGEX.test(date)) {
-      return NextResponse.json(
-        {
-          error: 'Invalid date format. Use YYYY-MM-DD',
-          status: 400,
-        },
-        { status: 400 },
-      );
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      return createErrorResponse('Invalid date format. Use YYYY-MM-DD', 400);
     }
 
     if (!['day', 'week', 'month'].includes(range)) {
-      return NextResponse.json(
-        {
-          error: 'Invalid range. Must be one of: day, week, month',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Invalid range. Must be one of: day, week, month', 400);
     }
 
     // 潮汐データを取得

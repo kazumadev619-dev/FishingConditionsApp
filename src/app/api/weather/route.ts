@@ -5,6 +5,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { ApiError } from '@/lib/apiClient';
+import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logApiError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
@@ -24,10 +25,7 @@ export async function GET(request: NextRequest) {
   // APIキーのチェック
   if (!isWeatherApiConfigured()) {
     logger.error('OPENWEATHERMAP_API_KEY is not configured');
-    return NextResponse.json(
-      { error: 'Weather API is not configured', code: 'API_NOT_CONFIGURED' },
-      { status: 503 },
-    );
+    return createErrorResponse('Weather API is not configured', 503, 'API_NOT_CONFIGURED');
   }
 
   const searchParams = request.nextUrl.searchParams;
@@ -36,7 +34,7 @@ export async function GET(request: NextRequest) {
   const coordResult = parseAndValidateCoordinates(searchParams.get('lat'), searchParams.get('lon'));
 
   if ('error' in coordResult) {
-    return NextResponse.json({ error: coordResult.error, code: 'INVALID_PARAMS' }, { status: 400 });
+    return createErrorResponse(coordResult.error, 400, 'INVALID_PARAMS');
   }
 
   const { lat, lon } = coordResult;
@@ -49,20 +47,15 @@ export async function GET(request: NextRequest) {
 
   // typeパラメータのバリデーション
   if (type !== 'current' && type !== 'forecast') {
-    return NextResponse.json(
-      { error: 'typeは "current" または "forecast" である必要があります', code: 'INVALID_PARAMS' },
-      { status: 400 },
-    );
+    return createErrorResponse('typeは "current" または "forecast" である必要があります', 400, 'INVALID_PARAMS');
   }
 
   // unitsパラメータのバリデーション
   if (!['standard', 'metric', 'imperial'].includes(units)) {
-    return NextResponse.json(
-      {
-        error: 'unitsは "standard", "metric", または "imperial" である必要があります',
-        code: 'INVALID_PARAMS',
-      },
-      { status: 400 },
+    return createErrorResponse(
+      'unitsは "standard", "metric", または "imperial" である必要があります',
+      400,
+      'INVALID_PARAMS',
     );
   }
 
