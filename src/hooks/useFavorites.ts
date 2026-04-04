@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { logger } from '@/lib/logger';
-import type { FavoriteLocation, FavoritesResponse, FavoriteAddResponse } from '@/types/favorites';
+import type { FavoriteAddResponse, FavoriteLocation, FavoritesResponse } from '@/types/favorites';
 
 interface UseFavoritesReturn {
   favorites: FavoriteLocation[];

@@ -1,24 +1,24 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
+import { useRouter } from 'next/navigation';
+import { FavoriteButton } from '@/components/atoms/FavoriteButton';
+import { FishingLocationMap } from '@/components/molecules/FishingLocationMap';
 import { ScoreCard } from '@/components/molecules/ScoreCard';
 import { TideCard } from '@/components/molecules/TideCard';
-import { WeatherCard } from '@/components/molecules/WeatherCard';
 import { TimeScoreCard } from '@/components/molecules/TimeScoreCard';
-import { FishingLocationMap } from '@/components/molecules/FishingLocationMap';
-import { FavoriteButton } from '@/components/atoms/FavoriteButton';
-import { useFavorites } from '@/hooks/useFavorites';
-import type { DashboardData } from '@/types/dashboard';
+import { WeatherCard } from '@/components/molecules/WeatherCard';
 import {
-  cardVariants,
-  hoverScaleTransition,
-  headerAnimation,
-  explanationAnimation,
-  mapAnimation,
   cardHoverScale,
+  cardVariants,
+  explanationAnimation,
+  headerAnimation,
+  hoverScaleTransition,
+  mapAnimation,
 } from '@/constants/animations';
 import { DASHBOARD_LABELS } from '@/constants/labels';
+import { useFavorites } from '@/hooks/useFavorites';
+import type { DashboardData } from '@/types/dashboard';
 
 interface DashboardGridProps {
   data: DashboardData;

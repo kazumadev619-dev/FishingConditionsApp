@@ -1,7 +1,7 @@
 'use client';
 
-import { Button } from '@/components/ui/button';
 import { Menu, PanelLeft } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface AppHeaderProps {
   onToggleSidebar: () => void;

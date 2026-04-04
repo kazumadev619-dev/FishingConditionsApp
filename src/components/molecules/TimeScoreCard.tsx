@@ -1,7 +1,7 @@
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SCORE_CARD_LABELS, TIME_CARD_LABELS } from '@/constants/labels';
 import { formatTime } from '@/lib/utils/dashboardUtils';
 import type { TimeScoreInfo } from '@/types/dashboard';
-import { TIME_CARD_LABELS, SCORE_CARD_LABELS } from '@/constants/labels';
 
 interface TimeScoreCardProps {
   timeScore: TimeScoreInfo;

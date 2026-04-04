@@ -2,7 +2,7 @@
  * アニメーション関連の定数
  */
 
-import type { Variants, Transition } from 'framer-motion';
+import type { Transition, Variants } from 'framer-motion';
 
 /**
  * カード表示時のバリアント（順次表示）

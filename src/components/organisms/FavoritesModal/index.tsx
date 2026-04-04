@@ -1,7 +1,7 @@
 'use client';
 
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { FavoriteTab } from '@/components/organisms/LocationSearchTabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { useFavorites } from '@/hooks/useFavorites';
 
 interface FavoritesModalProps {

@@ -5,16 +5,17 @@
  * GET /api/favorites - お気に入り一覧取得
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import prisma from '@/lib/prisma';
 import { Prisma } from '@/generated/prisma/client';
 import { logger } from '@/lib/logger';
+import prisma from '@/lib/prisma';
+import { isValidUUID } from '@/lib/validators';
 import type {
+  FavoriteAddResponse,
+  FavoriteLocation,
   FavoriteRequest,
   FavoritesResponse,
-  FavoriteLocation,
-  FavoriteAddResponse,
 } from '@/types/favorites';
 
 /**
@@ -34,9 +35,7 @@ export async function GET(): Promise<NextResponse<FavoritesResponse | { error: s
     const userId = session?.user?.id;
 
     // UUID形式の検証（無効なセッションの場合はエラー）
-    const isValidUUID =
-      userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    if (!isValidUUID) {
+    if (!isValidUUID(userId)) {
       logger.error({ userId }, 'GET favorites: Invalid user ID in session');
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
@@ -93,9 +92,7 @@ export async function POST(
     const userId = session?.user?.id;
 
     // UUID形式の検証（無効なセッションの場合はエラー）
-    const isValidUUID =
-      userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    if (!isValidUUID) {
+    if (!isValidUUID(userId)) {
       logger.error({ userId }, 'POST favorites: Invalid user ID in session');
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
@@ -213,7 +210,7 @@ export async function POST(
     // お気に入りを追加
     await prisma.user_favorites.create({
       data: {
-        user_id: userId,
+        user_id: userId as string,
         location_id: finalLocationId,
       },
     });
@@ -263,9 +260,7 @@ export async function DELETE(
     const userId = session?.user?.id;
 
     // UUID形式の検証（無効なセッションの場合はエラー）
-    const isValidUUID =
-      userId && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-    if (!isValidUUID) {
+    if (!isValidUUID(userId)) {
       logger.error({ userId }, 'DELETE favorites: Invalid user ID in session');
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }

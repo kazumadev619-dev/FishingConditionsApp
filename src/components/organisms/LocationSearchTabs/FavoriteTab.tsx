@@ -1,8 +1,8 @@
 'use client';
 
-import { useCallback, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import { Loader2, MapPin, Trash2 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { useCallback, useState } from 'react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { logger } from '@/lib/logger';
 import type { FavoriteLocation } from '@/types/favorites';
@@ -79,6 +79,7 @@ export function FavoriteTab({
         {favorites.map((location) => (
           <button
             key={location.id}
+            type="button"
             onClick={() => handleLocationClick(location)}
             className="w-full flex items-start justify-between gap-2 rounded-lg border p-3 text-left hover:bg-muted transition-colors"
           >
@@ -94,6 +95,7 @@ export function FavoriteTab({
               </div>
             </div>
             <button
+              type="button"
               onClick={(e) => handleRemove(e, location.locationId)}
               disabled={removingId === location.locationId}
               className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"

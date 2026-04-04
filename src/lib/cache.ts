@@ -1,8 +1,9 @@
 /**
  * Redis キャッシュユーティリティ
  */
-import { logger } from './logger';
+
 import Redis from 'ioredis';
+import { logger } from './logger';
 
 // キャッシュのTTL定数（秒単位）
 export const CACHE_TTL = {

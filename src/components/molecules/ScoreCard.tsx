@@ -1,10 +1,10 @@
 'use client';
 
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { ScoreBadge } from '@/components/atoms/ScoreBadge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SCORE_CARD_LABELS } from '@/constants/labels';
 import { getRankColor } from '@/lib/utils/dashboardUtils';
 import type { FishingScore } from '@/types/scoring';
-import { SCORE_CARD_LABELS } from '@/constants/labels';
 
 interface ScoreCardProps {
   score: FishingScore;
@@ -49,6 +49,7 @@ export function ScoreCard({ score, onDetailsClick }: ScoreCardProps) {
 
         {onDetailsClick && (
           <button
+            type="button"
             onClick={onDetailsClick}
             className="mt-6 w-full py-2 bg-primary text-white rounded-lg hover:bg-primary/90 transition-colors"
           >

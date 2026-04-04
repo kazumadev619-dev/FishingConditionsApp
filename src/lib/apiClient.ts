@@ -1,5 +1,5 @@
 // API エラーの種類を定義
-import { withCache, generateCacheKey } from './cache';
+import { generateCacheKey, withCache } from './cache';
 import { logger } from './logger';
 
 export enum ApiErrorType {
@@ -87,7 +87,7 @@ class ApiClient {
    */
   private getBackoffDelay(attempt: number): number {
     // 100ms, 200ms, 400ms, ...
-    return Math.min(100 * Math.pow(2, attempt), 5000);
+    return Math.min(100 * 2 ** attempt, 5000);
   }
 
   /**
@@ -182,6 +182,7 @@ class ApiClient {
 
     // 既存のクエリパラメータを追加
     if (params) {
+      // biome-ignore lint/suspicious/useIterableCallbackReturn: void return is intentional for forEach side effect
       Object.keys(params).forEach((key) => url.searchParams.append(key, params[key]));
     }
 

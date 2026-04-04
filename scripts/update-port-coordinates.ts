@@ -6,9 +6,9 @@
  * npx tsx scripts/update-port-coordinates.ts [--dry-run]
  */
 
-import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
+import { PrismaClient } from '../src/generated/prisma/client';
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -58,9 +58,7 @@ async function fetchCoordinates(
     const data: TideApiResponse = await response.json();
 
     if (data.status !== 1) {
-      console.warn(
-        `⚠️  API error for ${prefectureCode}-${portCode}: ${data.message}`,
-      );
+      console.warn(`⚠️  API error for ${prefectureCode}-${portCode}: ${data.message}`);
       return null;
     }
 
@@ -122,7 +120,9 @@ async function main() {
       const progress = `[${i + 1}/${portsWithoutCoords.length}]`;
 
       // 進捗表示
-      process.stdout.write(`${progress} ${port.name} (${port.prefecture_code}-${port.port_code})... `);
+      process.stdout.write(
+        `${progress} ${port.name} (${port.prefecture_code}-${port.port_code})... `,
+      );
 
       // API レート制限対策（100ms待機）
       if (i > 0) {

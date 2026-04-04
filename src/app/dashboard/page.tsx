@@ -1,12 +1,12 @@
 import { DashboardGrid } from '@/components/organisms/DashboardGrid';
-import { calculateFishingScore } from '@/lib/scoringService';
+import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
+import { findNearestPort } from '@/lib/portMappingService';
+import prisma from '@/lib/prisma';
+import { calculateFishingScore } from '@/lib/scoringService';
 import { getTideData } from '@/lib/tideService';
 import { getTimeCategory, getTimeExplanation } from '@/lib/utils/dashboardUtils';
 import type { DashboardData } from '@/types/dashboard';
-import prisma from '@/lib/prisma';
-import { findNearestPort } from '@/lib/portMappingService';
-import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 

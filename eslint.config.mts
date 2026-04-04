@@ -1,8 +1,8 @@
 import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import pluginReact from 'eslint-plugin-react';
 import eslintPluginNext from '@next/eslint-plugin-next';
+import pluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
 
 export default [
   // グローバルignore設定

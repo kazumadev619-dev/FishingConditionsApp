@@ -3,9 +3,9 @@
  * 潮汐、天気、時間帯から総合スコアを計算
  */
 
+import type { FishingScore, ScoreRank } from '@/types/scoring';
 import type { FormattedWeatherData } from './openWeatherService';
 import type { FormattedTideData } from './tideService';
-import type { FishingScore, ScoreRank } from '@/types/scoring';
 
 class ScoringEngine {
   /**
@@ -98,12 +98,12 @@ class ScoringEngine {
       ...dailyTide.flood.map((f) => ({
         time: f.time,
         type: 'flood' as const,
-        height: parseInt(f.cm),
+        height: parseInt(f.cm, 10),
       })),
       ...dailyTide.edd.map((e) => ({
         time: e.time,
         type: 'edd' as const,
-        height: parseInt(e.cm),
+        height: parseInt(e.cm, 10),
       })),
     ].map((e) => {
       const [hours, minutes] = e.time.split(':').map(Number);

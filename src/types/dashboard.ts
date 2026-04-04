@@ -2,9 +2,9 @@
  * ダッシュボード関連の型定義
  */
 
-import type { FishingScore } from './scoring';
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
-import type { FormattedTideData, DailyTide } from '@/lib/tideService';
+import type { DailyTide, FormattedTideData } from '@/lib/tideService';
+import type { FishingScore } from './scoring';
 
 /**
  * 時間帯スコア情報

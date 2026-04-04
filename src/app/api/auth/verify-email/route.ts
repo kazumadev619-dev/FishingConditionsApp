@@ -1,7 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { verifyToken, deleteVerificationToken } from '@/lib/token';
-import prisma from '@/lib/prisma';
+import { type NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
+import prisma from '@/lib/prisma';
+import { deleteVerificationToken, verifyToken } from '@/lib/token';
 
 /**
  * メール検証エンドポイント
