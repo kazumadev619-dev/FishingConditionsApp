@@ -334,7 +334,6 @@ class ScoringEngine {
         return '時間帯';
     }
   }
-
 }
 
 // シングルトンインスタンスをエクスポート

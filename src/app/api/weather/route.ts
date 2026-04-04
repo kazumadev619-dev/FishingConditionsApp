@@ -5,8 +5,8 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { ApiError } from '@/lib/apiClient';
-import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logApiError } from '@/lib/apiErrorUtils';
+import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
 import { parseAndValidateCoordinates } from '@/lib/validators';
@@ -47,7 +47,11 @@ export async function GET(request: NextRequest) {
 
   // typeパラメータのバリデーション
   if (type !== 'current' && type !== 'forecast') {
-    return createErrorResponse('typeは "current" または "forecast" である必要があります', 400, 'INVALID_PARAMS');
+    return createErrorResponse(
+      'typeは "current" または "forecast" である必要があります',
+      400,
+      'INVALID_PARAMS',
+    );
   }
 
   // unitsパラメータのバリデーション
