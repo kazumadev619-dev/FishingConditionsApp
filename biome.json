@@ -38,13 +38,13 @@
       "!package-lock.json",
       "!pnpm-lock.yaml",
       "!yarn.lock",
-      "!.git/**",
-      "!.github/**",
-      "!.vscode/**",
-      "!.kiro/**",
-      "!.serena/**",
-      "!node_modules/**",
-      "!.next/**"
+      "!.git",
+      "!.github",
+      "!.vscode",
+      "!.kiro",
+      "!.serena",
+      "!node_modules",
+      "!.next"
     ]
   }
 }

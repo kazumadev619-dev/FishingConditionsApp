@@ -1,5 +1,5 @@
-import type { ScoreRank } from '@/types/scoring';
 import { getRankColor, getRankLabel } from '@/lib/utils/dashboardUtils';
+import type { ScoreRank } from '@/types/scoring';
 
 interface ScoreBadgeProps {
   rank: ScoreRank;

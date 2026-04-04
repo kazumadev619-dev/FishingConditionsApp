@@ -8,8 +8,8 @@
  * - skipCache: キャッシュをスキップするか（true|false）
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { searchLocations, isLocationSearchConfigured } from '@/lib/locationService';
+import { type NextRequest, NextResponse } from 'next/server';
+import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
 
 /**

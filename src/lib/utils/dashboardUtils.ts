@@ -99,6 +99,6 @@ export function formatTideEvent(timeStr: string, cmStr: string): TideEventDispla
 
   return {
     time: formatTime(timeDate),
-    height: `${(parseInt(cmStr) / 100).toFixed(1)}m`,
+    height: `${(parseInt(cmStr, 10) / 100).toFixed(1)}m`,
   };
 }

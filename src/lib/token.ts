@@ -1,6 +1,6 @@
-import { randomBytes } from 'crypto';
-import prisma from '@/lib/prisma';
+import { randomBytes } from 'node:crypto';
 import { logger, maskEmail } from '@/lib/logger';
+import prisma from '@/lib/prisma';
 
 /**
  * ランダムなトークンを生成

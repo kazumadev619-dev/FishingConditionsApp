@@ -10,9 +10,9 @@
  * - skipCache: キャッシュをスキップするか（true|false）
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getTideData } from '@/lib/tideService';
+import { type NextRequest, NextResponse } from 'next/server';
 import { logger } from '@/lib/logger';
+import { getTideData } from '@/lib/tideService';
 
 /**
  * バリデーション用の正規表現

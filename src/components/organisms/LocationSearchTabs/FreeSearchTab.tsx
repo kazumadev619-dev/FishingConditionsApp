@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { Loader2, MapPin, Search } from 'lucide-react';
 import { useRouter } from 'next/navigation';
-import { Search, MapPin, Loader2 } from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { cn } from '@/lib/utils';
 import { logger } from '@/lib/logger';
+import { cn } from '@/lib/utils';
 
 interface SearchResult {
   place_id: string;
@@ -127,6 +127,7 @@ export function FreeSearchTab({ onLocationSelect }: FreeSearchTabProps) {
             {results.map((result) => (
               <button
                 key={result.place_id}
+                type="button"
                 onClick={() => handleSelectLocation(result)}
                 className={cn(
                   'w-full text-left rounded-lg p-2 transition-colors',

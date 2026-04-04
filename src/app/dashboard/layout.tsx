@@ -1,9 +1,9 @@
 'use client';
 
-import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { AppSidebar } from '@/components/organisms/AppSidebar';
+import { useState } from 'react';
 import { AppHeader } from '@/components/organisms/AppHeader';
+import { AppSidebar } from '@/components/organisms/AppSidebar';
 import { cn } from '@/lib/utils';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -28,8 +28,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* Mobile menu overlay */}
       {mobileMenuOpen && (
-        <div
-          className="fixed inset-0 z-40 bg-black/50 md:hidden"
+        <button
+          type="button"
+          aria-label="メニューを閉じる"
+          className="fixed inset-0 z-40 bg-black/50 md:hidden cursor-default"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}

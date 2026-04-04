@@ -1,5 +1,5 @@
+import { randomUUID } from 'node:crypto';
 import bcrypt from 'bcrypt';
-import { randomUUID } from 'crypto';
 import NextAuth from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import Google from 'next-auth/providers/google';

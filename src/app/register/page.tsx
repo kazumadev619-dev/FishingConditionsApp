@@ -1,17 +1,17 @@
 'use client';
 
-import { signup } from '@/lib/actions';
+import { AlertCircle } from 'lucide-react';
+import Link from 'next/link';
 import { signIn } from 'next-auth/react';
+import { useActionState, useState } from 'react';
+import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { PasswordRequirements } from '@/components/ui/password-requirements';
 import { PasswordStrengthIndicator } from '@/components/ui/password-strength-indicator';
-import Link from 'next/link';
-import { useActionState, useState } from 'react';
-import { useFormStatus } from 'react-dom';
-import { AlertCircle } from 'lucide-react';
+import { signup } from '@/lib/actions';
 
 export default function RegisterPage() {
   const [errorMessage, dispatch] = useActionState(signup, undefined);
@@ -94,7 +94,7 @@ export default function RegisterPage() {
                 className="w-full"
                 onClick={handleGoogleSignIn}
               >
-                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24">
+                <svg className="mr-2 h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
                   <path
                     fill="currentColor"
                     d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"

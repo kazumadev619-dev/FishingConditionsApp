@@ -3,11 +3,11 @@
  * GET /api/weather?lat={緯度}&lon={経度}
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
+import { type NextRequest, NextResponse } from 'next/server';
 import { ApiError } from '@/lib/apiClient';
 import { logApiError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
+import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
 
 /**
  * 座標パラメータのバリデーション
@@ -23,7 +23,7 @@ function validateCoordinates(
   const latNum = parseFloat(lat);
   const lonNum = parseFloat(lon);
 
-  if (isNaN(latNum) || isNaN(lonNum)) {
+  if (Number.isNaN(latNum) || Number.isNaN(lonNum)) {
     return { error: '緯度と経度は有効な数値である必要があります' };
   }
 

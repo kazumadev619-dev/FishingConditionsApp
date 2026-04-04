@@ -68,7 +68,7 @@ export async function retryWithBackoff<T>(
       lastError = error instanceof Error ? error : new Error(String(error));
 
       if (attempt < maxRetries - 1) {
-        const delay = initialDelay * Math.pow(2, attempt);
+        const delay = initialDelay * 2 ** attempt;
         logger.warn({ attempt: attempt + 1, delayMs: delay }, 'Retry attempt failed, retrying...');
         await new Promise((resolve) => setTimeout(resolve, delay));
       }
