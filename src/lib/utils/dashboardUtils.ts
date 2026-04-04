@@ -4,16 +4,7 @@
 
 import type { ScoreRank } from '@/types/scoring';
 
-/**
- * スコアからランクを取得
- */
-export function getScoreRank(score: number): ScoreRank {
-  if (score >= 80) return 'excellent';
-  if (score >= 60) return 'good';
-  if (score >= 40) return 'fair';
-  if (score >= 20) return 'poor';
-  return 'bad';
-}
+export { getScoreRank } from './scoreRank';
 
 /**
  * ランクから色を取得
@@ -50,12 +41,7 @@ export function formatTime(date: Date): string {
   return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
 }
 
-/**
- * 日付をフォーマット
- */
-export function formatDate(date: Date): string {
-  return date.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' });
-}
+export { formatDisplayDate as formatDate } from './dateUtils';
 
 /**
  * 風向を日本語に変換
