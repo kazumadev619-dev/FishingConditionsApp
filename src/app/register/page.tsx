@@ -22,8 +22,7 @@ export default function RegisterPage() {
     try {
       setGoogleError(undefined);
       await signIn('google', { callbackUrl: '/dashboard' });
-    } catch (error) {
-      console.error('Google sign-in error:', error);
+    } catch {
       setGoogleError('Googleログインに失敗しました。時間をおいて再度お試しください。');
     }
   };
