@@ -10,20 +10,13 @@ import { auth } from '@/auth';
 import { Prisma } from '@/generated/prisma/client';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
-import { isValidUUID } from '@/lib/validators';
+import { isValidUUID, roundCoordinate } from '@/lib/validators';
 import type {
   FavoriteAddResponse,
   FavoriteLocation,
   FavoriteRequest,
   FavoritesResponse,
 } from '@/types/favorites';
-
-/**
- * 座標を小数点4桁に丸める（約11m精度）
- */
-function roundCoordinate(coord: number): number {
-  return Math.round(coord * 10000) / 10000;
-}
 
 /**
  * お気に入り一覧取得

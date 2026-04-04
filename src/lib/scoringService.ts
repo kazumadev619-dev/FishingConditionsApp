@@ -3,9 +3,11 @@
  * 潮汐、天気、時間帯から総合スコアを計算
  */
 
-import type { FishingScore, ScoreRank } from '@/types/scoring';
+import type { FishingScore } from '@/types/scoring';
 import type { FormattedWeatherData } from './openWeatherService';
 import type { FormattedTideData } from './tideService';
+import { formatDateLocal } from './utils/dateUtils';
+import { getScoreRank } from './utils/scoreRank';
 
 class ScoringEngine {
   /**
@@ -28,7 +30,7 @@ class ScoringEngine {
     const clippedScore = Math.max(0, Math.min(100, Math.round(totalScore)));
 
     // ランクを判定
-    const rank = this.getRankFromScore(clippedScore);
+    const rank = getScoreRank(clippedScore);
 
     // 最良・最悪要素を判定
     const components = {
@@ -57,7 +59,7 @@ class ScoringEngine {
     );
 
     // 月齢と潮の種類を取得（tide736.net APIから）
-    const today = this.formatDateToString(currentTime);
+    const today = formatDateLocal(currentTime);
     const todayTides = tideData.tides.find((t) => t.date === today);
     const tideName = todayTides?.daily.moon?.title;
     const moonAge = todayTides?.daily.moon?.age;
@@ -80,7 +82,7 @@ class ScoringEngine {
    */
   private calculateTideScore(tideData: FormattedTideData, currentTime: Date): number {
     // 本日の潮汐データを取得
-    const today = this.formatDateToString(currentTime);
+    const today = formatDateLocal(currentTime);
     const todayTides = tideData.tides.find((t) => t.date === today);
 
     if (!todayTides) {
@@ -267,17 +269,6 @@ class ScoringEngine {
   }
 
   /**
-   * スコアからランクを判定
-   */
-  private getRankFromScore(score: number): ScoreRank {
-    if (score >= 80) return 'excellent';
-    if (score >= 60) return 'good';
-    if (score >= 40) return 'fair';
-    if (score >= 20) return 'poor';
-    return 'bad';
-  }
-
-  /**
    * スコアに基づいて説明文を生成
    */
   private generateExplanation(
@@ -287,7 +278,7 @@ class ScoringEngine {
     tideData: FormattedTideData,
     currentTime: Date,
   ): string {
-    const rank = this.getRankFromScore(score);
+    const rank = getScoreRank(score);
 
     let explanation = '';
 
@@ -314,7 +305,7 @@ class ScoringEngine {
     explanation += `\n最も良い条件は${bestLabel}です。`;
 
     // 月齢と潮の種類を追加（tide736.net APIから取得）
-    const today = this.formatDateToString(currentTime);
+    const today = formatDateLocal(currentTime);
     const todayTides = tideData.tides.find((t) => t.date === today);
     if (todayTides?.daily.moon) {
       const moonAge = todayTides.daily.moon.age;
@@ -342,16 +333,6 @@ class ScoringEngine {
       case 'time':
         return '時間帯';
     }
-  }
-
-  /**
-   * Dateオブジェクトを YYYY-MM-DD 形式の文字列に変換
-   */
-  private formatDateToString(date: Date): string {
-    const year = date.getFullYear();
-    const month = String(date.getMonth() + 1).padStart(2, '0');
-    const day = String(date.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
   }
 }
 

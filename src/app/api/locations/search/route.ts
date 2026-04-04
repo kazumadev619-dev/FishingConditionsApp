@@ -9,6 +9,7 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
 
@@ -36,12 +37,9 @@ export async function GET(request: NextRequest) {
   try {
     // Google Maps API が設定されているか確認
     if (!isLocationSearchConfigured()) {
-      return NextResponse.json(
-        {
-          error: 'Location search is not configured. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.',
-          status: 503,
-        },
-        { status: 503 },
+      return createErrorResponse(
+        'Location search is not configured. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.',
+        503,
       );
     }
 
@@ -53,66 +51,30 @@ export async function GET(request: NextRequest) {
 
     // バリデーション: q パラメータが必須
     if (!query) {
-      return NextResponse.json(
-        {
-          error: 'Missing required parameter: q',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Missing required parameter: q', 400);
     }
 
     // バリデーション: q の長さと内容
     if (query.length < 2) {
-      return NextResponse.json(
-        {
-          error: 'Search query must be at least 2 characters',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Search query must be at least 2 characters', 400);
     }
 
     if (query.length > 200) {
-      return NextResponse.json(
-        {
-          error: 'Search query must be less than 200 characters',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Search query must be less than 200 characters', 400);
     }
 
     if (!isValidQuery(query)) {
-      return NextResponse.json(
-        {
-          error: 'Search query contains invalid characters',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Search query contains invalid characters', 400);
     }
 
     // バリデーション: limit
     if (!LIMIT_REGEX.test(limitParam)) {
-      return NextResponse.json(
-        {
-          error: 'Invalid limit parameter. Must be a positive number.',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Invalid limit parameter. Must be a positive number.', 400);
     }
 
     const limit = Math.min(parseInt(limitParam, 10), 50); // 最大50件まで
     if (limit < 1) {
-      return NextResponse.json(
-        {
-          error: 'Limit must be at least 1',
-          status: 400,
-        },
-        { status: 400 },
-      );
+      return createErrorResponse('Limit must be at least 1', 400);
     }
 
     // 場所検索を実行
