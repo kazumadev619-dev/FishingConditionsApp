@@ -8,35 +8,7 @@ import { ApiError } from '@/lib/apiClient';
 import { logApiError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
-
-/**
- * 座標パラメータのバリデーション
- */
-function validateCoordinates(
-  lat: string | null,
-  lon: string | null,
-): { lat: number; lon: number } | { error: string } {
-  if (!lat || !lon) {
-    return { error: '緯度(lat)と経度(lon)は必須パラメータです' };
-  }
-
-  const latNum = parseFloat(lat);
-  const lonNum = parseFloat(lon);
-
-  if (Number.isNaN(latNum) || Number.isNaN(lonNum)) {
-    return { error: '緯度と経度は有効な数値である必要があります' };
-  }
-
-  if (latNum < -90 || latNum > 90) {
-    return { error: '緯度は-90から90の範囲である必要があります' };
-  }
-
-  if (lonNum < -180 || lonNum > 180) {
-    return { error: '経度は-180から180の範囲である必要があります' };
-  }
-
-  return { lat: latNum, lon: lonNum };
-}
+import { parseAndValidateCoordinates } from '@/lib/validators';
 
 /**
  * GET /api/weather
@@ -61,7 +33,7 @@ export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
 
   // 座標パラメータの取得とバリデーション
-  const coordResult = validateCoordinates(searchParams.get('lat'), searchParams.get('lon'));
+  const coordResult = parseAndValidateCoordinates(searchParams.get('lat'), searchParams.get('lon'));
 
   if ('error' in coordResult) {
     return NextResponse.json({ error: coordResult.error, code: 'INVALID_PARAMS' }, { status: 400 });
