@@ -24,13 +24,15 @@ export class ScoringEngine {
 
     const components = { tide: tideScore, weather: weatherScore, time: timeScore };
 
-    const bestComponent = Object.entries(components).reduce((a, b) =>
-      b[1] > a[1] ? b : a,
-    )[0] as 'tide' | 'weather' | 'time';
+    const bestComponent = Object.entries(components).reduce((a, b) => (b[1] > a[1] ? b : a))[0] as
+      | 'tide'
+      | 'weather'
+      | 'time';
 
-    const worstComponent = Object.entries(components).reduce((a, b) =>
-      b[1] < a[1] ? b : a,
-    )[0] as 'tide' | 'weather' | 'time';
+    const worstComponent = Object.entries(components).reduce((a, b) => (b[1] < a[1] ? b : a))[0] as
+      | 'tide'
+      | 'weather'
+      | 'time';
 
     const explanation = generateExplanation(
       clippedScore,
