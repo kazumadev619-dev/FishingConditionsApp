@@ -24,7 +24,8 @@ export function useDashboardFavorite(location: DashboardLocation) {
 
   const handleToggleFavorite = useCallback(async () => {
     try {
-      if (isFavorite) {
+      const currentIsFavorite = checkIsFavorite(locationId);
+      if (currentIsFavorite) {
         await removeFavorite(locationId);
         return;
       }
@@ -51,7 +52,7 @@ export function useDashboardFavorite(location: DashboardLocation) {
     } catch {
       // エラーはuseFavorites内でログ出力済み
     }
-  }, [isFavorite, locationId, location, addFavorite, removeFavorite, router]);
+  }, [locationId, location, addFavorite, removeFavorite, router, checkIsFavorite]);
 
   return { isFavorite, isLoading, handleToggleFavorite };
 }
