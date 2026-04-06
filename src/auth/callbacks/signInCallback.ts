@@ -43,10 +43,7 @@ export async function signInCallback({
                 'Verification email sent for social account linking',
               );
             } catch (error) {
-              logger.error(
-                { email: maskEmail(email), error },
-                'Failed to send verification email',
-              );
+              logger.error({ email: maskEmail(email), error }, 'Failed to send verification email');
             }
             return false;
           }
