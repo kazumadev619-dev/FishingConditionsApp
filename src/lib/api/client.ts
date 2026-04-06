@@ -207,12 +207,6 @@ export const googleMapsClient = new ApiClient(
   true,
 );
 
-export const tide736Client = new ApiClient(
-  'https://tide736.net/api',
-  '',
-  'query',
-  '',
-  false,
-);
+export const tide736Client = new ApiClient('https://tide736.net/api', '', 'query', '', false);
 
 export { ApiClient };
