@@ -1,7 +1,6 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { useRouter } from 'next/navigation';
 import { FavoriteButton } from '@/components/atoms/FavoriteButton';
 import { FishingLocationMap } from '@/components/molecules/FishingLocationMap';
 import { ScoreCard } from '@/components/molecules/ScoreCard';
@@ -17,7 +16,7 @@ import {
   mapAnimation,
 } from '@/constants/animations';
 import { DASHBOARD_LABELS } from '@/constants/labels';
-import { useFavorites } from '@/hooks/useFavorites';
+import { useDashboardFavorite } from '@/hooks/useDashboardFavorite';
 import type { DashboardData } from '@/types/dashboard';
 
 interface DashboardGridProps {
@@ -38,40 +37,7 @@ interface DashboardGridProps {
 }
 
 export function DashboardGrid({ data, location }: DashboardGridProps) {
-  const router = useRouter();
-  const { isFavorite, addFavorite, removeFavorite, isLoading } = useFavorites();
-
-  const handleToggleFavorite = async () => {
-    try {
-      const locationId = location.id || '';
-      if (isFavorite(locationId)) {
-        await removeFavorite(locationId);
-      } else {
-        // locationIdがある場合はそれを使用、ない場合はsourceから作成
-        let newLocationId: string;
-        if (location.id) {
-          newLocationId = await addFavorite(location.id);
-        } else if (location.source?.type === 'port' && location.source.portId) {
-          newLocationId = await addFavorite(undefined, location.source.portId);
-        } else if (location.source?.type === 'coordinates' && location.source.coordinates) {
-          newLocationId = await addFavorite(
-            undefined,
-            undefined,
-            location.source.coordinates.lat,
-            location.source.coordinates.lng,
-            location.source.coordinates.name,
-          );
-        } else {
-          return;
-        }
-
-        // 新しいlocationIdでURLを更新（portIdや座標ではなくlocationIdで管理）
-        router.replace(`/dashboard?locationId=${newLocationId}`);
-      }
-    } catch {
-      // エラーはuseFavorites内でログ出力済み
-    }
-  };
+  const { isFavorite, isLoading, handleToggleFavorite } = useDashboardFavorite(location);
 
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
@@ -86,7 +52,7 @@ export function DashboardGrid({ data, location }: DashboardGridProps) {
             {data.location.name} {DASHBOARD_LABELS.LOCATION_SUFFIX}
           </h1>
           <FavoriteButton
-            isFavorite={isFavorite(location.id || '')}
+            isFavorite={isFavorite}
             isLoading={isLoading}
             onToggle={handleToggleFavorite}
             size="lg"
