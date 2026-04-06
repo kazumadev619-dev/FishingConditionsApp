@@ -59,9 +59,7 @@ export async function GET(request: NextRequest) {
       {
         status: 200,
         headers: {
-          'Cache-Control': response.fromCache
-            ? 'public, max-age=3600'
-            : 'public, max-age=300',
+          'Cache-Control': response.fromCache ? 'public, max-age=3600' : 'public, max-age=300',
         },
       },
     );
