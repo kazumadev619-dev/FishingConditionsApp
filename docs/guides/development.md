@@ -29,15 +29,15 @@
 
 ```
 fishing-conditions-app/
-├── .kiro/
-│   └── specs/                     # 仕様書
-│       └── fishing-conditions-app/
-├── docs/                          # ドキュメント
+├── docs/                          # ドキュメント（docs/README.md が索引）
+│   ├── README.md
 │   ├── roadmap.md
-│   ├── api-integration.md
-│   ├── architecture.md
-│   ├── scoring-algorithm.md
-│   └── development-guide.md
+│   ├── guides/                    # 作業手順・運用
+│   ├── reference/                 # 設計・仕様
+│   ├── adr/                       # 技術的決定記録
+│   └── perf/                      # パフォーマンス計測結果
+├── k8s/                           # Kubernetesマニフェスト
+├── docker/                        # Dockerfile / docker-compose.yml
 ├── src/                           # ソースコード
 │   ├── app/                       # Next.js App Router
 │   │   ├── api/                   # API Routes
@@ -74,7 +74,7 @@ fishing-conditions-app/
 ### コーディング規約
 
 - **言語**: TypeScript strict mode
-- **フォーマッター**: Prettier
+- **フォーマッター**: Biome（`npm run format`）
 - **リンター**: ESLint + TypeScript ESLint
 - **スタイル**: Tailwind CSS
 - **コンポーネント**: shadcn/ui ベース
@@ -122,7 +122,7 @@ chore: その他の変更
 - **自動テスト**: Jest + React Testing Library
 - **E2Eテスト**: Playwright
 - **型チェック**: TypeScript strict mode
-- **リント**: ESLint + Prettier
+- **リント**: Oxlint（高速チェック）+ Biome（整形）+ ESLint（CIでの深い静的解析）
 - **CI/CD**: GitHub Actions
 
 ---
@@ -234,10 +234,10 @@ curl "https://api.openweathermap.org/data/2.5/weather?q=Tokyo&appid=YOUR_API_KEY
 
 ```bash
 # PostgreSQL接続確認 (docker-compose)
-docker-compose -f docker/docker-compose.yml exec postgres pg_isready
+docker compose -f docker/docker-compose.yml exec postgres pg_isready
 
 # ローカルDB起動
-cd docker && docker-compose up -d postgres
+cd docker && docker compose up -d postgres
 
 # Prisma Studio でDB確認
 npm run prisma:studio
@@ -344,8 +344,6 @@ logger.info('User login successful', { userId, timestamp });
 
 ### インフラ・ツール
 
-- [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
-- [kind (Kubernetes in Docker)](https://kind.sigs.k8s.io/)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [Prisma Documentation](https://www.prisma.io/docs/)
 
