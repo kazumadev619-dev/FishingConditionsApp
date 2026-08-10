@@ -2,7 +2,9 @@
 
 釣り初心者から経験者までが、**「いつ・どこで・どんな条件なら釣れるか」**をリアルタイムで確認できるWebアプリケーション。
 
-潮汐・風・天気・海水温などの環境データを統合し、独自の**釣りやすさスコア**を算出・可視化することで、ユーザーの釣果向上を支援します。PWA対応により、スマートフォンでネイティブアプリライクな体験を提供します。
+潮汐・風・天気・海水温などの環境データを統合し、独自の**釣りやすさスコア**を算出・可視化することで、ユーザーの釣果向上を支援します。将来的には PWA 対応により、スマートフォンでネイティブアプリライクな体験を提供する予定です（現在は Turbopack 非対応のため一時無効）。
+
+> **関連リポジトリ:** Go バックエンドは [`Fishing-api`](https://github.com/kazumadev619-dev/Fishing-api) で開発中（Phase 2）。
 
 ---
 
@@ -27,22 +29,27 @@
 
 ### 段階的開発アプローチ
 
-**Phase 1: MVP (Next.js フルスタック)** - 8-10週間
+**Phase 1: MVP (Next.js フルスタック)** — ✅ 実装ほぼ完了
 
 - 迅速な開発・検証を重視
-- Next.js API Routes でバックエンド機能を実装
-- パフォーマンスベースラインの測定
+- Next.js API Routes でバックエンド機能を実装（認証・天気・潮汐・スコア・地点検索・お気に入り）
+- リファクタリング候補 #1〜#10 消化済み（重複排除・大型ファイル分解）
+- 次は本番デプロイとパフォーマンスベースライン測定へ
 
-**Phase 2: バックエンド分離 (Go移行)** - 4-6週間
+**Phase 2: バックエンド分離 (Go移行)** — 🚧 進行中
 
-- フロントエンド: Next.js (PWA)
-- バックエンド: Go + Gin フレームワーク
-- パフォーマンス比較・最適化
+- フロントエンド: Next.js
+- バックエンド: [`Fishing-api`](https://github.com/kazumadev619-dev/Fishing-api)（Go 1.26 + Gin、クリーンアーキテクチャ）— 主要 API 実装・テストカバレッジ 80% 達成済み
+- フロントの取得経路を Go API へ切替え、Next API Routes と性能比較
 
-**Phase 3: モバイルアプリ展開** - 6-8週間
+**Phase 3: モバイルアプリ展開** — 📋 計画
 
 - React Native または Flutter
 - Go APIを共通バックエンドとして活用
+
+### 直近の対応方針
+
+現状デプロイ → ベースライン計測 → テスト基盤導入（Vitest）→ TypeScript 7 更新 → バックエンド分離 → 比較計測、という段階計画で進めます。詳細は [`docs/superpowers/specs/2026-08-10-deploy-perf-improvement-program.md`](./docs/superpowers/specs/2026-08-10-deploy-perf-improvement-program.md) を参照。
 
 ---
 
@@ -59,15 +66,18 @@
 
 | レイヤー       | 技術                         | バージョン               | 理由                                     |
 | -------------- | ---------------------------- | ------------------------ | ---------------------------------------- |
-| フロントエンド | Next.js + React + TypeScript | 16.0.10 + 19.2.3 + 5.9.3 | SSR/SSG対応、PWA化、型安全性             |
-| バックエンド   | Next.js API Routes           | 16.0.10                  | 迅速な開発、フルスタック統合             |
+| フロントエンド | Next.js + React + TypeScript | 16.0.10 + 19.2.3 + 5.9.3 | SSR/SSG対応、型安全性                     |
+| バックエンド   | Next.js API Routes           | 16.0.10                  | 迅速な開発、フルスタック統合（Phase 2 で Go へ分離） |
 | スタイリング   | Tailwind CSS + shadcn/ui     | 4.1.17 + latest          | モバイルファースト、コンポーネント再利用 |
 | 状態管理       | Zustand + React Query        | 5.0.8 + 5.90.7           | 軽量、外部API連携に最適                  |
 | 認証           | Auth.js                      | 5.0.0-beta.30            | 多様な認証プロバイダー対応               |
-| データベース   | PostgreSQL                   | 17.0                     | リレーショナルDB、Prisma ORM             |
-| キャッシュ     | Redis (Upstash)              | 7.2.0                    | 外部API結果のキャッシュ                  |
-| デプロイ       | GCP (GKE)                    | -                        | Kubernetes本番環境                       |
-| ローカルk8s    | kind                         | -                        | ローカルKubernetes開発環境               |
+| ORM            | Prisma                       | 7.2.0                    | 型安全な DB アクセス                     |
+| データベース   | PostgreSQL (Neon)            | 17                       | マネージドクラウド、Go バックエンドと共用 |
+| キャッシュ     | Redis (k3s Pod)              | 7.x                      | 外部API結果のキャッシュ                  |
+| デプロイ       | Raspberry Pi 5 + k3s         | -                        | Cloudflare Tunnel + Traefik、arm64 本番  |
+| ローカルk8s    | Minikube                     | -                        | ローカルKubernetes開発環境               |
+
+> **PWA:** `next-pwa` が Turbopack 未対応のため現在無効。対応後に再有効化予定（`next.config.mjs` 参照）。
 
 ---
 
@@ -128,7 +138,8 @@ docker-compose logs -f app
 | `npm run start`      | プロダクションサーバー起動（要ビルド）   |
 | `npm run lint`       | ESLintでコードチェック                   |
 | `npm run lint:fix`   | ESLintで自動修正                         |
-| `npm run format`     | Prettierでコード整形                     |
+| `npm run lint:fast`  | Oxlintでの高速チェック                   |
+| `npm run format`     | Biomeでコード整形                        |
 | `npm run type-check` | TypeScript型チェック                     |
 
 ### データベース操作
@@ -203,7 +214,7 @@ npm run type-check && npm run lint && npm run format:check
 | 釣りやすさ分析 | スコア算出（独自ロジック）         | 潮汐・天気・時間帯を重み付けして0-100でスコア化 |
 | データ表示     | 日付別・時間帯別の釣りやすさ表示   | レスポンシブチャート・グラフ表示                |
 | 場所検索       | 地名検索・現在位置取得・履歴保存   | Google Maps API連携                             |
-| PWA機能        | オフライン対応・アプリインストール | Service Worker + キャッシュ戦略                 |
+| PWA機能        | オフライン対応・アプリインストール | Service Worker + キャッシュ戦略（現在無効、対応待ち） |
 
 ### 釣りやすさスコア算出ロジック
 
@@ -219,7 +230,7 @@ npm run type-check && npm run lint && npm run format:check
 
 ## 📚 外部API統合
 
-### 使用予定API
+### 使用API
 
 - **[OpenWeatherMap API](https://openweathermap.org/api)**: 気象データ（風・天気・気温・湿度）
 - **[tide736.net API](https://tide736.net/api/)**: 潮汐データ（満潮・干潮時刻・潮位）
@@ -237,16 +248,16 @@ npm run type-check && npm run lint && npm run format:check
 
 ### 開発規約
 
-- **コーディング規約**: ESLint + Prettier + TypeScript strict mode
+- **コーディング規約**: ESLint + Biome + Oxlint + TypeScript strict mode
 - **ブランチ戦略**: `main` / `develop` / `Task/*`
 - **コミット**: `[gitmoji]:[prefix]: [message] #[TaskNoXXX]`
 - **Issue管理**: GitHub Projects（スプリント単位）
 
 ### 品質保証
 
-- **テスト戦略**: Jest (単体) + Playwright (E2E)
-- **CI/CD**: GitHub Actions + GKE自動デプロイ
-- **監視**: GCPモニタリング + エラー追跡
+- **テスト戦略**: 現在テストランナー未整備。Vitest（単体）を導入予定、E2E は Playwright を検討
+- **CI/CD**: GitHub Actions（lint / format / type-check / build）。k3s への自動デプロイは導入予定
+- **監視**: 導入予定
 
 ---
 
