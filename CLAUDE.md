@@ -21,6 +21,8 @@ npm run format      # Biomeフォーマット
 
 - `@ts-ignore`、空catch禁止（根本原因を修正）
 - リンター設定ファイル（biome.json, .oxlintrc.json, eslint.config.*）の直接編集禁止
+- 関連が薄く見えるエラーの放置禁止（対処するか、理由を明示して記録する）
+- テストを通すためだけのテスト改変禁止（実装の誤りを疑う）
 
 ## Git運用
 
@@ -31,10 +33,18 @@ Prefixes: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
 
 ## 詳細ドキュメント（必要時のみ参照）
 
+まず `docs/README.md`（索引）を見ること。
+
 | ドキュメント | 内容 |
 |-------------|------|
-| `docs/architecture.md` | システム設計、DB、キャッシュ戦略 |
-| `docs/authentication.md` | Auth.js設定、認証フロー |
-| `docs/api-integration.md` | 外部API連携詳細 |
+| `docs/README.md` | 全ドキュメントの索引・置き場所の判断基準 |
+| `docs/guides/development.md` | 開発環境セットアップ、コーディング規約 |
+| `docs/guides/docker.md` | Docker / docker compose 操作 |
+| `docs/guides/ci-cd.md` | CI パイプライン、CI 失敗時の対処 |
+| `docs/reference/architecture.md` | システム設計、DB、キャッシュ戦略 |
+| `docs/reference/authentication.md` | Auth.js設定、認証フロー |
+| `docs/reference/api-integration.md` | 外部API連携詳細 |
+| `docs/reference/scoring-algorithm.md` | 釣りやすさスコア算出式 |
 | `docs/adr/` | 技術的決定記録（ADR） |
-| `.spec-workflow/steering/` | プロダクト・技術・構造の詳細仕様 |
+| `docs/roadmap.md` | Phase 進捗と今後の予定 |
+| `k8s/README.md` | Kubernetes デプロイ手順 |

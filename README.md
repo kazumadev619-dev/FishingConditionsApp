@@ -234,7 +234,7 @@ npm run type-check && npm run lint && npm run format:check
 
 - **[OpenWeatherMap API](https://openweathermap.org/api)**: 気象データ（風・天気・気温・湿度）
 - **[tide736.net API](https://tide736.net/api/)**: 潮汐データ（満潮・干潮時刻・潮位）
-- **[Google Maps API](https://developers.google.com/maps)**: 地名検索・ジオコーディング・現在位置 ([プロジェクト内ドキュメント](./docs/google-maps-api.md))
+- **[Google Maps API](https://developers.google.com/maps)**: 地名検索・ジオコーディング・現在位置 ([プロジェクト内ドキュメント](./docs/reference/google-maps-api.md))
 
 ### API統合戦略
 
