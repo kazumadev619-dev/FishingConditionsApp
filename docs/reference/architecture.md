@@ -60,6 +60,9 @@ graph TB
 | デプロイ       | Raspberry Pi 5 + k3s         | -                        | Cloudflare Tunnel + Traefik、arm64本番   |
 | ローカルk8s    | Minikube                     | -                        | ローカルKubernetes開発環境               |
 
+> **注意:** `k8s/` 配下のマニフェストは GKE + クラスタ内 PostgreSQL 前提のまま残っており、上表の実態と乖離している。
+> 追従は [#105](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/105) で対応する。
+
 ### 将来の拡張性
 
 Phase 1完了後、必要に応じて以下の技術移行を検討：
