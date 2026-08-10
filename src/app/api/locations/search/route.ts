@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
-import { LIMIT_REGEX, isValidQuery } from '@/lib/validators';
+import { isValidQuery, LIMIT_REGEX } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
   try {

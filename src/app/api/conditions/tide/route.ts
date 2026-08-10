@@ -4,9 +4,9 @@ import { logger } from '@/lib/logger';
 import { getTideData } from '@/lib/tideService';
 import {
   DATE_REGEX,
+  getTodayDateString,
   PORT_CODE_REGEX,
   PREFECTURE_CODE_REGEX,
-  getTodayDateString,
 } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
