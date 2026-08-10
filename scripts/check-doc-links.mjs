@@ -2,8 +2,10 @@
 import { execSync } from 'node:child_process';
 // Markdown ファイル内の相対リンク切れを検出する。
 // 対象: リポジトリ直下の *.md と docs/ k8s/ 配下の *.md（node_modules 等は除外）
+import console from 'node:console';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
+import process from 'node:process';
 
 // git 管理下の Markdown を対象にする（未追跡ファイルも含める）
 const files = execSync('git ls-files --cached --others --exclude-standard "*.md"', {
