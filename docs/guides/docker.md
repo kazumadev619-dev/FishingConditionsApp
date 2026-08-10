@@ -179,37 +179,37 @@ docker compose restart app
 
 ```bash
 # すべてのサービスのログ
-docker-compose logs
+docker compose logs
 
 # 特定のサービスのログ
-docker-compose logs app
-docker-compose logs postgres
+docker compose logs app
+docker compose logs postgres
 
 # リアルタイムでフォロー
-docker-compose logs -f app
+docker compose logs -f app
 
 # 最新100行のみ表示
-docker-compose logs --tail=100 app
+docker compose logs --tail=100 app
 
 # タイムスタンプ付き
-docker-compose logs -t app
+docker compose logs -t app
 ```
 
 ### 2.4 サービス管理
 
 ```bash
 # サービスの状態確認
-docker-compose ps
+docker compose ps
 
 # サービス内でコマンド実行
-docker-compose exec app sh
-docker-compose exec postgres psql -U postgres -d fishing_app
+docker compose exec app sh
+docker compose exec postgres psql -U postgres -d fishing_app
 
 # 新しいコンテナでコマンド実行
-docker-compose run app npm run prisma:migrate
+docker compose run app npm run prisma:migrate
 
 # スケーリング（特定サービスの複数インスタンス起動）
-docker-compose up -d --scale app=3
+docker compose up -d --scale app=3
 ```
 
 ### 2.5 環境変数の設定
@@ -256,44 +256,44 @@ AUTH_GOOGLE_SECRET=your_google_client_secret
 
 - `.env.local` は `.gitignore` に含まれており、Git管理されません
 - ローカル開発（`npm run dev`）とDocker開発（`npm run docker:dev`）の両方で同じファイルを使用します
-- `DATABASE_URL`、`UPSTASH_REDIS_REST_URL` などはDocker環境では `docker-compose.yml` で自動設定されます（`.env.local` の値は無視されます）
+- `DATABASE_URL`、`REDIS_URL` などはDocker環境では `docker-compose.yml` で自動設定されます（`.env.local` の値は無視されます）
 
 ### 2.6 データベース操作
 
 ```bash
 # PostgreSQL に接続
-docker-compose exec postgres psql -U postgres -d fishing_app
+docker compose exec postgres psql -U postgres -d fishing_app
 
 # SQL ファイルを実行
-docker-compose exec -T postgres psql -U postgres -d fishing_app < schema.sql
+docker compose exec -T postgres psql -U postgres -d fishing_app < schema.sql
 
 # データベースのバックアップ
-docker-compose exec postgres pg_dump -U postgres fishing_app > backup.sql
+docker compose exec postgres pg_dump -U postgres fishing_app > backup.sql
 
 # データベースのリストア
-docker-compose exec -T postgres psql -U postgres -d fishing_app < backup.sql
+docker compose exec -T postgres psql -U postgres -d fishing_app < backup.sql
 
 # Prisma マイグレーション実行
-docker-compose exec app npm run prisma:migrate
+docker compose exec app npm run prisma:migrate
 
 # Prisma Studio 起動
-docker-compose exec app npm run prisma:studio
+docker compose exec app npm run prisma:studio
 ```
 
 ### 2.7 Redis 操作
 
 ```bash
 # Redis CLI に接続
-docker-compose exec redis redis-cli
+docker compose exec redis redis-cli
 
 # キーの一覧表示
-docker-compose exec redis redis-cli KEYS '*'
+docker compose exec redis redis-cli KEYS '*'
 
 # 特定のキーの値を取得
-docker-compose exec redis redis-cli GET your_key
+docker compose exec redis redis-cli GET your_key
 
 # すべてのデータを削除
-docker-compose exec redis redis-cli FLUSHALL
+docker compose exec redis redis-cli FLUSHALL
 ```
 
 ---
@@ -354,26 +354,26 @@ docker run -p 3001:3000 fishing-app:latest
 
 ```bash
 # サービスの状態確認
-docker-compose ps
+docker compose ps
 
 # ログで原因を確認
-docker-compose logs app
+docker compose logs app
 
 # サービスを再作成
-docker-compose up -d --force-recreate app
+docker compose up -d --force-recreate app
 ```
 
 #### データベース接続エラー
 
 ```bash
 # PostgreSQL の状態確認
-docker-compose exec postgres pg_isready -U postgres
+docker compose exec postgres pg_isready -U postgres
 
 # データベースが存在するか確認
-docker-compose exec postgres psql -U postgres -l
+docker compose exec postgres psql -U postgres -l
 
 # 接続文字列を確認
-docker-compose exec app env | grep DATABASE_URL
+docker compose exec app env | grep DATABASE_URL
 ```
 
 ---
@@ -403,17 +403,17 @@ docker network prune           # 未使用ネットワークを削除
 ```bash
 # 基本操作
 cd docker
-docker-compose up -d --build
-docker-compose logs -f app
-docker-compose ps
-docker-compose restart app
-docker-compose down
-docker-compose down -v         # ボリュームも削除
+docker compose up -d --build
+docker compose logs -f app
+docker compose ps
+docker compose restart app
+docker compose down
+docker compose down -v         # ボリュームも削除
 
 # データベース操作
-docker-compose exec postgres psql -U postgres -d fishing_app
-docker-compose exec app npm run prisma:migrate
-docker-compose exec app npm run prisma:studio
+docker compose exec postgres psql -U postgres -d fishing_app
+docker compose exec app npm run prisma:migrate
+docker compose exec app npm run prisma:studio
 ```
 
 ---
