@@ -7,7 +7,7 @@ Fishing Conditions App のコンテナ化に関するガイドです。Kubernete
 ## 📑 目次
 
 1. [Docker 基本操作](#1-docker-基本操作)
-2. [docker compose による開発環境](#2-docker-compose-による開発環境)
+2. [docker-compose による開発環境](#2-docker-compose-による開発環境)
 3. [Kubernetes](#3-kubernetes)
 4. [トラブルシューティング](#4-トラブルシューティング)
 5. [よく使うコマンド集](#5-よく使うコマンド集)
@@ -303,7 +303,7 @@ docker-compose exec redis redis-cli FLUSHALL
 Kubernetes へのデプロイ手順（Minikube でのローカル環境、k3s 本番環境、SOPS による Secret 管理）は
 マニフェストと同じ場所にある [k8s/README.md](../../k8s/README.md) にまとめている。
 
-本番環境は Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）で稼働している。
+本番環境のデプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しているが、初回デプロイはまだ行っていない。
 
 ---
 
