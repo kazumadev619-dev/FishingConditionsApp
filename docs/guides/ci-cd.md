@@ -213,8 +213,8 @@ npm run prisma:generate
 - [ ] PRで `prisma/schema.prisma` 変更時に自動実行
 
 ### Phase 4: 自動デプロイ
-- [ ] Vercel/AWS自動デプロイ設定
-- [ ] ステージング環境へのプレビューデプロイ
+- [ ] k3s への自動デプロイ設定（Raspberry Pi 5 / arm64）
+- [ ] イメージのビルドとレジストリへの push
 - [ ] main統合時の本番デプロイ
 - [ ] Slack通知連携
 
@@ -234,7 +234,7 @@ Phase 1では外部APIキーや認証情報は不要です。
 | Secret名 | 用途 | 必要時期 |
 |---------|------|---------|
 | `DATABASE_URL` | 本番DB接続 | CD実装時 |
-| `VERCEL_TOKEN` | Vercelデプロイ | CD実装時 |
+| `KUBE_CONFIG` | k3s クラスタへの接続 | CD実装時 |
 | `SLACK_WEBHOOK_URL` | 通知連携 | Phase 4 |
 
 ## 📚 参考リソース

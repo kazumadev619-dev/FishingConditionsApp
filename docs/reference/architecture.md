@@ -464,7 +464,7 @@ interface CacheStrategy {
     userPreferences: '永続';
   };
 
-  // L2: CDNキャッシュ (Vercel Edge)
+  // L2: CDNキャッシュ (Cloudflare)
   cdnCache: {
     staticPages: '1日';
     apiRoutes: '5分';

@@ -152,16 +152,12 @@ AUTH_SECRET=...                      # npx auth secret で生成
 # Google OAuth (オプション)
 AUTH_GOOGLE_ID=...                   # Google Cloud ConsoleのClient ID
 AUTH_GOOGLE_SECRET=...               # Google Cloud ConsoleのClient Secret
-
-# 本番環境のみ
-VERCEL_URL=...
 ```
 
 ### 環境別設定
 
 - **開発環境**: `.env.local`
-- **ステージング**: Vercel環境変数
-- **本番環境**: Vercel環境変数
+- **Kubernetes**: `k8s/overlays/<env>/secret.yaml`（SOPS で暗号化して `secret.enc.yaml` として管理）
 
 ---
 
@@ -304,25 +300,18 @@ logger.info('User login successful', { userId, timestamp });
 
 ## デプロイメント
 
-### ステージング環境
+### 現状
 
-- **URL**: https://staging-fishing-app.vercel.app
-- **自動デプロイ**: develop ブランチへのプッシュ時
-- **用途**: 機能テスト・統合テスト
+**本番環境はまだ公開していない。** デプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しており、初回デプロイはこれから行う。
 
-### 本番環境
+- **ローカル Kubernetes**: Minikube（手順は [k8s/README.md](../../k8s/README.md)）
+- **本番相当**: Raspberry Pi 5 + k3s（arm64）
+- **ステージング環境**: 未構築。今後整備する
 
-- **URL**: https://fishing-app.com
-- **デプロイ**: main ブランチへのマージ時
-- **監視**: Vercel Analytics + エラー追跡
+### CI/CD の現状
 
-### デプロイ手順
-
-1. **PR作成**: feature → develop
-2. **レビュー**: コードレビュー・承認
-3. **ステージング**: 自動デプロイ・テスト
-4. **本番リリース**: develop → main
-5. **監視**: エラー・パフォーマンス監視
+GitHub Actions で lint / format / type-check / build を実行している（詳細は [ci-cd.md](./ci-cd.md)）。
+**k3s への自動デプロイは未導入**で、現時点のデプロイは手動で行う。
 
 ---
 
