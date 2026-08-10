@@ -45,13 +45,18 @@ superpowers skill が生成する設計書・実装計画は、作業中の足�
 
 トレードオフとして設計意図がローカルにしか残らなくなるため、**恒久的に残すべき決定は ADR として `docs/adr/` に書く**運用でカバーする。本 ADR 自体がその最初の適用例である。
 
-### Kubernetes の手順を `k8s/README.md` に一本化した
+### Kubernetes の手順は `k8s/README.md` を正とする
 
-`docs/docker-guide.md` §3 が kind 前提、`k8s/README.md` が Minikube 前提で、同じ目的の手順が 2 箇所で矛盾していた。
-マニフェストの隣にある `k8s/README.md` のほうが更新されやすいため、そちらを正とした。
+`docs/guides/docker.md` §3 が kind 前提、`k8s/README.md` が Minikube 前提で、同じ目的の手順が 2 箇所で矛盾している。
+マニフェストの隣にある `k8s/README.md` のほうが更新されやすいため、そちらを正とする。
+
+**この決定の適用は完了していない。** 本 ADR を含む構造整理 PR の時点では、`docs/guides/docker.md` には
+kind 前提の §3 と GKE 前提の §4 がそのまま残っている。これらの削除と `k8s/README.md` への導線追加は、
+内容更新の後続 PR で行う。それまでの間、`docs/guides/docker.md` の Kubernetes 関連の記述は信頼できない。
 
 ## 影響
 
-- 既存ドキュメントへの相対リンクはすべて新パスに更新した（`CLAUDE.md` / `README.md` / `docs/` 配下）
+- 既存ドキュメントへの相対リンクは新パスに更新した（`CLAUDE.md` / `README.md` / `docs/` 配下）
 - `scripts/check-doc-links.mjs` でリンク切れを検出できる
 - `docs/superpowers/` 配下の既存 3 ファイルは `git rm --cached` で追跡解除した（ローカルには残存）
+- `docs/guides/docker.md` の Kubernetes 章の削除は後続 PR に持ち越している（上記のとおり）
