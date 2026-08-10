@@ -27,9 +27,14 @@ npm run format      # Biomeフォーマット
 ## Git運用
 
 ```bash
-git commit -m "✨:feat: 機能追加の説明 #TaskNo"
+git commit -m "✨ feat: 機能追加の説明"
+git commit -m "🐛 fix: バグ修正の説明 #123"
 ```
-Prefixes: `feat`, `fix`, `docs`, `test`, `refactor`, `chore`
+
+- 絵文字と type の間は**半角スペース**。`✨:feat:` のようにコロンで繋ぐと commitlint が落ちる
+- チケット番号は `#123` のように**数字のみ**。文字列を書くと commitlint が落ちる。無い場合は省略する
+- type は `commitlint.config.cts` の `type-enum` にあるもの:
+  `feat` `improve` `update` `fix` `hotfix` `refactor` `delete` `style` `docs` `move` `test` `chore` `package` `WIP`
 
 ## 詳細ドキュメント（必要時のみ参照）
 

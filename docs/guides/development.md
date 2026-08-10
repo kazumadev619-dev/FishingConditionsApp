@@ -82,25 +82,32 @@ fishing-conditions-app/
 ### ブランチ戦略
 
 ```
-main                    # 本番環境
-├── develop            # 開発統合ブランチ
-└── Task/xxx     # Task単位のブランチ
+main                       # 本番環境
+├── develop               # 開発統合ブランチ
+└── <type>/<short-desc>   # 作業ブランチ
 ```
 
-### コミット規約（Conventional Commits）
+`<type>` はコミットの type と同じ語を使う。Issue 番号がある場合は `<type>/#<issue-no>_<desc>` としてよい。
+実例: `refactor/#13` / `docs/repo-tidy` / `feat/#123_fishing-spot-pagination`
+
+### コミット規約（gitmoji + Conventional Commits）
+
+`commitlint.config.cts`（`extends: ['gitmoji']`）が commit-msg フックで検証する。
 
 ```
-feat: 新機能追加
-fix: バグ修正
-docs: ドキュメント更新
-style: コードスタイル修正
-refactor: リファクタリング
-test: テスト追加・修正
-chore: その他の変更
-
-例:
-[gitmoji]feat: Auth.js認証機能を実装 #[TaskNo.xxx]
+<絵文字> <type>: <説明> [#<数字>]
 ```
+
+```bash
+git commit -m "✨ feat: Auth.js認証機能を実装 #123"
+git commit -m "📝 docs: 開発ガイドを更新"
+```
+
+- 絵文字と type の間は**半角スペース**。`✨:feat:` のようにコロンで繋ぐと落ちる
+- チケット番号は `#123` のように**数字のみ**。文字列（`#TaskNo` 等）を書くと落ちる。無ければ省略する
+- ヘッダー（1 行目）は 100 文字以内
+- type は `commitlint.config.cts` の `type-enum` にあるもの:
+  `feat` `improve` `update` `fix` `hotfix` `refactor` `delete` `style` `docs` `move` `test` `chore` `package` `WIP`
 
 ---
 
