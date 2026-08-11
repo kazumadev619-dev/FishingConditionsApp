@@ -1,7 +1,7 @@
 'use client';
 
+import { Anchor, Search } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Search, Anchor } from 'lucide-react';
 import { FreeSearchTab } from './FreeSearchTab';
 import { PortSelectionTab } from './PortSelectionTab';
 
@@ -30,7 +30,7 @@ export function LocationSearchTabs() {
   );
 }
 
+export { FavoriteTab } from './FavoriteTab';
 // Re-export sub-components if needed
 export { FreeSearchTab } from './FreeSearchTab';
 export { PortSelectionTab } from './PortSelectionTab';
-export { FavoriteTab } from './FavoriteTab';

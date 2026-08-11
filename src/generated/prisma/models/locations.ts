@@ -259,7 +259,6 @@ export type locationsWhereInput = {
   created_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
   updated_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
   port?: Prisma.XOR<Prisma.PortsNullableScalarRelationFilter, Prisma.portsWhereInput> | null;
-  weather_cache?: Prisma.Weather_cacheListRelationFilter;
   favorites?: Prisma.User_favoritesListRelationFilter;
 };
 
@@ -275,7 +274,6 @@ export type locationsOrderByWithRelationInput = {
   created_at?: Prisma.SortOrder;
   updated_at?: Prisma.SortOrder;
   port?: Prisma.portsOrderByWithRelationInput;
-  weather_cache?: Prisma.weather_cacheOrderByRelationAggregateInput;
   favorites?: Prisma.user_favoritesOrderByRelationAggregateInput;
 };
 
@@ -295,7 +293,6 @@ export type locationsWhereUniqueInput = Prisma.AtLeast<
     created_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
     updated_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
     port?: Prisma.XOR<Prisma.PortsNullableScalarRelationFilter, Prisma.portsWhereInput> | null;
-    weather_cache?: Prisma.Weather_cacheListRelationFilter;
     favorites?: Prisma.User_favoritesListRelationFilter;
   },
   'id'
@@ -350,7 +347,6 @@ export type locationsCreateInput = {
   created_at?: Date | string;
   updated_at?: Date | string;
   port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
-  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
   favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
 };
 
@@ -365,7 +361,6 @@ export type locationsUncheckedCreateInput = {
   port_id?: string | null;
   created_at?: Date | string;
   updated_at?: Date | string;
-  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
   favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
 };
 
@@ -380,7 +375,6 @@ export type locationsUpdateInput = {
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
-  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
   favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
 };
 
@@ -395,7 +389,6 @@ export type locationsUncheckedUpdateInput = {
   port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
   favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
 };
 
@@ -599,32 +592,6 @@ export type locationsUncheckedUpdateManyWithoutPortNestedInput = {
   deleteMany?: Prisma.locationsScalarWhereInput | Prisma.locationsScalarWhereInput[];
 };
 
-export type locationsCreateNestedOneWithoutWeather_cacheInput = {
-  create?: Prisma.XOR<
-    Prisma.locationsCreateWithoutWeather_cacheInput,
-    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
-  >;
-  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutWeather_cacheInput;
-  connect?: Prisma.locationsWhereUniqueInput;
-};
-
-export type locationsUpdateOneRequiredWithoutWeather_cacheNestedInput = {
-  create?: Prisma.XOR<
-    Prisma.locationsCreateWithoutWeather_cacheInput,
-    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
-  >;
-  connectOrCreate?: Prisma.locationsCreateOrConnectWithoutWeather_cacheInput;
-  upsert?: Prisma.locationsUpsertWithoutWeather_cacheInput;
-  connect?: Prisma.locationsWhereUniqueInput;
-  update?: Prisma.XOR<
-    Prisma.XOR<
-      Prisma.locationsUpdateToOneWithWhereWithoutWeather_cacheInput,
-      Prisma.locationsUpdateWithoutWeather_cacheInput
-    >,
-    Prisma.locationsUncheckedUpdateWithoutWeather_cacheInput
-  >;
-};
-
 export type locationsCreateNestedOneWithoutFavoritesInput = {
   create?: Prisma.XOR<
     Prisma.locationsCreateWithoutFavoritesInput,
@@ -661,7 +628,6 @@ export type locationsCreateWithoutPortInput = {
   location_type?: $Enums.location_type;
   created_at?: Date | string;
   updated_at?: Date | string;
-  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
   favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
 };
 
@@ -675,7 +641,6 @@ export type locationsUncheckedCreateWithoutPortInput = {
   location_type?: $Enums.location_type;
   created_at?: Date | string;
   updated_at?: Date | string;
-  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
   favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
 };
 
@@ -736,90 +701,6 @@ export type locationsScalarWhereInput = {
   updated_at?: Prisma.DateTimeFilter<'locations'> | Date | string;
 };
 
-export type locationsCreateWithoutWeather_cacheInput = {
-  id?: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  region?: string | null;
-  prefecture?: string | null;
-  location_type?: $Enums.location_type;
-  created_at?: Date | string;
-  updated_at?: Date | string;
-  port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
-  favorites?: Prisma.user_favoritesCreateNestedManyWithoutLocationInput;
-};
-
-export type locationsUncheckedCreateWithoutWeather_cacheInput = {
-  id?: string;
-  name: string;
-  latitude: number;
-  longitude: number;
-  region?: string | null;
-  prefecture?: string | null;
-  location_type?: $Enums.location_type;
-  port_id?: string | null;
-  created_at?: Date | string;
-  updated_at?: Date | string;
-  favorites?: Prisma.user_favoritesUncheckedCreateNestedManyWithoutLocationInput;
-};
-
-export type locationsCreateOrConnectWithoutWeather_cacheInput = {
-  where: Prisma.locationsWhereUniqueInput;
-  create: Prisma.XOR<
-    Prisma.locationsCreateWithoutWeather_cacheInput,
-    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
-  >;
-};
-
-export type locationsUpsertWithoutWeather_cacheInput = {
-  update: Prisma.XOR<
-    Prisma.locationsUpdateWithoutWeather_cacheInput,
-    Prisma.locationsUncheckedUpdateWithoutWeather_cacheInput
-  >;
-  create: Prisma.XOR<
-    Prisma.locationsCreateWithoutWeather_cacheInput,
-    Prisma.locationsUncheckedCreateWithoutWeather_cacheInput
-  >;
-  where?: Prisma.locationsWhereInput;
-};
-
-export type locationsUpdateToOneWithWhereWithoutWeather_cacheInput = {
-  where?: Prisma.locationsWhereInput;
-  data: Prisma.XOR<
-    Prisma.locationsUpdateWithoutWeather_cacheInput,
-    Prisma.locationsUncheckedUpdateWithoutWeather_cacheInput
-  >;
-};
-
-export type locationsUpdateWithoutWeather_cacheInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  name?: Prisma.StringFieldUpdateOperationsInput | string;
-  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
-  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
-  favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
-};
-
-export type locationsUncheckedUpdateWithoutWeather_cacheInput = {
-  id?: Prisma.StringFieldUpdateOperationsInput | string;
-  name?: Prisma.StringFieldUpdateOperationsInput | string;
-  latitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  longitude?: Prisma.FloatFieldUpdateOperationsInput | number;
-  region?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  prefecture?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
-  port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
-  created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
-};
-
 export type locationsCreateWithoutFavoritesInput = {
   id?: string;
   name: string;
@@ -831,7 +712,6 @@ export type locationsCreateWithoutFavoritesInput = {
   created_at?: Date | string;
   updated_at?: Date | string;
   port?: Prisma.portsCreateNestedOneWithoutLocationsInput;
-  weather_cache?: Prisma.weather_cacheCreateNestedManyWithoutLocationInput;
 };
 
 export type locationsUncheckedCreateWithoutFavoritesInput = {
@@ -845,7 +725,6 @@ export type locationsUncheckedCreateWithoutFavoritesInput = {
   port_id?: string | null;
   created_at?: Date | string;
   updated_at?: Date | string;
-  weather_cache?: Prisma.weather_cacheUncheckedCreateNestedManyWithoutLocationInput;
 };
 
 export type locationsCreateOrConnectWithoutFavoritesInput = {
@@ -887,7 +766,6 @@ export type locationsUpdateWithoutFavoritesInput = {
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   port?: Prisma.portsUpdateOneWithoutLocationsNestedInput;
-  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
 };
 
 export type locationsUncheckedUpdateWithoutFavoritesInput = {
@@ -901,7 +779,6 @@ export type locationsUncheckedUpdateWithoutFavoritesInput = {
   port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
 };
 
 export type locationsCreateManyPortInput = {
@@ -926,7 +803,6 @@ export type locationsUpdateWithoutPortInput = {
   location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  weather_cache?: Prisma.weather_cacheUpdateManyWithoutLocationNestedInput;
   favorites?: Prisma.user_favoritesUpdateManyWithoutLocationNestedInput;
 };
 
@@ -940,7 +816,6 @@ export type locationsUncheckedUpdateWithoutPortInput = {
   location_type?: Prisma.Enumlocation_typeFieldUpdateOperationsInput | $Enums.location_type;
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string;
-  weather_cache?: Prisma.weather_cacheUncheckedUpdateManyWithoutLocationNestedInput;
   favorites?: Prisma.user_favoritesUncheckedUpdateManyWithoutLocationNestedInput;
 };
 
@@ -961,14 +836,12 @@ export type locationsUncheckedUpdateManyWithoutPortInput = {
  */
 
 export type LocationsCountOutputType = {
-  weather_cache: number;
   favorites: number;
 };
 
 export type LocationsCountOutputTypeSelect<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
-  weather_cache?: boolean | LocationsCountOutputTypeCountWeather_cacheArgs;
   favorites?: boolean | LocationsCountOutputTypeCountFavoritesArgs;
 };
 
@@ -982,15 +855,6 @@ export type LocationsCountOutputTypeDefaultArgs<
    * Select specific fields to fetch from the LocationsCountOutputType
    */
   select?: Prisma.LocationsCountOutputTypeSelect<ExtArgs> | null;
-};
-
-/**
- * LocationsCountOutputType without action
- */
-export type LocationsCountOutputTypeCountWeather_cacheArgs<
-  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {
-  where?: Prisma.weather_cacheWhereInput;
 };
 
 /**
@@ -1017,7 +881,6 @@ export type locationsSelect<
     created_at?: boolean;
     updated_at?: boolean;
     port?: boolean | Prisma.locations$portArgs<ExtArgs>;
-    weather_cache?: boolean | Prisma.locations$weather_cacheArgs<ExtArgs>;
     favorites?: boolean | Prisma.locations$favoritesArgs<ExtArgs>;
     _count?: boolean | Prisma.LocationsCountOutputTypeDefaultArgs<ExtArgs>;
   },
@@ -1094,7 +957,6 @@ export type locationsInclude<
   ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
 > = {
   port?: boolean | Prisma.locations$portArgs<ExtArgs>;
-  weather_cache?: boolean | Prisma.locations$weather_cacheArgs<ExtArgs>;
   favorites?: boolean | Prisma.locations$favoritesArgs<ExtArgs>;
   _count?: boolean | Prisma.LocationsCountOutputTypeDefaultArgs<ExtArgs>;
 };
@@ -1115,7 +977,6 @@ export type $locationsPayload<
   name: 'locations';
   objects: {
     port: Prisma.$portsPayload<ExtArgs> | null;
-    weather_cache: Prisma.$weather_cachePayload<ExtArgs>[];
     favorites: Prisma.$user_favoritesPayload<ExtArgs>[];
   };
   scalars: runtime.Types.Extensions.GetPayloadResult<
@@ -1681,17 +1542,6 @@ export interface Prisma__locationsClient<
     ExtArgs,
     GlobalOmitOptions
   >;
-  weather_cache<T extends Prisma.locations$weather_cacheArgs<ExtArgs> = {}>(
-    args?: Prisma.Subset<T, Prisma.locations$weather_cacheArgs<ExtArgs>>,
-  ): Prisma.PrismaPromise<
-    | runtime.Types.Result.GetResult<
-        Prisma.$weather_cachePayload<ExtArgs>,
-        T,
-        'findMany',
-        GlobalOmitOptions
-      >
-    | Null
-  >;
   favorites<T extends Prisma.locations$favoritesArgs<ExtArgs> = {}>(
     args?: Prisma.Subset<T, Prisma.locations$favoritesArgs<ExtArgs>>,
   ): Prisma.PrismaPromise<
@@ -2191,34 +2041,6 @@ export type locations$portArgs<
    */
   include?: Prisma.portsInclude<ExtArgs> | null;
   where?: Prisma.portsWhereInput;
-};
-
-/**
- * locations.weather_cache
- */
-export type locations$weather_cacheArgs<
-  ExtArgs extends runtime.Types.Extensions.InternalArgs = runtime.Types.Extensions.DefaultArgs,
-> = {
-  /**
-   * Select specific fields to fetch from the weather_cache
-   */
-  select?: Prisma.weather_cacheSelect<ExtArgs> | null;
-  /**
-   * Omit specific fields from the weather_cache
-   */
-  omit?: Prisma.weather_cacheOmit<ExtArgs> | null;
-  /**
-   * Choose, which related nodes to fetch as well
-   */
-  include?: Prisma.weather_cacheInclude<ExtArgs> | null;
-  where?: Prisma.weather_cacheWhereInput;
-  orderBy?:
-    | Prisma.weather_cacheOrderByWithRelationInput
-    | Prisma.weather_cacheOrderByWithRelationInput[];
-  cursor?: Prisma.weather_cacheWhereUniqueInput;
-  take?: number;
-  skip?: number;
-  distinct?: Prisma.Weather_cacheScalarFieldEnum | Prisma.Weather_cacheScalarFieldEnum[];
 };
 
 /**

@@ -1,9 +1,8 @@
 import js from '@eslint/js';
-import tseslint from 'typescript-eslint';
-import pluginReact from 'eslint-plugin-react';
 import eslintPluginNext from '@next/eslint-plugin-next';
-import eslintConfigPrettier from 'eslint-config-prettier';
+import pluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
+import tseslint from 'typescript-eslint';
 
 export default [
   // グローバルignore設定
@@ -72,12 +71,6 @@ export default [
       ...eslintPluginNext.configs.recommended.rules,
       ...eslintPluginNext.configs['core-web-vitals'].rules,
     },
-  },
-
-  // Prettier configuration
-  {
-    name: 'prettier/config',
-    ...eslintConfigPrettier,
   },
 
   // Project config files (CommonJS)

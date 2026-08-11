@@ -13,9 +13,10 @@
  */
 
 import * as Prisma from './internal/prismaNamespaceBrowser';
-export { Prisma };
+
 export * as $Enums from './enums';
 export * from './enums';
+export { Prisma };
 /**
  * Model users
  * ユーザー情報（認証+プロフィール統合）
@@ -41,16 +42,6 @@ export type locations = Prisma.locationsModel;
  * 港マスタ（潮汐API用）
  */
 export type ports = Prisma.portsModel;
-/**
- * Model weather_cache
- * 天気データキャッシュ（TTL: 30分）
- */
-export type weather_cache = Prisma.weather_cacheModel;
-/**
- * Model tide_cache
- * 潮汐データキャッシュ（TTL: 6時間）
- */
-export type tide_cache = Prisma.tide_cacheModel;
 /**
  * Model user_favorites
  * お気に入り釣り場

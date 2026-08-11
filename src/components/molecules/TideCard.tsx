@@ -1,7 +1,7 @@
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
-import { formatTideEvent } from '@/lib/utils/dashboardUtils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SCORE_CARD_LABELS, TIDE_CARD_LABELS } from '@/constants/labels';
 import type { DailyTide, TideEvent } from '@/lib/tideService';
-import { TIDE_CARD_LABELS, SCORE_CARD_LABELS } from '@/constants/labels';
+import { formatTideEvent } from '@/lib/utils/dashboardUtils';
 
 interface TideCardProps {
   score: number;
@@ -28,6 +28,7 @@ export function TideCard({ score, tide }: TideCardProps) {
           {tide.flood.map((high: TideEvent, index: number) => {
             const { time, height } = formatTideEvent(high.time, high.cm);
             return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: tide events have no stable unique id
               <div key={index} className="text-sm pl-4">
                 ├─ {time} ({height})
               </div>
@@ -40,6 +41,7 @@ export function TideCard({ score, tide }: TideCardProps) {
           {tide.edd.map((low: TideEvent, index: number) => {
             const { time, height } = formatTideEvent(low.time, low.cm);
             return (
+              // biome-ignore lint/suspicious/noArrayIndexKey: tide events have no stable unique id
               <div key={index} className="text-sm pl-4">
                 ├─ {time} ({height})
               </div>

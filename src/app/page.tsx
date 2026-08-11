@@ -1,6 +1,6 @@
 import { DashboardGrid } from '@/components/organisms/DashboardGrid';
-import { calculateFishingScore } from '@/lib/scoringService';
 import { getCurrentWeather } from '@/lib/openWeatherService';
+import { calculateFishingScore } from '@/lib/scoringService';
 import { getTideData } from '@/lib/tideService';
 import { getTimeCategory, getTimeExplanation } from '@/lib/utils/dashboardUtils';
 import type { DashboardData } from '@/types/dashboard';

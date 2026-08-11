@@ -1,4 +1,4 @@
-import { GeocodingResponse } from '@/types/google.maps';
+import type { GeocodingResponse } from '@/types/google.maps';
 import { googleMapsClient } from './apiClient';
 import { logger } from './logger';
 

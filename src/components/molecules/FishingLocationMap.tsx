@@ -1,6 +1,6 @@
 'use client';
 
-import { APIProvider, Map, AdvancedMarker } from '@vis.gl/react-google-maps';
+import { AdvancedMarker, APIProvider, Map as GoogleMap } from '@vis.gl/react-google-maps';
 import { logger } from '@/lib/logger';
 
 interface FishingLocationMapProps {
@@ -49,7 +49,7 @@ export function FishingLocationMap({
 
   return (
     <APIProvider apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="maps-sdk-react-components">
-      <Map
+      <GoogleMap
         mapId={GOOGLE_MAPS_MAP_ID}
         style={mapContainerStyle}
         center={center}
@@ -62,7 +62,7 @@ export function FishingLocationMap({
         fullscreenControl={mapOptions.fullscreenControl}
       >
         <AdvancedMarker position={center} title={locationName} />
-      </Map>
+      </GoogleMap>
     </APIProvider>
   );
 }

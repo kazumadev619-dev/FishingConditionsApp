@@ -1,18 +1,18 @@
 'use client';
 
+import { ChevronDown, Heart, Home, LogOut, MapPin, Search, User, Waves } from 'lucide-react';
+import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
-import { cn } from '@/lib/utils';
-import { ScrollArea } from '@/components/ui/scroll-area';
+import { FavoritesModal } from '@/components/organisms/FavoritesModal';
+import { LocationSearchTabs } from '@/components/organisms/LocationSearchTabs';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { Home, MapPin, ChevronDown, Waves, User, LogOut, Search, Heart } from 'lucide-react';
-import { useSession, signOut } from 'next-auth/react';
-import { LocationSearchTabs } from '@/components/organisms/LocationSearchTabs';
-import { FavoritesModal } from '@/components/organisms/FavoritesModal';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { cn } from '@/lib/utils';
 
 const sidebarItems = [
   {
@@ -77,6 +77,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
             {sidebarItems.map((item) => (
               <div key={item.title} className="mb-1">
                 <button
+                  type="button"
                   className={cn(
                     'flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium',
                     item.isActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted',
@@ -112,6 +113,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                         return (
                           <button
                             key={subItem.title}
+                            type="button"
                             onClick={() => setIsFavoritesModalOpen(true)}
                             className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm hover:bg-muted"
                           >
@@ -146,7 +148,10 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
         <div className="border-t p-3">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2">
+              <button
+                type="button"
+                className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              >
                 <div className="flex items-center gap-3">
                   <User className="h-6 w-6" />
                   <span className="truncate">{session?.user?.email || 'ユーザー'}</span>

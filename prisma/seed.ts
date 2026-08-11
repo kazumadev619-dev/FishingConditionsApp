@@ -1,10 +1,10 @@
-import { PrismaClient } from '../src/generated/prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
-import pg from 'pg';
+import { randomUUID } from 'crypto';
 import * as fs from 'fs';
 import * as path from 'path';
+import pg from 'pg';
 import { fileURLToPath } from 'url';
-import { randomUUID } from 'crypto';
+import { PrismaClient } from '../src/generated/prisma/client';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -73,7 +73,7 @@ async function seedPorts() {
     const valuesList = ports
       .map(
         (port) =>
-          `('${randomUUID()}', '${escapeSql(port.prefecture_code)}', '${escapeSql(port.prefecture_name)}', '${escapeSql(port.port_code)}', '${escapeSql(port.name)}', NULL, NULL, now())`
+          `('${randomUUID()}', '${escapeSql(port.prefecture_code)}', '${escapeSql(port.prefecture_name)}', '${escapeSql(port.port_code)}', '${escapeSql(port.name)}', NULL, NULL, now())`,
       )
       .join(', ');
 

@@ -1,12 +1,12 @@
 import { DashboardGrid } from '@/components/organisms/DashboardGrid';
-import { calculateFishingScore } from '@/lib/scoringService';
+import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
+import { findNearestPort } from '@/lib/portMappingService';
+import prisma from '@/lib/prisma';
+import { calculateFishingScore } from '@/lib/scoringService';
 import { getTideData } from '@/lib/tideService';
 import { getTimeCategory, getTimeExplanation } from '@/lib/utils/dashboardUtils';
 import type { DashboardData } from '@/types/dashboard';
-import prisma from '@/lib/prisma';
-import { findNearestPort } from '@/lib/portMappingService';
-import { logger } from '@/lib/logger';
 
 export const dynamic = 'force-dynamic';
 
@@ -136,7 +136,14 @@ async function resolveLocation(searchParams: {
       const lng = parseFloat(searchParams.lng);
 
       // バリデーション
-      if (isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      if (
+        Number.isNaN(lat) ||
+        Number.isNaN(lng) ||
+        lat < -90 ||
+        lat > 90 ||
+        lng < -180 ||
+        lng > 180
+      ) {
         logger.warn({ lat: searchParams.lat, lng: searchParams.lng }, 'Invalid coordinates');
         return DEFAULT_LOCATION;
       }

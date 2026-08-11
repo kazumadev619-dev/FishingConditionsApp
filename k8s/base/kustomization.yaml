@@ -1,0 +1,29 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fishing-app
+
+resources:
+  - namespace.yaml
+  - postgres.yaml
+  - redis.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml
+
+configMapGenerator:
+  - name: fishing-app-config
+    literals:
+      - NODE_ENV=production
+      - AUTH_URL=http://localhost:3000
+      - NEXTAUTH_URL=http://localhost:3000
+      - REDIS_URL=redis://redis:6379
+
+# ConfigMap/Secretのハッシュサフィックスを無効化
+# db-init-jobを個別にapplyできるようにするため
+generatorOptions:
+  disableNameSuffixHash: true
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize

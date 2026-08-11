@@ -169,8 +169,6 @@ erDiagram
     %% 釣り場・位置情報系
     %% ============================================
     ports ||--o{ locations : "linked_to"
-    ports ||--o{ tide_cache : "has"
-    locations ||--o{ weather_cache : "has"
     locations ||--o{ user_favorites : "favorited_by"
     locations ||--o{ user_search_history : "searched"
 
@@ -228,23 +226,6 @@ erDiagram
         float latitude "緯度"
         float longitude "経度"
         timestamptz created_at "作成日時"
-    }
-
-    weather_cache {
-        uuid id PK "ID"
-        uuid location_id FK "釣り場ID"
-        jsonb data "天気データ"
-        timestamptz fetched_at "取得日時"
-        timestamptz expires_at "有効期限(30分)"
-    }
-
-    tide_cache {
-        uuid id PK "ID"
-        uuid port_id FK "港ID"
-        date date "対象日"
-        jsonb data "潮汐データ"
-        timestamptz fetched_at "取得日時"
-        timestamptz expires_at "有効期限(6時間)"
     }
 
     user_favorites {
@@ -328,7 +309,7 @@ erDiagram
     ↓
   ports.port_code を取得
     ↓
-  tide_cache で潮汐データを検索
+  Redisキャッシュで潮汐データを検索（src/lib/cache.ts）
   ```
 
 ##### **locations** テーブル
@@ -339,40 +320,6 @@ erDiagram
   - `latitude`, `longitude` で天気API（OpenWeatherMap）を呼び出す
   - `port_id` で港と紐付けして潮汐データを取得
   - 複数の釣り場タイプ対応（岸釣り、港、河川等）
-
-#### **キャッシュ系**
-
-##### **weather_cache** テーブル
-
-- **用途**: 天気データのキャッシュ（API呼び出し削減）
-- **TTL**: 30分
-- **使い方**:
-  ```
-  ユーザーが釣り場を選択
-    ↓
-  locations.idで釣り場の座標取得
-    ↓
-  weather_cache確認: [location_id] で30分以内の有効データ存在？
-    ↓
-  有効 → キャッシュから返す（API呼び出し不要）
-  期限切れ → OpenWeatherMap API呼び出し → expires_atを30分後に設定して保存
-  ```
-- **expires_at**: `fetched_at + 30分` で自動設定。期限切れはクエリで WHERE expires_at < NOW()
-
-##### **tide_cache** テーブル
-
-- **用途**: 潮汐データのキャッシュ
-- **TTL**: 6時間（天気より長い理由：潮汐は数日先まで精密に予測可能）
-- **使い方**:
-  ```
-  locations.port_id → ports.port_code取得
-    ↓
-  tide_cache確認: [port_id + date] で6時間以内の有効データ存在？
-    ↓
-  有効 → キャッシュから返す
-  期限切れ → tide736.net API呼び出し → expires_atを6時間後に設定して保存
-  ```
-- **date**: 対象日付（複数日の潮汐情報をキャッシュ可能）
 
 #### **ユーザー系**
 
@@ -422,16 +369,16 @@ erDiagram
    ↓
 2. 天気データ取得
    - locations(A).latitude, longitude取得
-   - weather_cache確認: [location_id=A] で30分以内のデータ？
+   - Redisキャッシュ確認: [weather:lat:lon] で30分以内のデータ？
    - 有効 → 返す
-   - 期限切れ → OpenWeatherMap API呼び出し → キャッシュ保存
+   - 期限切れ → OpenWeatherMap API呼び出し → Redisにキャッシュ保存
    ↓
 3. 潮汐データ取得
    - locations(A).port_id取得
    - ports(port_id).port_code, prefecture_code取得
-   - tide_cache確認: [port_id, 対象日] で6時間以内のデータ？
+   - Redisキャッシュ確認: [tide:port_code:date] で6時間以内のデータ？
    - 有効 → 返す
-   - 期限切れ → tide736.net API呼び出し → キャッシュ保存
+   - 期限切れ → tide736.net API呼び出し → Redisにキャッシュ保存
    ↓
 4. スコア計算
    - ScoreService: 天気 + 潮汐 + 時間 → 0-100のスコア算出
@@ -444,33 +391,32 @@ erDiagram
 
 ### キャッシュ戦略の重要ポイント
 
-| 項目         | weather_cache  | tide_cache               |
-| ------------ | -------------- | ------------------------ |
-| **対象**     | 天気データ     | 潮汐データ               |
-| **キー**     | location_id    | port_id + date           |
-| **TTL**      | 30分           | 6時間                    |
-| **理由**     | 天気は急変する | 潮汐は数日先まで予測可能 |
-| **データ量** | 中程度         | 大（複数日分）           |
+> **NOTE**: 天気・潮汐キャッシュはRedisで管理（`src/lib/cache.ts`参照）
+
+| 項目         | 天気キャッシュ（Redis）      | 潮汐キャッシュ（Redis）      |
+| ------------ | ---------------------------- | ---------------------------- |
+| **対象**     | 天気データ                   | 潮汐データ                   |
+| **キー**     | `weather:lat:lon`            | `tide:port_code:date`        |
+| **TTL**      | 30分                         | 6時間                        |
+| **理由**     | 天気は急変する               | 潮汐は数日先まで予測可能     |
+| **実装**     | `src/lib/openWeatherService.ts` | `src/lib/tideService.ts`  |
 
 ---
 
 ### テーブル関連図（SQL JOIN例）
 
-**釣り場Aの全ての情報を取得:**
+**釣り場Aの基本情報を取得:**
 
 ```sql
 SELECT
   l.*,
   p.port_code,
-  w.data as weather_data,
-  t.data as tide_data,
   uf.created_at as favorited_at
 FROM locations l
 LEFT JOIN ports p ON l.port_id = p.id
-LEFT JOIN weather_cache w ON l.id = w.location_id AND w.expires_at > NOW()
-LEFT JOIN tide_cache t ON p.id = t.port_id AND t.expires_at > NOW()
 LEFT JOIN user_favorites uf ON l.id = uf.location_id AND uf.user_id = ${userId}
 WHERE l.id = ${locationId};
+-- NOTE: 天気・潮汐データはRedisキャッシュから別途取得
 ```
 
 ### 釣り場タイプ（location_type）
@@ -494,11 +440,11 @@ WHERE l.id = ${locationId};
 |                  | `verification_tokens` | メール検証トークン（TTL: 1時間）      |
 | **釣り場系**     | `locations`           | 釣り場マスタ                          |
 |                  | `ports`               | 港マスタ（潮汐API用）                 |
-| **キャッシュ系** | `weather_cache`       | 天気データキャッシュ（TTL: 30分）     |
-|                  | `tide_cache`          | 潮汐データキャッシュ（TTL: 6時間）    |
 | **ユーザー系**   | `user_favorites`      | お気に入り釣り場                      |
 |                  | `user_search_history` | 検索履歴                              |
 |                  | `user_settings`       | ユーザー設定                          |
+
+> **NOTE**: 天気・潮汐キャッシュはPostgreSQLテーブルではなくRedisで管理（`src/lib/cache.ts`）
 
 ---
 
@@ -576,7 +522,7 @@ sequenceDiagram
   - 有効期限1時間
   - 検証完了またはタイムアウト時に自動削除
 - **実装ファイル**:
-  - [src/lib/email.ts](src/lib/email.ts): Resend APIでメール送信
-  - [src/lib/token.ts](src/lib/token.ts): トークン生成・検証・削除
-  - [src/app/api/auth/verify-email/route.ts](src/app/api/auth/verify-email/route.ts): 検証エンドポイント
-  - [src/auth/index.ts](src/auth/index.ts): signInコールバックで検証状態チェック
+  - [src/lib/email.ts](../../src/lib/email.ts): Resend APIでメール送信
+  - [src/lib/token.ts](../../src/lib/token.ts): トークン生成・検証・削除
+  - [src/app/api/auth/verify-email/route.ts](../../src/app/api/auth/verify-email/route.ts): 検証エンドポイント
+  - [src/auth/index.ts](../../src/auth/index.ts): signInコールバックで検証状態チェック

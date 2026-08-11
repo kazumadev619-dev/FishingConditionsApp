@@ -3,12 +3,12 @@
  * GET /api/scores?lat=35.6762&lon=139.6503&prefectureCode=13&portCode=12345&date=2025-12-24
  */
 
-import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentWeather } from '@/lib/openWeatherService';
-import { getTideData } from '@/lib/tideService';
-import { calculateFishingScore } from '@/lib/scoringService';
-import { withCache, generateCacheKey, CACHE_TTL, CACHE_PREFIX } from '@/lib/cache';
+import { type NextRequest, NextResponse } from 'next/server';
+import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
+import { getCurrentWeather } from '@/lib/openWeatherService';
+import { calculateFishingScore } from '@/lib/scoringService';
+import { getTideData } from '@/lib/tideService';
 import type { ScoringResponse } from '@/types/scoring';
 
 /**
@@ -42,7 +42,7 @@ export async function GET(
     const latitude = parseFloat(lat);
     const longitude = parseFloat(lon);
 
-    if (isNaN(latitude) || isNaN(longitude)) {
+    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
       return NextResponse.json(
         { error: 'Invalid coordinates: lat and lon must be numbers' },
         { status: 400 },

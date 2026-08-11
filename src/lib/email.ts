@@ -1,5 +1,5 @@
-import { Resend } from 'resend';
 import { render } from '@react-email/components';
+import { Resend } from 'resend';
 import VerificationEmail from '@/emails/verification-email';
 import { logger } from './logger';
 

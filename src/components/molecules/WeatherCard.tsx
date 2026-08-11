@@ -1,8 +1,8 @@
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { WeatherIcon } from '@/components/atoms/WeatherIcon';
-import { formatTime, getWindDirection } from '@/lib/utils/dashboardUtils';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { SCORE_CARD_LABELS, WEATHER_CARD_LABELS } from '@/constants/labels';
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
-import { WEATHER_CARD_LABELS, SCORE_CARD_LABELS } from '@/constants/labels';
+import { formatTime, getWindDirection } from '@/lib/utils/dashboardUtils';
 
 interface WeatherCardProps {
   score: number;

@@ -9,9 +9,10 @@
  * 🟢 You can import this file directly.
  */
 
-import * as process from 'node:process';
 import * as path from 'node:path';
+import * as process from 'node:process';
 import { fileURLToPath } from 'node:url';
+
 globalThis['__dirname'] = path.dirname(fileURLToPath(import.meta.url));
 
 import * as runtime from '@prisma/client/runtime/client';
@@ -67,16 +68,6 @@ export type locations = Prisma.locationsModel;
  * 港マスタ（潮汐API用）
  */
 export type ports = Prisma.portsModel;
-/**
- * Model weather_cache
- * 天気データキャッシュ（TTL: 30分）
- */
-export type weather_cache = Prisma.weather_cacheModel;
-/**
- * Model tide_cache
- * 潮汐データキャッシュ（TTL: 6時間）
- */
-export type tide_cache = Prisma.tide_cacheModel;
 /**
  * Model user_favorites
  * お気に入り釣り場

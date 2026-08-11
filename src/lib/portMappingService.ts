@@ -3,8 +3,8 @@
  * 任意の緯度経度から最寄りの潮汐観測港を検索する
  */
 
-import prisma from '@/lib/prisma';
 import type { ports } from '@/generated/prisma/client';
+import prisma from '@/lib/prisma';
 
 /**
  * 港と距離の情報
@@ -72,6 +72,7 @@ export async function findNearestPort(
   const portsWithDistance: PortWithDistance[] = allPorts
     .map((port) => ({
       ...port,
+      // biome-ignore lint/style/noNonNullAssertion: ports with null coordinates are filtered out before this point
       distance: calculateDistance(latitude, longitude, port.latitude!, port.longitude!),
     }))
     .sort((a, b) => a.distance - b.distance);

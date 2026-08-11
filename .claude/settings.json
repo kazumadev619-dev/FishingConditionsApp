@@ -1,0 +1,33 @@
+{
+  "env": {
+    "Max_THINKING_TOKENS": "10000"
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cd $CLAUDE_PROJECT_DIR && npx oxlint --format=json $CLAUDE_TOOL_INPUT_FILE_PATH 2>&1 | head -50"
+          },
+          {
+            "type": "command",
+            "command": "cd $CLAUDE_PROJECT_DIR && npx biome check --write $CLAUDE_TOOL_INPUT_FILE_PATH 2>&1"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if echo \"$CLAUDE_TOOL_INPUT_FILE_PATH\" | grep -qE '(biome\\.json|\\.oxlintrc\\.json|eslint\\.config)'; then echo 'BLOCKED: リンター設定ファイルは直接編集禁止。変更が必要な場合はユーザーに確認してください。'; exit 2; fi"
+          }
+        ]
+      }
+    ]
+  }
+}

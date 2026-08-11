@@ -3,9 +3,9 @@
  * 天気情報の取得とキャッシング機能を提供
  */
 
-import { openWeatherMapClient } from './apiClient';
-import { withCache, generateCacheKey, CACHE_TTL, CACHE_PREFIX } from './cache';
 import type { CurrentWeatherData, ForecastData } from '@/types/weather';
+import { openWeatherMapClient } from './apiClient';
+import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from './cache';
 
 /**
  * 天気取得時のオプション
@@ -85,6 +85,34 @@ export interface FormattedWeatherData {
 }
 
 /**
+ * 座標を小数点2桁に丸める（キャッシュ効率化）
+ */
+function roundCoordinates(lat: number, lon: number): { roundedLat: number; roundedLon: number } {
+  return {
+    roundedLat: Math.round(lat * 100) / 100,
+    roundedLon: Math.round(lon * 100) / 100,
+  };
+}
+
+/**
+ * skipCache オプションを考慮してキャッシュ経由でデータ取得し、WeatherResponse 形式で返す
+ */
+async function fetchWithOptionalCache<T>(
+  cacheKey: string,
+  ttl: number,
+  skipCache: boolean,
+  fetcher: () => Promise<T>,
+): Promise<WeatherResponse<T>> {
+  if (skipCache) {
+    const data = await fetcher();
+    return { data, fromCache: false, fetchedAt: new Date().toISOString() };
+  }
+
+  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher);
+  return { data, fromCache, fetchedAt: new Date().toISOString() };
+}
+
+/**
  * OpenWeatherMap APIからのレスポンスをアプリ用に整形
  */
 function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
@@ -134,9 +162,7 @@ export async function getCurrentWeather(
 ): Promise<WeatherResponse<FormattedWeatherData>> {
   const { lang = 'ja', units = 'metric', skipCache = false } = options;
 
-  // 座標を小数点2桁に丸める（キャッシュ効率化）
-  const roundedLat = Math.round(lat * 100) / 100;
-  const roundedLon = Math.round(lon * 100) / 100;
+  const { roundedLat, roundedLon } = roundCoordinates(lat, lon);
 
   const cacheKey = generateCacheKey(CACHE_PREFIX.WEATHER, {
     lat: roundedLat,
@@ -145,7 +171,7 @@ export async function getCurrentWeather(
     units,
   });
 
-  const fetchWeather = async (): Promise<FormattedWeatherData> => {
+  const fetcher = async (): Promise<FormattedWeatherData> => {
     const rawData = await openWeatherMapClient.get<CurrentWeatherData>('/weather', {
       params: {
         lat: String(lat),
@@ -157,22 +183,7 @@ export async function getCurrentWeather(
     return formatWeatherData(rawData);
   };
 
-  if (skipCache) {
-    const data = await fetchWeather();
-    return {
-      data,
-      fromCache: false,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.WEATHER, fetchWeather);
-
-  return {
-    data,
-    fromCache,
-    fetchedAt: new Date().toISOString(),
-  };
+  return fetchWithOptionalCache(cacheKey, CACHE_TTL.WEATHER, skipCache, fetcher);
 }
 
 /**
@@ -188,9 +199,7 @@ export async function getForecast(
 ): Promise<WeatherResponse<ForecastData>> {
   const { lang = 'ja', units = 'metric', skipCache = false } = options;
 
-  // 座標を小数点2桁に丸める
-  const roundedLat = Math.round(lat * 100) / 100;
-  const roundedLon = Math.round(lon * 100) / 100;
+  const { roundedLat, roundedLon } = roundCoordinates(lat, lon);
 
   const cacheKey = generateCacheKey(`${CACHE_PREFIX.WEATHER}:forecast`, {
     lat: roundedLat,
@@ -199,8 +208,8 @@ export async function getForecast(
     units,
   });
 
-  const fetchForecast = async (): Promise<ForecastData> => {
-    return openWeatherMapClient.get<ForecastData>('/forecast', {
+  const fetcher = (): Promise<ForecastData> =>
+    openWeatherMapClient.get<ForecastData>('/forecast', {
       params: {
         lat: String(lat),
         lon: String(lon),
@@ -208,24 +217,8 @@ export async function getForecast(
         units,
       },
     });
-  };
 
-  if (skipCache) {
-    const data = await fetchForecast();
-    return {
-      data,
-      fromCache: false,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.WEATHER, fetchForecast);
-
-  return {
-    data,
-    fromCache,
-    fetchedAt: new Date().toISOString(),
-  };
+  return fetchWithOptionalCache(cacheKey, CACHE_TTL.WEATHER, skipCache, fetcher);
 }
 
 /**
