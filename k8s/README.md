@@ -2,6 +2,8 @@
 
 Fishing Conditions App の Kubernetes デプロイ手順。
 
+> Docker イメージのビルドや docker compose での開発環境については [docs/guides/docker.md](../docs/guides/docker.md) を参照。
+
 ## 構成
 
 ```

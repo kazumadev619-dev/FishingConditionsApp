@@ -225,3 +225,10 @@ dist
 # 暗号化後の *.enc.yaml はgit管理する
 k8s/overlays/*/secret.yaml
 !k8s/overlays/*/secret.enc.yaml
+
+# Git worktrees
+.worktrees/
+
+# superpowers skill の生成物（設計書・実装計画）はローカル作業用
+# 恒久的に残す決定は docs/adr/ に ADR として記録する
+docs/superpowers/

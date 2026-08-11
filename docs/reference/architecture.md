@@ -522,7 +522,7 @@ sequenceDiagram
   - 有効期限1時間
   - 検証完了またはタイムアウト時に自動削除
 - **実装ファイル**:
-  - [src/lib/email.ts](src/lib/email.ts): Resend APIでメール送信
-  - [src/lib/token.ts](src/lib/token.ts): トークン生成・検証・削除
-  - [src/app/api/auth/verify-email/route.ts](src/app/api/auth/verify-email/route.ts): 検証エンドポイント
-  - [src/auth/index.ts](src/auth/index.ts): signInコールバックで検証状態チェック
+  - [src/lib/email.ts](../../src/lib/email.ts): Resend APIでメール送信
+  - [src/lib/token.ts](../../src/lib/token.ts): トークン生成・検証・削除
+  - [src/app/api/auth/verify-email/route.ts](../../src/app/api/auth/verify-email/route.ts): 検証エンドポイント
+  - [src/auth/index.ts](../../src/auth/index.ts): signInコールバックで検証状態チェック

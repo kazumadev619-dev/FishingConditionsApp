@@ -1,5 +1,5 @@
-import type { FormattedTideData } from '../tideService';
 import type { FormattedWeatherData } from '../openWeatherService';
+import type { FormattedTideData } from '../tideService';
 import { formatDateLocal } from '../utils/dateUtils';
 import { getScoreRank } from '../utils/scoreRank';
 

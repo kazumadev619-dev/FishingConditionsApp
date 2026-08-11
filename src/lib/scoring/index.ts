@@ -4,8 +4,8 @@ import type { FormattedTideData } from '../tideService';
 import { formatDateLocal } from '../utils/dateUtils';
 import { getScoreRank } from '../utils/scoreRank';
 import { generateExplanation } from './explanationGenerator';
-import { calculateTimeScore } from './timeScore';
 import { calculateTideScore } from './tideScore';
+import { calculateTimeScore } from './timeScore';
 import { calculateWeatherScore } from './weatherScore';
 
 export class ScoringEngine {

@@ -1,8 +1,8 @@
 import NextAuth from 'next-auth';
-import { baseAuthConfig } from './config';
 import { jwtCallback } from './callbacks/jwtCallback';
 import { sessionCallback } from './callbacks/sessionCallback';
 import { signInCallback } from './callbacks/signInCallback';
+import { baseAuthConfig } from './config';
 import { credentialsProvider } from './providers/credentials';
 import { googleProvider } from './providers/google';
 

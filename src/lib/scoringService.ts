@@ -1,1 +1,1 @@
-export { ScoringEngine, scoringEngine, calculateFishingScore } from './scoring/index';
+export { calculateFishingScore, ScoringEngine, scoringEngine } from './scoring/index';
