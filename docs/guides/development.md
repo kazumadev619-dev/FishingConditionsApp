@@ -29,15 +29,15 @@
 
 ```
 fishing-conditions-app/
-├── .kiro/
-│   └── specs/                     # 仕様書
-│       └── fishing-conditions-app/
-├── docs/                          # ドキュメント
+├── docs/                          # ドキュメント（docs/README.md が索引）
+│   ├── README.md
 │   ├── roadmap.md
-│   ├── api-integration.md
-│   ├── architecture.md
-│   ├── scoring-algorithm.md
-│   └── development-guide.md
+│   ├── guides/                    # 作業手順・運用
+│   ├── reference/                 # 設計・仕様
+│   ├── adr/                       # 技術的決定記録
+│   └── perf/                      # パフォーマンス計測結果
+├── k8s/                           # Kubernetesマニフェスト
+├── docker/                        # Dockerfile / docker-compose.yml
 ├── src/                           # ソースコード
 │   ├── app/                       # Next.js App Router
 │   │   ├── api/                   # API Routes
@@ -74,7 +74,7 @@ fishing-conditions-app/
 ### コーディング規約
 
 - **言語**: TypeScript strict mode
-- **フォーマッター**: Prettier
+- **フォーマッター**: Biome（`npm run format`）
 - **リンター**: ESLint + TypeScript ESLint
 - **スタイル**: Tailwind CSS
 - **コンポーネント**: shadcn/ui ベース
@@ -82,25 +82,32 @@ fishing-conditions-app/
 ### ブランチ戦略
 
 ```
-main                    # 本番環境
-├── develop            # 開発統合ブランチ
-└── Task/xxx     # Task単位のブランチ
+main                       # 本番環境
+├── develop               # 開発統合ブランチ
+└── <type>/<short-desc>   # 作業ブランチ
 ```
 
-### コミット規約（Conventional Commits）
+`<type>` はコミットの type と同じ語を使う。Issue 番号がある場合は `<type>/#<issue-no>_<desc>` としてよい。
+実例: `refactor/#13` / `docs/repo-tidy` / `feat/#123_fishing-spot-pagination`
+
+### コミット規約（gitmoji + Conventional Commits）
+
+`commitlint.config.cts`（`extends: ['gitmoji']`）が commit-msg フックで検証する。
 
 ```
-feat: 新機能追加
-fix: バグ修正
-docs: ドキュメント更新
-style: コードスタイル修正
-refactor: リファクタリング
-test: テスト追加・修正
-chore: その他の変更
-
-例:
-[gitmoji]feat: Auth.js認証機能を実装 #[TaskNo.xxx]
+<絵文字> <type>: <説明> [#<数字>]
 ```
+
+```bash
+git commit -m "✨ feat: Auth.js認証機能を実装 #123"
+git commit -m "📝 docs: 開発ガイドを更新"
+```
+
+- 絵文字と type の間は**半角スペース**。`✨:feat:` のようにコロンで繋ぐと落ちる
+- チケット番号は `#123` のように**数字のみ**。文字列（`#TaskNo` 等）を書くと落ちる。無ければ省略する
+- ヘッダー（1 行目）は 100 文字以内
+- type は `commitlint.config.cts` の `type-enum` にあるもの:
+  `feat` `improve` `update` `fix` `hotfix` `refactor` `delete` `style` `docs` `move` `test` `chore` `package` `WIP`
 
 ---
 
@@ -109,20 +116,19 @@ chore: その他の変更
 ### 1. 機能開発の流れ
 
 1. **Issue作成**: GitHub Issuesでタスクを作成
-2. **ブランチ作成**: `Task/XXX` 形式
+2. **ブランチ作成**: `develop` から `<type>/<short-desc>` 形式で切る（例: `docs/repo-tidy`、`refactor/#13`）
 3. **開発**: ローカル環境で実装
 4. **テスト**: 単体テスト・統合テスト実行
-5. **PR作成**: Pull Request作成・レビュー依頼
+5. **PR作成**: `develop` 向けに Pull Request を作成・レビュー依頼
 6. **レビュー**: コードレビュー・修正
 7. **マージ**: developブランチにマージ
-8. **デプロイ**: ステージング環境で確認
 
 ### 2. 品質保証
 
 - **自動テスト**: Jest + React Testing Library
 - **E2Eテスト**: Playwright
 - **型チェック**: TypeScript strict mode
-- **リント**: ESLint + Prettier
+- **リント**: Oxlint（高速チェック）+ Biome（整形）+ ESLint（CIでの深い静的解析）
 - **CI/CD**: GitHub Actions
 
 ---
@@ -152,16 +158,12 @@ AUTH_SECRET=...                      # npx auth secret で生成
 # Google OAuth (オプション)
 AUTH_GOOGLE_ID=...                   # Google Cloud ConsoleのClient ID
 AUTH_GOOGLE_SECRET=...               # Google Cloud ConsoleのClient Secret
-
-# 本番環境のみ
-VERCEL_URL=...
 ```
 
 ### 環境別設定
 
 - **開発環境**: `.env.local`
-- **ステージング**: Vercel環境変数
-- **本番環境**: Vercel環境変数
+- **Kubernetes**: `k8s/overlays/<env>/secret.yaml`（SOPS で暗号化して `secret.enc.yaml` として管理）
 
 ---
 
@@ -234,10 +236,10 @@ curl "https://api.openweathermap.org/data/2.5/weather?q=Tokyo&appid=YOUR_API_KEY
 
 ```bash
 # PostgreSQL接続確認 (docker-compose)
-docker-compose -f docker/docker-compose.yml exec postgres pg_isready
+docker compose -f docker/docker-compose.yml exec postgres pg_isready
 
 # ローカルDB起動
-cd docker && docker-compose up -d postgres
+cd docker && docker compose up -d postgres
 
 # Prisma Studio でDB確認
 npm run prisma:studio
@@ -304,25 +306,18 @@ logger.info('User login successful', { userId, timestamp });
 
 ## デプロイメント
 
-### ステージング環境
+### 現状
 
-- **URL**: https://staging-fishing-app.vercel.app
-- **自動デプロイ**: develop ブランチへのプッシュ時
-- **用途**: 機能テスト・統合テスト
+**本番環境はまだ公開していない。** デプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しており、初回デプロイはこれから行う。
 
-### 本番環境
+- **ローカル Kubernetes**: Minikube（手順は [k8s/README.md](../../k8s/README.md)）
+- **本番相当**: Raspberry Pi 5 + k3s（arm64）
+- **ステージング環境**: 未構築。今後整備する
 
-- **URL**: https://fishing-app.com
-- **デプロイ**: main ブランチへのマージ時
-- **監視**: Vercel Analytics + エラー追跡
+### CI/CD の現状
 
-### デプロイ手順
-
-1. **PR作成**: feature → develop
-2. **レビュー**: コードレビュー・承認
-3. **ステージング**: 自動デプロイ・テスト
-4. **本番リリース**: develop → main
-5. **監視**: エラー・パフォーマンス監視
+GitHub Actions で lint / format / type-check / build を実行している（詳細は [ci-cd.md](./ci-cd.md)）。
+**k3s への自動デプロイは未導入**で、現時点のデプロイは手動で行う。
 
 ---
 
@@ -344,8 +339,6 @@ logger.info('User login successful', { userId, timestamp });
 
 ### インフラ・ツール
 
-- [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
-- [kind (Kubernetes in Docker)](https://kind.sigs.k8s.io/)
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [Prisma Documentation](https://www.prisma.io/docs/)
 

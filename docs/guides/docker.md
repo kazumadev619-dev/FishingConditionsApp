@@ -1,6 +1,6 @@
-# Docker & Kubernetes 運用ガイド
+# Docker 運用ガイド
 
-Fishing Conditions App のコンテナ化とデプロイに関する包括的なガイドです。
+Fishing Conditions App のコンテナ化に関するガイドです。Kubernetes へのデプロイは [k8s/README.md](../../k8s/README.md) を参照してください。
 
 ---
 
@@ -8,10 +8,9 @@ Fishing Conditions App のコンテナ化とデプロイに関する包括的な
 
 1. [Docker 基本操作](#1-docker-基本操作)
 2. [docker-compose による開発環境](#2-docker-compose-による開発環境)
-3. [Kubernetes (kind) ローカル開発](#3-kubernetes-kind-ローカル開発)
-4. [GKE 本番デプロイ](#4-gke-本番デプロイ)
-5. [トラブルシューティング](#5-トラブルシューティング)
-6. [よく使うコマンド集](#6-よく使うコマンド集)
+3. [Kubernetes](#3-kubernetes)
+4. [トラブルシューティング](#4-トラブルシューティング)
+5. [よく使うコマンド集](#5-よく使うコマンド集)
 
 ---
 
@@ -58,12 +57,6 @@ docker rmi fishing-app:latest
 
 # 未使用イメージの一括削除
 docker image prune -a
-
-# イメージのタグ付け
-docker tag fishing-app:latest gcr.io/your-project/fishing-app:v1.0.0
-
-# イメージのプッシュ（GCR）
-docker push gcr.io/your-project/fishing-app:v1.0.0
 ```
 
 ### 1.3 コンテナの操作
@@ -118,10 +111,10 @@ docker inspect fishing-app
 
 `docker-compose.yml` には以下のサービスが含まれます：
 
-- **app**: Next.js アプリケーション
-- **postgres**: PostgreSQL 17（データベース）
-- **redis**: Redis 7（キャッシュ）
-- **serverless-redis**: Upstash 互換 HTTP ラッパー
+- **app**: Next.js アプリケーション（`fishing-app`）
+- **postgres**: PostgreSQL 17 Alpine（`fishing-postgres`）
+- **redis**: Redis 7 Alpine（`fishing-redis`）
+- **redisinsight**: Redis の GUI 管理ツール（`fishing-redisinsight`）
 
 ### 2.2 基本コマンド
 
@@ -186,37 +179,37 @@ docker compose restart app
 
 ```bash
 # すべてのサービスのログ
-docker-compose logs
+docker compose logs
 
 # 特定のサービスのログ
-docker-compose logs app
-docker-compose logs postgres
+docker compose logs app
+docker compose logs postgres
 
 # リアルタイムでフォロー
-docker-compose logs -f app
+docker compose logs -f app
 
 # 最新100行のみ表示
-docker-compose logs --tail=100 app
+docker compose logs --tail=100 app
 
 # タイムスタンプ付き
-docker-compose logs -t app
+docker compose logs -t app
 ```
 
 ### 2.4 サービス管理
 
 ```bash
 # サービスの状態確認
-docker-compose ps
+docker compose ps
 
 # サービス内でコマンド実行
-docker-compose exec app sh
-docker-compose exec postgres psql -U postgres -d fishing_app
+docker compose exec app sh
+docker compose exec postgres psql -U postgres -d fishing_app
 
 # 新しいコンテナでコマンド実行
-docker-compose run app npm run prisma:migrate
+docker compose run app npm run prisma:migrate
 
 # スケーリング（特定サービスの複数インスタンス起動）
-docker-compose up -d --scale app=3
+docker compose up -d --scale app=3
 ```
 
 ### 2.5 環境変数の設定
@@ -263,292 +256,60 @@ AUTH_GOOGLE_SECRET=your_google_client_secret
 
 - `.env.local` は `.gitignore` に含まれており、Git管理されません
 - ローカル開発（`npm run dev`）とDocker開発（`npm run docker:dev`）の両方で同じファイルを使用します
-- `DATABASE_URL`、`UPSTASH_REDIS_REST_URL` などはDocker環境では `docker-compose.yml` で自動設定されます（`.env.local` の値は無視されます）
+- `DATABASE_URL`、`REDIS_URL` などはDocker環境では `docker-compose.yml` で自動設定されます（`.env.local` の値は無視されます）
 
 ### 2.6 データベース操作
 
 ```bash
 # PostgreSQL に接続
-docker-compose exec postgres psql -U postgres -d fishing_app
+docker compose exec postgres psql -U postgres -d fishing_app
 
 # SQL ファイルを実行
-docker-compose exec -T postgres psql -U postgres -d fishing_app < schema.sql
+docker compose exec -T postgres psql -U postgres -d fishing_app < schema.sql
 
 # データベースのバックアップ
-docker-compose exec postgres pg_dump -U postgres fishing_app > backup.sql
+docker compose exec postgres pg_dump -U postgres fishing_app > backup.sql
 
 # データベースのリストア
-docker-compose exec -T postgres psql -U postgres -d fishing_app < backup.sql
+docker compose exec -T postgres psql -U postgres -d fishing_app < backup.sql
 
 # Prisma マイグレーション実行
-docker-compose exec app npm run prisma:migrate
+docker compose exec app npm run prisma:migrate
 
 # Prisma Studio 起動
-docker-compose exec app npm run prisma:studio
+docker compose exec app npm run prisma:studio
 ```
 
 ### 2.7 Redis 操作
 
 ```bash
 # Redis CLI に接続
-docker-compose exec redis redis-cli
+docker compose exec redis redis-cli
 
 # キーの一覧表示
-docker-compose exec redis redis-cli KEYS '*'
+docker compose exec redis redis-cli KEYS '*'
 
 # 特定のキーの値を取得
-docker-compose exec redis redis-cli GET your_key
+docker compose exec redis redis-cli GET your_key
 
 # すべてのデータを削除
-docker-compose exec redis redis-cli FLUSHALL
+docker compose exec redis redis-cli FLUSHALL
 ```
 
 ---
 
-## 3. Kubernetes (kind) ローカル開発
+## 3. Kubernetes
 
-### 3.1 kind クラスタのセットアップ
+Kubernetes へのデプロイ手順（Minikube でのローカル環境、k3s 本番環境、SOPS による Secret 管理）は
+マニフェストと同じ場所にある [k8s/README.md](../../k8s/README.md) にまとめている。
 
-```bash
-# kind をインストール（macOS）
-brew install kind
-
-# kind クラスタ作成
-kind create cluster --name fishing-app
-
-# クラスタ一覧
-kind get clusters
-
-# クラスタ削除
-kind delete cluster --name fishing-app
-
-# kubectl コンテキスト確認
-kubectl config current-context
-
-# kind コンテキストに切り替え
-kubectl config use-context kind-fishing-app
-```
-
-### 3.2 イメージのロード
-
-```bash
-# Docker イメージをビルド
-docker build -t fishing-app:latest -f docker/Dockerfile .
-
-# kind クラスタにイメージをロード
-kind load docker-image fishing-app:latest --name fishing-app
-
-# ロード済みイメージの確認
-docker exec -it fishing-app-control-plane crictl images | grep fishing-app
-```
-
-### 3.3 Kustomize によるデプロイ
-
-```bash
-# ローカル環境用のマニフェストをプレビュー
-kubectl kustomize k8s/overlays/local
-
-# ローカル環境にデプロイ
-kubectl apply -k k8s/overlays/local
-
-# デプロイ状況の確認
-kubectl get all -n fishing-app
-
-# Pod のステータス確認
-kubectl get pods -n fishing-app
-
-# Pod のログ確認
-kubectl logs -n fishing-app -l app=fishing-app -f
-
-# サービスの確認
-kubectl get svc -n fishing-app
-
-# Ingress の確認
-kubectl get ingress -n fishing-app
-```
-
-### 3.4 ポートフォワーディング
-
-```bash
-# アプリケーションにアクセス
-kubectl port-forward -n fishing-app svc/fishing-app 3000:3000
-
-# PostgreSQL にアクセス
-kubectl port-forward -n fishing-app svc/postgres 5432:5432
-
-# Redis にアクセス
-kubectl port-forward -n fishing-app svc/redis 6379:6379
-```
-
-### 3.5 Secret と ConfigMap の管理
-
-```bash
-# Secret の作成（.env.local から）
-kubectl create secret generic fishing-app-secret \
-  --from-env-file=.env.local \
-  -n fishing-app
-
-# Secret の確認
-kubectl get secrets -n fishing-app
-kubectl describe secret fishing-app-secret -n fishing-app
-
-# Secret の削除
-kubectl delete secret fishing-app-secret -n fishing-app
-
-# ConfigMap の確認
-kubectl get configmap -n fishing-app
-kubectl describe configmap fishing-app-config -n fishing-app
-```
-
-### 3.6 リソースの更新とロールバック
-
-```bash
-# デプロイメントの更新
-kubectl apply -k k8s/overlays/local
-
-# ロールアウト履歴の確認
-kubectl rollout history deployment/fishing-app -n fishing-app
-
-# ロールアウトの状態確認
-kubectl rollout status deployment/fishing-app -n fishing-app
-
-# 前のバージョンにロールバック
-kubectl rollout undo deployment/fishing-app -n fishing-app
-
-# 特定のリビジョンにロールバック
-kubectl rollout undo deployment/fishing-app --to-revision=2 -n fishing-app
-
-# デプロイメントの再起動
-kubectl rollout restart deployment/fishing-app -n fishing-app
-```
-
-### 3.7 トラブルシューティング
-
-```bash
-# Pod の詳細情報
-kubectl describe pod <pod-name> -n fishing-app
-
-# Pod のイベント確認
-kubectl get events -n fishing-app --sort-by='.lastTimestamp'
-
-# Pod 内でコマンド実行
-kubectl exec -it <pod-name> -n fishing-app -- sh
-
-# リソースの削除
-kubectl delete -k k8s/overlays/local
-
-# namespace ごと削除
-kubectl delete namespace fishing-app
-```
+本番環境のデプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しているが、初回デプロイはまだ行っていない。
 
 ---
 
-## 4. GKE 本番デプロイ
+## 4. トラブルシューティング
 
-### 4.1 GCP のセットアップ
-
-```bash
-# gcloud CLI をインストール（macOS）
-brew install --cask google-cloud-sdk
-
-# gcloud 認証
-gcloud auth login
-
-# プロジェクト設定
-gcloud config set project your-gcp-project-id
-
-# Docker 認証設定（GCR）
-gcloud auth configure-docker
-
-# GKE クラスタ作成
-gcloud container clusters create fishing-app-cluster \
-  --zone=asia-northeast1-a \
-  --num-nodes=3 \
-  --machine-type=e2-medium \
-  --enable-autoscaling \
-  --min-nodes=1 \
-  --max-nodes=5
-
-# kubectl コンテキスト取得
-gcloud container clusters get-credentials fishing-app-cluster \
-  --zone=asia-northeast1-a
-```
-
-### 4.2 イメージのプッシュ
-
-```bash
-# イメージをビルド
-docker build -t fishing-app:latest -f docker/Dockerfile .
-
-# GCR 用にタグ付け
-docker tag fishing-app:latest gcr.io/your-project-id/fishing-app:latest
-docker tag fishing-app:latest gcr.io/your-project-id/fishing-app:v1.0.0
-
-# GCR にプッシュ
-docker push gcr.io/your-project-id/fishing-app:latest
-docker push gcr.io/your-project-id/fishing-app:v1.0.0
-
-# プッシュ済みイメージの確認
-gcloud container images list --repository=gcr.io/your-project-id
-```
-
-### 4.3 本番環境へのデプロイ
-
-```bash
-# Secret の作成（本番環境用）
-kubectl create secret generic fishing-app-secret \
-  --from-env-file=.env.production \
-  -n fishing-app
-
-# 本番環境用のマニフェストをプレビュー
-kubectl kustomize k8s/overlays/production
-
-# 本番環境にデプロイ
-kubectl apply -k k8s/overlays/production
-
-# デプロイ状況の監視
-kubectl rollout status deployment/fishing-app -n fishing-app
-
-# Pod の確認
-kubectl get pods -n fishing-app -o wide
-
-# サービスの外部 IP 確認
-kubectl get svc -n fishing-app
-```
-
-### 4.4 Cloud SQL の接続（オプション）
-
-```bash
-# Cloud SQL Proxy のインストール
-gcloud components install cloud_sql_proxy
-
-# Cloud SQL Proxy 起動
-cloud_sql_proxy -instances=your-project:region:instance-name=tcp:5432
-
-# または、Kubernetes で Cloud SQL Proxy を使用
-# k8s/base/deployment.yaml に cloud-sql-proxy サイドカーを追加
-```
-
-### 4.5 モニタリングとログ
-
-```bash
-# GKE ダッシュボードで確認
-# https://console.cloud.google.com/kubernetes/
-
-# Cloud Logging でログ確認
-gcloud logging read "resource.type=k8s_container AND resource.labels.namespace_name=fishing-app" \
-  --limit 50 \
-  --format json
-
-# kubectl でログ確認
-kubectl logs -n fishing-app -l app=fishing-app --tail=100 -f
-```
-
----
-
-## 5. トラブルシューティング
-
-### 5.1 Docker 関連
+### 4.1 Docker 関連
 
 #### イメージビルドが失敗する
 
@@ -587,83 +348,39 @@ kill -9 <PID>
 docker run -p 3001:3000 fishing-app:latest
 ```
 
-### 5.2 docker-compose 関連
+### 4.2 docker-compose 関連
 
 #### サービスが起動しない
 
 ```bash
 # サービスの状態確認
-docker-compose ps
+docker compose ps
 
 # ログで原因を確認
-docker-compose logs app
+docker compose logs app
 
 # サービスを再作成
-docker-compose up -d --force-recreate app
+docker compose up -d --force-recreate app
 ```
 
 #### データベース接続エラー
 
 ```bash
 # PostgreSQL の状態確認
-docker-compose exec postgres pg_isready -U postgres
+docker compose exec postgres pg_isready -U postgres
 
 # データベースが存在するか確認
-docker-compose exec postgres psql -U postgres -l
+docker compose exec postgres psql -U postgres -l
 
 # 接続文字列を確認
-docker-compose exec app env | grep DATABASE_URL
-```
-
-### 5.3 Kubernetes 関連
-
-#### Pod が起動しない
-
-```bash
-# Pod の状態確認
-kubectl describe pod <pod-name> -n fishing-app
-
-# イベントを確認
-kubectl get events -n fishing-app --sort-by='.lastTimestamp'
-
-# Pod のログ確認
-kubectl logs <pod-name> -n fishing-app
-
-# 前回のコンテナのログ確認（クラッシュループの場合）
-kubectl logs <pod-name> -n fishing-app --previous
-```
-
-#### ImagePullBackOff エラー
-
-```bash
-# イメージが存在するか確認（GCR）
-gcloud container images list --repository=gcr.io/your-project-id
-
-# kind の場合、イメージをロード
-kind load docker-image fishing-app:latest --name fishing-app
-
-# Secret が正しく設定されているか確認
-kubectl get secrets -n fishing-app
-```
-
-#### CrashLoopBackOff エラー
-
-```bash
-# ログで原因を確認
-kubectl logs <pod-name> -n fishing-app
-
-# 環境変数が正しく設定されているか確認
-kubectl exec <pod-name> -n fishing-app -- env
-
-# リソース不足の可能性を確認
-kubectl describe node
+docker compose exec app env | grep DATABASE_URL
 ```
 
 ---
 
-## 6. よく使うコマンド集
+## 5. よく使うコマンド集
 
-### 6.1 Docker
+### 5.1 Docker
 
 ```bash
 # 基本操作
@@ -681,59 +398,22 @@ docker volume prune            # 未使用ボリュームを削除
 docker network prune           # 未使用ネットワークを削除
 ```
 
-### 6.2 docker-compose
+### 5.2 docker-compose
 
 ```bash
 # 基本操作
 cd docker
-docker-compose up -d --build
-docker-compose logs -f app
-docker-compose ps
-docker-compose restart app
-docker-compose down
-docker-compose down -v         # ボリュームも削除
+docker compose up -d --build
+docker compose logs -f app
+docker compose ps
+docker compose restart app
+docker compose down
+docker compose down -v         # ボリュームも削除
 
 # データベース操作
-docker-compose exec postgres psql -U postgres -d fishing_app
-docker-compose exec app npm run prisma:migrate
-docker-compose exec app npm run prisma:studio
-```
-
-### 6.3 Kubernetes (kind)
-
-```bash
-# クラスタ管理
-kind create cluster --name fishing-app
-kind load docker-image fishing-app:latest --name fishing-app
-kind delete cluster --name fishing-app
-
-# デプロイ
-kubectl apply -k k8s/overlays/local
-kubectl get all -n fishing-app
-kubectl logs -n fishing-app -l app=fishing-app -f
-kubectl port-forward -n fishing-app svc/fishing-app 3000:3000
-
-# クリーンアップ
-kubectl delete -k k8s/overlays/local
-```
-
-### 6.4 GKE
-
-```bash
-# クラスタ接続
-gcloud container clusters get-credentials fishing-app-cluster --zone=asia-northeast1-a
-
-# イメージプッシュ
-docker tag fishing-app:latest gcr.io/your-project-id/fishing-app:latest
-docker push gcr.io/your-project-id/fishing-app:latest
-
-# デプロイ
-kubectl apply -k k8s/overlays/production
-kubectl rollout status deployment/fishing-app -n fishing-app
-kubectl get svc -n fishing-app
-
-# ログ確認
-kubectl logs -n fishing-app -l app=fishing-app --tail=100 -f
+docker compose exec postgres psql -U postgres -d fishing_app
+docker compose exec app npm run prisma:migrate
+docker compose exec app npm run prisma:studio
 ```
 
 ---
@@ -749,25 +429,6 @@ kubectl logs -n fishing-app -l app=fishing-app --tail=100 -f
 - [ ] http://localhost:3000 でアプリにアクセス可能
 - [ ] データベース接続確認済み
 
-### ローカル Kubernetes セットアップ
-
-- [ ] kind インストール済み
-- [ ] kind クラスタ作成済み
-- [ ] イメージビルド・ロード済み
-- [ ] `kubectl apply -k k8s/overlays/local` 成功
-- [ ] ポートフォワーディングでアクセス確認済み
-
-### 本番環境デプロイ
-
-- [ ] GCP プロジェクト作成済み
-- [ ] GKE クラスタ作成済み
-- [ ] `.env.production` 作成済み
-- [ ] イメージを GCR にプッシュ済み
-- [ ] Secret 作成済み
-- [ ] `kubectl apply -k k8s/overlays/production` 成功
-- [ ] 外部 IP でアクセス確認済み
-- [ ] モニタリング設定済み
-
 ---
 
 ## 参考リンク
@@ -775,11 +436,8 @@ kubectl logs -n fishing-app -l app=fishing-app --tail=100 -f
 - [Docker Documentation](https://docs.docker.com/)
 - [docker-compose Documentation](https://docs.docker.com/compose/)
 - [Kubernetes Documentation](https://kubernetes.io/docs/)
-- [kind Documentation](https://kind.sigs.k8s.io/)
 - [Kustomize Documentation](https://kustomize.io/)
-- [Google Kubernetes Engine](https://cloud.google.com/kubernetes-engine/docs)
-- [Google Container Registry](https://cloud.google.com/container-registry/docs)
 
 ---
 
-**最終更新日**: 2025-12-13
+**最終更新日**: 2026-08-10
