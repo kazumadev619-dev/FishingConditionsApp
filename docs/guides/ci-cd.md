@@ -10,7 +10,7 @@
 PR作成/push → GitHub Actions CI起動
   ├─ Code Quality Check (並列実行)
   │   ├─ ESLint
-  │   ├─ Prettier Format Check
+  │   ├─ Biome Format Check
   │   └─ TypeScript Type Check
   │
   ├─ Build Verification
@@ -41,7 +41,7 @@ PR作成/push → GitHub Actions CI起動
 | チェック項目 | コマンド | 目的 |
 |------------|---------|------|
 | **ESLint** | `npm run lint` | コーディング規約違反、潜在的バグの検出 |
-| **Prettier** | `npm run format:check` | コードフォーマットの統一性確認 |
+| **Biome** | `npm run format:check` | コードフォーマットの統一性確認 |
 | **TypeScript** | `npm run type-check` | 型安全性の検証 |
 
 **注意点:**
@@ -149,8 +149,8 @@ npm run format
 
 このプロジェクトでは**Husky + lint-staged**が設定されており、`git commit`時に自動で以下が実行されます:
 
-1. Prettier自動整形
-2. ESLint自動修正
+1. `src/**/*.{js,jsx,ts,tsx}`: Oxlint によるチェック → Biome による自動修正（`biome check --write`）
+2. `src/**/*.{json,md}`: Biome による自動整形（`biome format --write`）
 
 そのため、**手動でformatコマンドを実行する必要はほとんどありません**。
 
@@ -213,8 +213,8 @@ npm run prisma:generate
 - [ ] PRで `prisma/schema.prisma` 変更時に自動実行
 
 ### Phase 4: 自動デプロイ
-- [ ] Vercel/AWS自動デプロイ設定
-- [ ] ステージング環境へのプレビューデプロイ
+- [ ] k3s への自動デプロイ設定（Raspberry Pi 5 / arm64）
+- [ ] イメージのビルドとレジストリへの push
 - [ ] main統合時の本番デプロイ
 - [ ] Slack通知連携
 
@@ -234,7 +234,7 @@ Phase 1では外部APIキーや認証情報は不要です。
 | Secret名 | 用途 | 必要時期 |
 |---------|------|---------|
 | `DATABASE_URL` | 本番DB接続 | CD実装時 |
-| `VERCEL_TOKEN` | Vercelデプロイ | CD実装時 |
+| `KUBE_CONFIG` | k3s クラスタへの接続 | CD実装時 |
 | `SLACK_WEBHOOK_URL` | 通知連携 | Phase 4 |
 
 ## 📚 参考リソース
@@ -242,7 +242,7 @@ Phase 1では外部APIキーや認証情報は不要です。
 - [GitHub Actions公式ドキュメント](https://docs.github.com/ja/actions)
 - [Next.js CI/CD ベストプラクティス](https://nextjs.org/docs/pages/building-your-application/deploying/ci-build-caching)
 - [ESLint Flat Config](https://eslint.org/docs/latest/use/configure/configuration-files)
-- [Prettier CI統合](https://prettier.io/docs/en/install#git-hooks)
+- [Biome CI統合](https://biomejs.dev/recipes/continuous-integration/)
 
 ## 🎯 チェックリスト
 

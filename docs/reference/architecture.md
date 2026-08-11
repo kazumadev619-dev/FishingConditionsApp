@@ -10,7 +10,7 @@ graph TB
     end
 
     subgraph "Infrastructure"
-        K8S[GKE / kind<br/>Kubernetes Cluster]
+        K8S[k3s on Raspberry Pi 5<br/>Minikube: ローカル]
     end
 
     subgraph "Application Layer"
@@ -55,10 +55,13 @@ graph TB
 | スタイリング   | Tailwind CSS + shadcn/ui     | 4.1.17 + latest          | モバイルファースト、コンポーネント再利用 |
 | 状態管理       | Zustand + React Query        | 5.0.8 + 5.90.7           | 軽量、外部API連携に最適                  |
 | 認証           | Auth.js (Auth.js)            | 5.0.0-beta.30            | 多様な認証プロバイダー対応               |
-| データベース   | PostgreSQL                   | 17.0                     | リレーショナルDB、Prisma ORM             |
-| キャッシュ     | Redis (Upstash)              | 7.2.0                    | 外部API結果のキャッシュ                  |
-| デプロイ       | GCP (GKE)                    | -                        | Kubernetes本番環境                       |
-| ローカルk8s    | kind                         | -                        | ローカルKubernetes開発環境               |
+| データベース   | PostgreSQL (Neon)            | 17                       | マネージドクラウド、Prisma ORM           |
+| キャッシュ     | Redis (k3s Pod)              | 7.x                      | 外部API結果のキャッシュ                  |
+| デプロイ       | Raspberry Pi 5 + k3s         | -                        | Cloudflare Tunnel + Traefik、arm64本番   |
+| ローカルk8s    | Minikube                     | -                        | ローカルKubernetes開発環境               |
+
+> **注意:** `k8s/` 配下のマニフェストは GKE + クラスタ内 PostgreSQL 前提のまま残っており、上表の実態と乖離している。
+> 追従は [#105](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/105) で対応する。
 
 ### 将来の拡張性
 
@@ -461,7 +464,7 @@ interface CacheStrategy {
     userPreferences: '永続';
   };
 
-  // L2: CDNキャッシュ (Vercel Edge)
+  // L2: CDNキャッシュ (Cloudflare)
   cdnCache: {
     staticPages: '1日';
     apiRoutes: '5分';

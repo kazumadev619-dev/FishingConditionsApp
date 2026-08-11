@@ -165,36 +165,41 @@ npm run type-check && npm run lint && npm run format:check
 
 - `main`: 本番環境（プロダクション）
 - `develop`: 開発統合ブランチ
-- `Task/*`: 機能開発・修正用ブランチ
+- `<type>/<short-desc>`: 作業ブランチ。`develop` から切る（例: `docs/repo-tidy`、`refactor/#13`、`feat/#123_fishing-spot-pagination`）
+
+`<type>` はコミットの type と同じ語を使う。
 
 ### コミットメッセージ規約
 
-[gitmoji](https://gitmoji.dev) を使用したコミットメッセージ:
+[gitmoji](https://gitmoji.dev) を使用する。`commitlint.config.cts`（`extends: ['gitmoji']`）が commit-msg フックで検証する。
 
 ```
-[emoji]:[prefix]: [message] #[TaskNo]
+<絵文字> <type>: <説明> [#<数字>]
 ```
 
-**プレフィックス:**
+**必ず守ること:**
 
-- `feat`: 新機能
-- `fix`: バグ修正
-- `docs`: ドキュメント
-- `test`: テスト追加・修正
-- `refactor`: リファクタリング
-- `chore`: ビルド・設定変更
+- 絵文字と type の間は**半角スペース**。`✨:feat:` のようにコロンで繋ぐと `start-with-gitmoji` で落ちる
+- チケット番号は `#123` のように**数字のみ**。文字列（`#TaskNo` 等）を書くと `subject-empty` で落ちる。無い場合は省略する
+- ヘッダー（1 行目）は 100 文字以内
+
+**type:**
+
+`feat` `improve` `update` `fix` `hotfix` `refactor` `delete` `style` `docs` `move` `test` `chore` `package` `WIP`
 
 **例:**
 
 ```bash
-✨:feat: Add tide score calculation #21
-🐛:fix: Fix authentication redirect issue #34
-📝:docs: Update setup instructions in README #45
+✨ feat: Add tide score calculation #21
+🐛 fix: Fix authentication redirect issue #34
+📝 docs: Update setup instructions in README
 ```
+
+コミット前に `echo "<msg>" | npx commitlint` で検証できる。
 
 ### 開発フロー
 
-1. `develop` ブランチから新しい `Task/*` ブランチを作成
+1. `develop` ブランチから新しい `<type>/<short-desc>` ブランチを作成
 2. 機能実装・テスト
 3. `npm run type-check` と `npm run lint` でコード品質確認
 4. コミット（上記規約に従う）
@@ -249,8 +254,8 @@ npm run type-check && npm run lint && npm run format:check
 ### 開発規約
 
 - **コーディング規約**: ESLint + Biome + Oxlint + TypeScript strict mode
-- **ブランチ戦略**: `main` / `develop` / `Task/*`
-- **コミット**: `[gitmoji]:[prefix]: [message] #[TaskNoXXX]`
+- **ブランチ戦略**: `main` / `develop` / `<type>/<short-desc>`
+- **コミット**: `<絵文字> <type>: <説明> [#<数字>]`（絵文字の後は半角スペース、チケットは数字のみ）
 - **Issue管理**: GitHub Projects（スプリント単位）
 
 ### 品質保証
