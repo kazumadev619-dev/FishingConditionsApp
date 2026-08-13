@@ -13,13 +13,23 @@ class CacheClient {
       this.client = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         connectTimeout: 10000,
+        // 指数的に間隔を空けて再接続する（上限 5 秒）
+        retryStrategy: (times) => Math.min(times * 200, 5000),
       });
 
+      // エラー時に client を破棄しないこと。ioredis は自動再接続するため、
+      // ここで quit()/null 代入をすると Pod 再起動までキャッシュが復活しない。
+      // 接続断中は isAvailable() が false を返し、呼び出し側は素通しになる。
       this.client.on('error', (err) => {
         logger.error({ err }, 'Redis client error');
-        // 必要に応じて接続を閉じるなどの処理
-        this.client?.quit();
-        this.client = null;
+      });
+
+      this.client.on('reconnecting', (delay: number) => {
+        logger.warn({ delay }, 'Redis client reconnecting');
+      });
+
+      this.client.on('ready', () => {
+        logger.info('Redis client ready');
       });
     } else {
       logger.warn('REDIS_URL is not configured. Caching disabled.');
