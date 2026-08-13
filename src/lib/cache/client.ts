@@ -13,7 +13,9 @@ class CacheClient {
       this.client = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         connectTimeout: 10000,
-        // 指数的に間隔を空けて再接続する（上限 5 秒）
+        // 試行回数に比例して間隔を空けて再接続する（200ms 刻み、上限 5 秒）。
+        // null を返さない＝諦めないので、Redis が長時間落ちている間は
+        // 5 秒ごとに error/reconnecting ログが出続ける点に注意。
         retryStrategy: (times) => Math.min(times * 200, 5000),
       });
 

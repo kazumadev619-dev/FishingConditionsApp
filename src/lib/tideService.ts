@@ -69,6 +69,18 @@ function formatTideData(raw: TideApiResponse): FormattedTideData {
 }
 
 /**
+ * キャッシュヒット時に Date フィールドを Date インスタンスへ復元する（withCache の revive）。
+ * FormattedTideData.dataTime は Date 宣言だが、キャッシュは JSON で往復するため
+ * 復元しないと文字列のまま返り、型が実態と食い違う。
+ */
+function reviveTideDates(data: FormattedTideData): FormattedTideData {
+  return {
+    ...data,
+    dataTime: new Date(data.dataTime),
+  };
+}
+
+/**
  * 都道府県コードと港コードから潮汐データを取得
  * @param prefectureCode 都道府県コード
  * @param portCode 港コード
@@ -123,7 +135,7 @@ export async function getTideData(
     };
   }
 
-  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.TIDE, fetchTide);
+  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.TIDE, fetchTide, reviveTideDates);
 
   return {
     data,

@@ -102,13 +102,14 @@ async function fetchWithOptionalCache<T>(
   ttl: number,
   skipCache: boolean,
   fetcher: () => Promise<T>,
+  revive?: (cached: T) => T,
 ): Promise<WeatherResponse<T>> {
   if (skipCache) {
     const data = await fetcher();
     return { data, fromCache: false, fetchedAt: new Date().toISOString() };
   }
 
-  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher);
+  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, revive);
   return { data, fromCache, fetchedAt: new Date().toISOString() };
 }
 
@@ -150,15 +151,12 @@ function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
 }
 
 /**
- * Date フィールドを Date インスタンスに復元する。
+ * キャッシュヒット時に Date フィールドを Date インスタンスへ復元する（withCache の revive）。
  *
- * Redis キャッシュは JSON で往復するため、Date は ISO 文字列に落ちて戻ってこない。
+ * キャッシュは JSON で往復するため、Date は ISO 文字列に落ちて戻ってこない。
  * FormattedWeatherData は sunrise / sunset / dataTime を Date と宣言しているので、
- * キャッシュヒット時もその契約を守らないと呼び出し側（scoring/timeScore.ts の
- * getHours() など）が実行時に壊れる。
- *
- * new Date() は Date でも ISO 文字列でも受け取れるため、キャッシュの有無に関わらず
- * 適用してよい（冪等）。
+ * この契約を守らないと呼び出し側（scoring/timeScore.ts の getHours() など）が
+ * 実行時に壊れる。
  */
 function reviveWeatherDates(data: FormattedWeatherData): FormattedWeatherData {
   return {
@@ -203,8 +201,13 @@ export async function getCurrentWeather(
     return formatWeatherData(rawData);
   };
 
-  const response = await fetchWithOptionalCache(cacheKey, CACHE_TTL.WEATHER, skipCache, fetcher);
-  return { ...response, data: reviveWeatherDates(response.data) };
+  return fetchWithOptionalCache(
+    cacheKey,
+    CACHE_TTL.WEATHER,
+    skipCache,
+    fetcher,
+    reviveWeatherDates,
+  );
 }
 
 /**
