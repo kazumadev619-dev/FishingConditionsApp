@@ -150,6 +150,26 @@ function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
 }
 
 /**
+ * Date フィールドを Date インスタンスに復元する。
+ *
+ * Redis キャッシュは JSON で往復するため、Date は ISO 文字列に落ちて戻ってこない。
+ * FormattedWeatherData は sunrise / sunset / dataTime を Date と宣言しているので、
+ * キャッシュヒット時もその契約を守らないと呼び出し側（scoring/timeScore.ts の
+ * getHours() など）が実行時に壊れる。
+ *
+ * new Date() は Date でも ISO 文字列でも受け取れるため、キャッシュの有無に関わらず
+ * 適用してよい（冪等）。
+ */
+function reviveWeatherDates(data: FormattedWeatherData): FormattedWeatherData {
+  return {
+    ...data,
+    sunrise: new Date(data.sunrise),
+    sunset: new Date(data.sunset),
+    dataTime: new Date(data.dataTime),
+  };
+}
+
+/**
  * 座標から現在の天気を取得
  * @param lat 緯度
  * @param lon 経度
@@ -183,7 +203,8 @@ export async function getCurrentWeather(
     return formatWeatherData(rawData);
   };
 
-  return fetchWithOptionalCache(cacheKey, CACHE_TTL.WEATHER, skipCache, fetcher);
+  const response = await fetchWithOptionalCache(cacheKey, CACHE_TTL.WEATHER, skipCache, fetcher);
+  return { ...response, data: reviveWeatherDates(response.data) };
 }
 
 /**
