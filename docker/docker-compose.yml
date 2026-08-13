@@ -20,6 +20,9 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
+      # Prisma CLI（migrate/seed）用。本番は Neon の direct エンドポイントを使うが、
+      # ローカルには pooler が無いため DATABASE_URL と同じ接続でよい
+      - DATABASE_URL_DIRECT=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
       # Redis
       - REDIS_URL=redis://redis:6379
       # Google Maps API
