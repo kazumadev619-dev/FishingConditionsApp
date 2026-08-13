@@ -10,6 +10,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      # Dockerfile は migrator ステージも持つ。target を省くと最後のステージが
+      # 選ばれるため、Web イメージであることを明示する
+      target: runner
       args:
         - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
         - NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=${NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID:-}
@@ -67,9 +70,11 @@ services:
     container_name: fishing-redis
     image: redis:7-alpine
     # ホストで `npm run dev` する場合、.env.local の REDIS_URL=redis://localhost:6379
-    # から届く必要があるため公開する（app サービスは同一ネットワークの redis:6379 を使う）
+    # から届く必要があるため公開する（app サービスは同一ネットワークの redis:6379 を使う）。
+    # 認証なしの Redis なので 127.0.0.1 に限定する。0.0.0.0 だと同一 LAN の端末から
+    # FLUSHALL や CONFIG SET が撃てる
     ports:
-      - '${REDIS_PORT:-6379}:6379'
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:

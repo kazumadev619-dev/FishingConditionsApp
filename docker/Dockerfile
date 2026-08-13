@@ -63,54 +63,7 @@ ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 
 # ============================================
-# Stage 3: Runner (Production)
-# ============================================
-FROM node:24-alpine AS runner
-
-WORKDIR /app
-
-# 非rootユーザー作成
-RUN addgroup --system --gid 1001 nodejs && \
-    adduser --system --uid 1001 --ingroup nodejs nextjs
-
-# 本番環境設定
-ENV NODE_ENV=production
-ENV NEXT_TELEMETRY_DISABLED=1
-ENV PORT=3000
-ENV HOSTNAME="0.0.0.0"
-
-# 生成済みの依存関係をコピー（dev 依存を含まない prod-deps から取る）
-COPY --from=prod-deps /app/node_modules ./node_modules
-COPY --from=deps /app/prisma.config.ts ./
-COPY --from=deps /app/prisma ./prisma
-
-# Prisma Client の生成物（generator.output = ../src/generated/prisma）。
-# scripts / tsconfig.json / code.csv は migrator stage に移した。
-COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
-
-# standalone出力をコピー
-COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
-COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
-
-# Prisma 7 では @prisma/client が prisma（CLI）を依存に持つため、--omit=dev では消えない。
-# 常時公開される Web Pod に DDL を打てる CLI を残さないよう明示的に取り除く。
-# 実行時は生成済み Prisma Client（src/generated）だけで足りることを検証済み。
-# standalone の COPY が node_modules を上書きするため、必ずその後に実行する。
-RUN rm -rf node_modules/prisma node_modules/.bin/prisma
-
-# 非rootユーザーで実行
-USER nextjs
-
-EXPOSE 3000
-
-# ヘルスチェック
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "fetch('http://localhost:3000/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
-
-CMD ["node", "server.js"]
-
-# ============================================
-# Stage 4: Migrator (db-migrate / db-seed Job 用)
+# Stage 3: Migrator (db-migrate / db-seed Job 用)
 # ============================================
 # Prisma CLI と tsx を必要とするのはマイグレーションと seed だけなので、
 # Web 用イメージから切り離す。
@@ -138,3 +91,55 @@ COPY --from=builder --chown=nextjs:nodejs /app/code.csv ./code.csv
 USER nextjs
 
 CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
+
+# ============================================
+# Stage 4: Runner (Production)
+# ============================================
+# **このステージは必ずファイル末尾に置くこと。** docker は --target 省略時に
+# 最後のステージをビルドするため、順序を変えると `docker build` や
+# compose の build（target 未指定）が Web イメージを作らなくなる。
+FROM node:24-alpine AS runner
+
+WORKDIR /app
+
+# 非rootユーザー作成
+RUN addgroup --system --gid 1001 nodejs && \
+    adduser --system --uid 1001 --ingroup nodejs nextjs
+
+# 本番環境設定
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=3000
+ENV HOSTNAME="0.0.0.0"
+
+# 生成済みの依存関係をコピー（dev 依存を含まない prod-deps から取る）
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=deps /app/prisma.config.ts ./
+COPY --from=deps /app/prisma ./prisma
+
+# Prisma Client の生成物（generator.output = ../src/generated/prisma）。
+# scripts / tsconfig.json / code.csv は migrator stage に移した。
+COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
+
+# standalone出力をコピー
+COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
+COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# prisma（CLI）は package-lock.json 上で devOptional 扱い（devDependency であり、かつ
+# @prisma/client の optional peer でもある）。npm の --omit=dev は dev: true のみを除外し
+# devOptional は残すため、prod-deps ステージにも CLI が入る。
+# 常時公開される Web Pod に DDL を打てる CLI を残さないよう明示的に取り除く。
+# 実行時は生成済み Prisma Client（src/generated）だけで足りることを検証済み。
+# standalone の COPY が node_modules を上書きするため、必ずその後に実行する。
+RUN rm -rf node_modules/prisma node_modules/.bin/prisma
+
+# 非rootユーザーで実行
+USER nextjs
+
+EXPOSE 3000
+
+# ヘルスチェック
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD node -e "fetch('http://localhost:3000/healthz').then(r => r.ok ? process.exit(0) : process.exit(1)).catch(() => process.exit(1))"
+
+CMD ["node", "server.js"]
