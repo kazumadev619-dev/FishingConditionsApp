@@ -2,9 +2,14 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
+import { withServerTiming } from '@/lib/serverTiming';
 import { isValidQuery, LIMIT_REGEX } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
+  return withServerTiming('locations-search', () => handleGet(request));
+}
+
+async function handleGet(request: NextRequest) {
   try {
     if (!isLocationSearchConfigured()) {
       return createErrorResponse(

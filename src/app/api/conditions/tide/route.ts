@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
+import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import {
   DATE_REGEX,
@@ -10,6 +11,10 @@ import {
 } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
+  return withServerTiming('tide', () => handleGet(request));
+}
+
+async function handleGet(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const prefectureCode = searchParams.get('prefectureCode');

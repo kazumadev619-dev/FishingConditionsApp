@@ -9,6 +9,7 @@ import { logApiError } from '@/lib/apiErrorUtils';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
+import { withServerTiming } from '@/lib/serverTiming';
 import { parseAndValidateCoordinates } from '@/lib/validators';
 
 /**
@@ -22,6 +23,10 @@ import { parseAndValidateCoordinates } from '@/lib/validators';
  * - skipCache: キャッシュをスキップするか（デフォルト: false）
  */
 export async function GET(request: NextRequest) {
+  return withServerTiming('weather', () => handleGet(request));
+}
+
+async function handleGet(request: NextRequest) {
   // APIキーのチェック
   if (!isWeatherApiConfigured()) {
     logger.error('OPENWEATHERMAP_API_KEY is not configured');
