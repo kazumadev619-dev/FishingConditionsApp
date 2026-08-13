@@ -63,6 +63,10 @@ services:
   redis:
     container_name: fishing-redis
     image: redis:7-alpine
+    # ホストで `npm run dev` する場合、.env.local の REDIS_URL=redis://localhost:6379
+    # から届く必要があるため公開する（app サービスは同一ネットワークの redis:6379 を使う）
+    ports:
+      - '${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
