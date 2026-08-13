@@ -16,7 +16,10 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
+     *
+     * api/auth と healthz は `(?:/|$)` でパス境界に固定する。固定しないと
+     * /healthz-debug や /api/authorize のような別ルートまで認証を素通りする。
      */
-    '/((?!api/auth|healthz|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
+    '/((?!api/auth(?:/|$)|healthz(?:/|$)|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
   ],
 };
