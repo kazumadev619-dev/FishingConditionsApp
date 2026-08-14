@@ -7,6 +7,9 @@ export default defineConfig({
     path: 'prisma/migrations',
   },
   datasource: {
-    url: env('DATABASE_URL'),
+    // Prisma CLI（migrate / db push）専用の接続。
+    // Neon の pooled エンドポイント経由では DDL が詰まるため direct を使う。
+    // アプリ実行時の接続は src/lib/prisma.ts が DATABASE_URL から作る（別経路）。
+    url: env('DATABASE_URL_DIRECT'),
   },
 });

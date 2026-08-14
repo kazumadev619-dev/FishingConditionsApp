@@ -139,7 +139,13 @@ git commit -m "📝 docs: 開発ガイドを更新"
 
 ```bash
 # データベース
+# アプリ実行時の接続（本番は Neon の pooled エンドポイント）
 DATABASE_URL=postgresql://...
+# Prisma CLI（migrate/seed）用の接続（本番は Neon の direct エンドポイント）
+# ローカルでは DATABASE_URL と同じ値でよい。未設定だと prisma:generate /
+# prisma:migrate / prisma:seed / prisma:studio / prisma:reset が
+# PrismaConfigEnvError で落ちる
+DATABASE_URL_DIRECT=postgresql://...
 SUPABASE_URL=https://...
 SUPABASE_ANON_KEY=...
 

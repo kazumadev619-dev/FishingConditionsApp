@@ -1,3 +1,18 @@
 node_modules
 .next
 .git
+
+# シークレット。builder ステージの `COPY . .` が拾うと AUTH_SECRET や
+# 各種 API キーがビルドレイヤに載る（最終イメージには入らないが、
+# --target builder や CI のレイヤキャッシュから読み出せてしまう）。
+# .env.example は CI が `cp .env.example .env` で使うため除外しない。
+.env
+.env.*
+!.env.example
+
+# ビルドに不要なもの（ビルドコンテキストの転送量を減らす）
+.github
+.claude
+.vscode
+docs
+k8s

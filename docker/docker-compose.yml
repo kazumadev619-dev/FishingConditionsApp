@@ -10,6 +10,9 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile
+      # Dockerfile は migrator ステージも持つ。target を省くと最後のステージが
+      # 選ばれるため、Web イメージであることを明示する
+      target: runner
       args:
         - NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${NEXT_PUBLIC_GOOGLE_MAPS_API_KEY:-}
         - NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=${NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID:-}
@@ -20,6 +23,9 @@ services:
     environment:
       - NODE_ENV=production
       - DATABASE_URL=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
+      # DATABASE_URL_DIRECT はここには不要。runner に Prisma CLI は入っておらず、
+      # アプリ実行時の接続は src/lib/prisma.ts が DATABASE_URL から作る。
+      # migrate/seed は下の migrator サービスで実行する
       # Redis
       - REDIS_URL=redis://redis:6379
       # Google Maps API
@@ -34,14 +40,43 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
+  # マイグレーション / seed 実行用（Prisma CLI と tsx を持つ migrator ステージ）
+  #
+  # runner から Prisma CLI を外したため `docker compose exec app npm run prisma:migrate`
+  # は使えない。代わりにこのサービスを使う（profiles 指定なので通常の up では起動しない）:
+  #
+  #   docker compose --profile tools run --rm migrator                       # migrate deploy
+  #   docker compose --profile tools run --rm migrator \
+  #     node --import tsx/esm prisma/seed.ts                                 # seed
+  migrator:
+    container_name: fishing-migrator
+    profiles: ['tools']
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+      target: migrator
+    env_file:
+      - ../.env.local
+    environment:
+      - NODE_ENV=production
+      - DATABASE_URL=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
+      # Prisma CLI（migrate/seed）用。本番は Neon の direct エンドポイントを使うが、
+      # ローカルには pooler が無いため DATABASE_URL と同じ接続でよい
+      - DATABASE_URL_DIRECT=postgresql://FishingPostgres:FishingPostgres@postgres:5432/fishing_app
+    depends_on:
+      postgres:
+        condition: service_healthy
+
   # PostgreSQL
   postgres:
     container_name: fishing-postgres
     image: postgres:17-alpine
     env_file:
       - ../.env.local
+    # 既定パスワードのまま全インターフェースに出さない。Redis と同じ理由で
+    # 127.0.0.1 に限定する（同一 LAN から psql で接続され放題になるため）
     ports:
-      - '${POSTGRES_PORT:-5432}:5432'
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
     environment:
       - POSTGRES_USER=${POSTGRES_USER:-FishingPostgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-FishingPostgres}
@@ -63,6 +98,12 @@ services:
   redis:
     container_name: fishing-redis
     image: redis:7-alpine
+    # ホストで `npm run dev` する場合、.env.local の REDIS_URL=redis://localhost:6379
+    # から届く必要があるため公開する（app サービスは同一ネットワークの redis:6379 を使う）。
+    # 認証なしの Redis なので 127.0.0.1 に限定する。0.0.0.0 だと同一 LAN の端末から
+    # FLUSHALL や CONFIG SET が撃てる
+    ports:
+      - '127.0.0.1:${REDIS_PORT:-6379}:6379'
     volumes:
       - redis_data:/data
     healthcheck:
@@ -76,8 +117,10 @@ services:
   redisinsight:
     container_name: fishing-redisinsight
     image: redis/redisinsight:latest
+    # 認証なしの Redis に接続済みの管理 UI。全公開すると同一 LAN の端末から
+    # 任意コマンドを GUI で撃たれるため、Redis 本体と同じく 127.0.0.1 に限定する
     ports:
-      - '${REDISINSIGHT_PORT:-8001}:5540'
+      - '127.0.0.1:${REDISINSIGHT_PORT:-8001}:5540'
     volumes:
       - redisinsight_data:/data
     depends_on:
