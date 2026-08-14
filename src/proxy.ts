@@ -17,9 +17,11 @@ export const config = {
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
      *
-     * api/auth と healthz は `(?:/|$)` でパス境界に固定する。固定しないと
-     * /healthz-debug や /api/authorize のような別ルートまで認証を素通りする。
+     * 除外は全て `(?:/|$)` でパス境界に固定する。固定しないと /healthz-debug や
+     * /_next/static-evil のような別ルートまで proxy を素通りする。
+     * メタデータ系の `.` も正規表現のワイルドカードにならないようエスケープする
+     * （素の `.` だと /faviconZico が favicon.ico として除外される）。
      */
-    '/((?!api/auth(?:/|$)|healthz(?:/|$)|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
+    '/((?!api/auth(?:/|$)|healthz(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon\\.ico(?:/|$)|sitemap\\.xml(?:/|$)|robots\\.txt(?:/|$)).*)',
   ],
 };
