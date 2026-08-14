@@ -8,6 +8,7 @@ import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from '@/lib/cach
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
+import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import type { ScoringResponse } from '@/types/scoring';
 
@@ -15,6 +16,12 @@ import type { ScoringResponse } from '@/types/scoring';
  * スコア計算API
  */
 export async function GET(
+  request: NextRequest,
+): Promise<NextResponse<ScoringResponse | { error: string }>> {
+  return withServerTiming('scores', () => handleGet(request));
+}
+
+async function handleGet(
   request: NextRequest,
 ): Promise<NextResponse<ScoringResponse | { error: string }>> {
   try {

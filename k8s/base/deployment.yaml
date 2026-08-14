@@ -38,17 +38,23 @@ spec:
             limits:
               memory: "512Mi"
               cpu: "500m"
+          # probe は必ず /healthz を使う。/ は潮汐・天気の外部 API に依存するため、
+          # 外部要因の障害で健全な Pod が再起動ループに入る（k8s はイメージの
+          # HEALTHCHECK を読まないので、probe を直さない限りこの経路は塞がらない）。
           livenessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
+          # NOTE: /healthz は依存ゼロのため「プロセスが生きている」ことしか判定できない。
+          # DB/Redis 未接続の Pod も Ready になる点は既知で、依存を見る readiness 用
+          # エンドポイントの追加は後続対応とする（/ に戻すのは上記の理由で不可）。
           readinessProbe:
             httpGet:
-              path: /
+              path: /healthz
               port: http
             initialDelaySeconds: 5
             periodSeconds: 10
