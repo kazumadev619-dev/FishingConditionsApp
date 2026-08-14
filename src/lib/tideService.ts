@@ -5,7 +5,7 @@
 
 import type { DailyTide, TideApiResponse, TideEvent } from '@/types/tide';
 import { tide736Client } from './apiClient';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from './cache';
+import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from './cache';
 
 // Re-export types for external use
 export type { DailyTide, TideEvent };
@@ -76,7 +76,7 @@ function formatTideData(raw: TideApiResponse): FormattedTideData {
 function reviveTideDates(data: FormattedTideData): FormattedTideData {
   return {
     ...data,
-    dataTime: new Date(data.dataTime),
+    dataTime: reviveDate(data.dataTime, 'dataTime'),
   };
 }
 

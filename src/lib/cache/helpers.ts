@@ -13,6 +13,34 @@ export function generateCacheKey(prefix: string, params: Record<string, string |
 }
 
 /**
+ * キャッシュから読み出した値を Date インスタンスへ復元する（revive 実装用の共通処理）。
+ *
+ * 素の `new Date(value)` を使わないこと。Date は JSON 往復で ISO 文字列に落ちるが、
+ * **Invalid Date は `null` に落ちる**（`Date.prototype.toJSON` の仕様）。
+ * `new Date(null)` は 1970-01-01 という「正常な Date」を返すため、壊れた値が
+ * エラーも出さずスコア計算へ流れ込み、同じリクエストでもコールドとウォームで
+ * 結果が変わるという追跡困難な状態になる。ここで明示的に落とす。
+ *
+ * @param value キャッシュから読み出した生の値（型上は Date だが実体は文字列）
+ * @param field エラーメッセージに出すフィールド名
+ */
+export function reviveDate(value: unknown, field: string): Date {
+  if (value === null || value === undefined) {
+    throw new Error(
+      `Cached date field "${field}" is ${String(value)} (Invalid Date が往復した可能性)`,
+    );
+  }
+
+  const revived = new Date(value as string | number | Date);
+
+  if (Number.isNaN(revived.getTime())) {
+    throw new Error(`Cached date field "${field}" is not a valid date: ${JSON.stringify(value)}`);
+  }
+
+  return revived;
+}
+
+/**
  * キャッシュを通してデータを取得するヘルパー関数
  * キャッシュミス時はfetcherを実行してキャッシュに保存
  *
