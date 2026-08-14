@@ -4,13 +4,31 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from '@/lib/cache';
+import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import type { ScoringResponse } from '@/types/scoring';
+
+/**
+ * キャッシュヒット時に Date フィールドを Date インスタンスへ復元する（withCache の revive）。
+ *
+ * FishingScore.calculatedAt は Date 宣言だが、キャッシュは JSON で往復するため
+ * 復元しないと ISO 文字列のまま返り、型が実態と食い違う。
+ * この値は DashboardGrid が toLocaleString() で描画するため、
+ * 復元を怠るとキャッシュヒット時だけ実行時に壊れる。
+ */
+function reviveScoringDates(data: ScoringResponse): ScoringResponse {
+  return {
+    ...data,
+    score: {
+      ...data.score,
+      calculatedAt: reviveDate(data.score.calculatedAt, 'score.calculatedAt'),
+    },
+  };
+}
 
 /**
  * スコア計算API
@@ -73,6 +91,7 @@ async function handleGet(
         async () => {
           return await computeScore(latitude, longitude, prefectureCode, portCode, dateStr);
         },
+        reviveScoringDates,
       );
 
       return NextResponse.json(cachedResult.data, {
