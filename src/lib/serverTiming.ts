@@ -1,3 +1,5 @@
+import { logger } from './logger';
+
 /**
  * ハンドラの処理時間を計測し、Server-Timing ヘッダとしてレスポンスに載せる。
  *
@@ -13,8 +15,24 @@ export async function withServerTiming<T extends Response>(
   handler: () => Promise<T>,
 ): Promise<T> {
   const start = performance.now();
-  const response = await handler();
+  let response: T;
+
+  try {
+    response = await handler();
+  } catch (error) {
+    // 未捕捉例外では Next が独自の 500 を返すため、ヘッダを載せる先が無い。
+    // 何もしないと「最も遅いリクエスト」だけが計測から系統的に抜け落ち、
+    // Stage 2 のベースラインが実際より速く出るため、ログには必ず残す。
+    logger.warn(
+      { metric, durationMs: performance.now() - start },
+      'Handler threw before responding; Server-Timing could not be attached',
+    );
+    throw error;
+  }
+
   const durationMs = (performance.now() - start).toFixed(1);
-  response.headers.set('Server-Timing', `${metric};dur=${durationMs}`);
+  // Server-Timing はカンマ区切りの複数メトリクスを取れる仕様。
+  // set() だとハンドラ側が付けた値を潰すため append する。
+  response.headers.append('Server-Timing', `${metric};dur=${durationMs}`);
   return response;
 }

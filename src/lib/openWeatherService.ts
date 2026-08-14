@@ -5,7 +5,7 @@
 
 import type { CurrentWeatherData, ForecastData } from '@/types/weather';
 import { openWeatherMapClient } from './apiClient';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from './cache';
+import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from './cache';
 
 /**
  * 天気取得時のオプション
@@ -161,9 +161,9 @@ function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
 function reviveWeatherDates(data: FormattedWeatherData): FormattedWeatherData {
   return {
     ...data,
-    sunrise: new Date(data.sunrise),
-    sunset: new Date(data.sunset),
-    dataTime: new Date(data.dataTime),
+    sunrise: reviveDate(data.sunrise, 'sunrise'),
+    sunset: reviveDate(data.sunset, 'sunset'),
+    dataTime: reviveDate(data.dataTime, 'dataTime'),
   };
 }
 
