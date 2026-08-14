@@ -5,10 +5,10 @@ on:
     branches:
       - main
       - develop
+  # PR スタック（feature ブランチを base にした PR）でも CI を走らせるため
+  # base ブランチを限定しない。限定すると develop/main 直行の PR 以外が
+  # 型チェックもビルドも検証されないままマージ順に流れる。
   pull_request:
-    branches:
-      - main
-      - develop
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
