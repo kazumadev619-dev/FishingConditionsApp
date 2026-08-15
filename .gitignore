@@ -223,8 +223,8 @@ dist
 ### Kubernetes ###
 # 暗号化前のSecretファイル（API KEYを含む）
 # 暗号化後の *.enc.yaml はgit管理する
-k8s/overlays/*/secret.yaml
-!k8s/overlays/*/secret.enc.yaml
+k8s/**/secret.yaml
+!k8s/**/*.enc.yaml
 
 # Git worktrees
 .worktrees/
