@@ -4,8 +4,8 @@ import { logger } from '@/lib/logger';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import {
-  DATE_REGEX,
   getTodayDateString,
+  isValidDateString,
   PORT_CODE_REGEX,
   PREFECTURE_CODE_REGEX,
 } from '@/lib/validators';
@@ -39,8 +39,8 @@ async function handleGet(request: NextRequest) {
       return createErrorResponse('Invalid portCode format', 400);
     }
 
-    if (!DATE_REGEX.test(date)) {
-      return createErrorResponse('Invalid date format. Use YYYY-MM-DD', 400);
+    if (!isValidDateString(date)) {
+      return createErrorResponse('Invalid date. Use an existing date in YYYY-MM-DD format', 400);
     }
 
     if (!['day', 'week', 'month'].includes(range)) {
