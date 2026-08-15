@@ -12,7 +12,8 @@ export const config = {
     /*
      * Match all request paths except for the ones starting with:
      * - api/auth (Auth.js routes)
-     * - healthz (liveness/readiness probe)
+     * - healthz (liveness probe)
+     * - readyz (readiness probe)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
@@ -22,6 +23,6 @@ export const config = {
      * メタデータ系の `.` も正規表現のワイルドカードにならないようエスケープする
      * （素の `.` だと /faviconZico が favicon.ico として除外される）。
      */
-    '/((?!api/auth(?:/|$)|healthz(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon\\.ico(?:/|$)|sitemap\\.xml(?:/|$)|robots\\.txt(?:/|$)).*)',
+    '/((?!api/auth(?:/|$)|healthz(?:/|$)|readyz(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon\\.ico(?:/|$)|sitemap\\.xml(?:/|$)|robots\\.txt(?:/|$)).*)',
   ],
 };
