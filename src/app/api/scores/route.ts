@@ -97,7 +97,11 @@ async function handleGet(
       return NextResponse.json(cachedResult.data, {
         headers: {
           'X-From-Cache': cachedResult.fromCache ? 'true' : 'false',
-          'Cache-Control': 'public, max-age=1800', // 30分
+          // private にすること。認証必須になったので public だと共有キャッシュ
+          // （CDN・中間プロキシ）がこの応答を保存でき、以降の同一 URL への
+          // 未認証リクエストがオリジンに届かず authorized() を通らないまま
+          // 配られうる。ブラウザ側のキャッシュは private でも従来どおり効く。
+          'Cache-Control': 'private, max-age=1800', // 30分
         },
       });
     }

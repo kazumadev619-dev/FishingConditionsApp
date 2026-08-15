@@ -1,7 +1,7 @@
 /**
  * 港マスタ取得API
  * GET /api/ports?prefecture_code=13
- * 認証不要（公開API）
+ * 認証必須。src/auth/edge.ts の allowlist に無いため proxy 層で 401 になる。
  */
 
 import { NextResponse } from 'next/server';
