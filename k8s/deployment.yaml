@@ -2,12 +2,22 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: fishing-app
-  namespace: fishing-app
+  namespace: fishing
   labels:
     app.kubernetes.io/name: fishing-app
     app.kubernetes.io/component: web
 spec:
+  # 単一ノードなので replicas を増やしても可用性は上がらない。
+  # 無停止更新は maxSurge/maxUnavailable で担保する。
   replicas: 1
+  # rollout status の --timeout=300s より短くして、
+  # timeout ではなく ProgressDeadlineExceeded という明示的な失敗にする
+  progressDeadlineSeconds: 240
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
   selector:
     matchLabels:
       app.kubernetes.io/name: fishing-app
@@ -18,9 +28,19 @@ spec:
         app.kubernetes.io/name: fishing-app
         app.kubernetes.io/component: web
     spec:
+      # このアプリは k8s API を使わない
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: fishing-app
-          image: fishing-app:latest
+          # タグは kustomize の images[].newTag が CI で埋める
+          image: ghcr.io/kazumadev619-dev/fishing-app
           imagePullPolicy: IfNotPresent
           ports:
             - name: http
@@ -31,22 +51,37 @@ spec:
                 name: fishing-app-config
             - secretRef:
                 name: fishing-app-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
           resources:
             requests:
               memory: "256Mi"
               cpu: "100m"
             limits:
+              # CPU limit は付けない。CFS quota として効くため、負荷試験では
+              # throttle 由来のスパイクが p99 を支配し「設定値」を測ることになる
               memory: "512Mi"
-              cpu: "500m"
+          # arm64 の Pi では起動が遅い。startupProbe が成功するまで
+          # liveness/readiness は無効化されるので、初回 CrashLoop を防げる。
+          # 最大 5s × 30 = 150s まで待つ。
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30
           # liveness は必ず /healthz を使う。/ は潮汐・天気の外部 API に依存するため、
           # 外部要因の障害で健全な Pod が再起動ループに入る（k8s はイメージの
           # HEALTHCHECK を読まないので、probe を直さない限りこの経路は塞がらない）。
           # /healthz は依存ゼロで「プロセスが生きているか」だけを見る。
+          # initialDelaySeconds は startupProbe が肩代わりするので置かない。
           livenessProbe:
             httpGet:
               path: /healthz
               port: http
-            initialDelaySeconds: 10
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
@@ -59,12 +94,17 @@ spec:
             httpGet:
               path: /readyz
               port: http
-            initialDelaySeconds: 5
             periodSeconds: 10
             timeoutSeconds: 5
             failureThreshold: 3
-      securityContext:
-        runAsNonRoot: true
-        runAsUser: 1001
-        runAsGroup: 1001
-        fsGroup: 1001
+          volumeMounts:
+            - name: cache
+              mountPath: /app/.next/cache
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        # readOnlyRootFilesystem のため、書き込みが必要な場所だけ emptyDir を当てる
+        - name: cache
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}

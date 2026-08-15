@@ -2,13 +2,18 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: fishing-app-config
-  namespace: fishing-app
+  namespace: fishing
   labels:
     app.kubernetes.io/name: fishing-app
 data:
   NODE_ENV: "production"
-  # Auth.js URLs（overlaysで上書き）
-  AUTH_URL: "http://localhost:3000"
-  NEXTAUTH_URL: "http://localhost:3000"
-  # Redis（K8sクラスター内）
-  REDIS_URL: "redis://redis:6379"
+  LOG_LEVEL: "info"
+  # Auth.js
+  AUTH_URL: "https://fishing.kazuma-lab.com"
+  NEXTAUTH_URL: "https://fishing.kazuma-lab.com"
+  # AUTH_URL があれば trustHost は true になるが、AUTH_URL を消したときに
+  # 認証が静かに全滅するのを防ぐ保険として明示する。
+  # 注: この変数は存在チェックのみで、"false" を入れても有効化される。
+  AUTH_TRUST_HOST: "true"
+  # Redis（論理 DB 0 / prefix fc: が Next.js の割り当て。Go は DB 1 / api:）
+  REDIS_URL: "redis://redis.fishing.svc.cluster.local:6379/0"
