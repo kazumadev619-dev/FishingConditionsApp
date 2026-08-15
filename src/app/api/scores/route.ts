@@ -10,7 +10,26 @@ import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
+import {
+  getTodayDateString,
+  isValidDateString,
+  PORT_CODE_REGEX,
+  PREFECTURE_CODE_REGEX,
+  parseAndValidateCoordinates,
+  roundCoordinate,
+} from '@/lib/validators';
 import type { ScoringResponse } from '@/types/scoring';
+
+/**
+ * キャッシュキー用の座標精度（小数2桁 = 約1km）。
+ *
+ * openWeatherService が天気をこの精度でキャッシュしており、スコアは
+ * 天気と潮汐（都道府県・港・日付でキー化）の合成なので、それより細かく
+ * キーを切っても中身が変わらない。生の座標のままキーにすると、ブラウザの
+ * 位置情報がフル精度で来るため実質ほぼ全リクエストがミスし、TTL が
+ * 機能しないまま外部 API を叩き続ける。
+ */
+const CACHE_KEY_COORDINATE_PRECISION = 2;
 
 /**
  * キャッシュヒット時に Date フィールドを Date インスタンスへ復元する（withCache の revive）。
@@ -49,13 +68,18 @@ async function handleGet(
     const lon = searchParams.get('lon');
     const prefectureCode = searchParams.get('prefectureCode');
     const portCode = searchParams.get('portCode');
-    const dateStr = searchParams.get('date') || new Date().toISOString().split('T')[0];
+    const dateStr = searchParams.get('date') || getTodayDateString();
     const skipCache = searchParams.get('skipCache') === 'true';
 
-    // バリデーション
-    if (!lat || !lon) {
-      return NextResponse.json({ error: 'Missing required parameters: lat, lon' }, { status: 400 });
+    // バリデーション。
+    // 検証していないパラメータをキャッシュキーに混ぜると、値を変えるだけで
+    // 無制限に新しいキーを作れてしまう（Redis を埋めて実データを evict できる）。
+    // 兄弟ルートの /api/conditions/tide と同じバリデータを使う。
+    const coordinates = parseAndValidateCoordinates(lat, lon);
+    if ('error' in coordinates) {
+      return NextResponse.json({ error: coordinates.error }, { status: 400 });
     }
+    const { lat: latitude, lon: longitude } = coordinates;
 
     if (!prefectureCode || !portCode) {
       return NextResponse.json(
@@ -64,20 +88,25 @@ async function handleGet(
       );
     }
 
-    const latitude = parseFloat(lat);
-    const longitude = parseFloat(lon);
+    if (!PREFECTURE_CODE_REGEX.test(prefectureCode)) {
+      return NextResponse.json({ error: 'Invalid prefectureCode format' }, { status: 400 });
+    }
 
-    if (Number.isNaN(latitude) || Number.isNaN(longitude)) {
+    if (!PORT_CODE_REGEX.test(portCode)) {
+      return NextResponse.json({ error: 'Invalid portCode format' }, { status: 400 });
+    }
+
+    if (!isValidDateString(dateStr)) {
       return NextResponse.json(
-        { error: 'Invalid coordinates: lat and lon must be numbers' },
+        { error: 'Invalid date. Use an existing date in YYYY-MM-DD format' },
         { status: 400 },
       );
     }
 
     // キャッシュキーを生成
-    const cacheKey = generateCacheKey(CACHE_PREFIX.WEATHER, {
-      lat: latitude,
-      lon: longitude,
+    const cacheKey = generateCacheKey(CACHE_PREFIX.SCORE, {
+      lat: roundCoordinate(latitude, CACHE_KEY_COORDINATE_PRECISION),
+      lon: roundCoordinate(longitude, CACHE_KEY_COORDINATE_PRECISION),
       prefecture: prefectureCode,
       port: portCode,
       date: dateStr,
@@ -87,7 +116,7 @@ async function handleGet(
     if (!skipCache) {
       const cachedResult = await withCache<ScoringResponse>(
         cacheKey,
-        CACHE_TTL.WEATHER, // 天気と同じ30分キャッシュ
+        CACHE_TTL.SCORE,
         async () => {
           return await computeScore(latitude, longitude, prefectureCode, portCode, dateStr);
         },
