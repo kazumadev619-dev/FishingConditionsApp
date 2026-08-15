@@ -64,7 +64,9 @@ async function handleGet(request: NextRequest) {
       {
         status: 200,
         headers: {
-          'Cache-Control': response.fromCache ? 'public, max-age=3600' : 'public, max-age=300',
+          // private にすること。認証必須になったので public だと共有キャッシュ
+          // が保存でき、未認証リクエストが authorized() を通らないまま配られうる。
+          'Cache-Control': response.fromCache ? 'private, max-age=3600' : 'private, max-age=300',
         },
       },
     );
