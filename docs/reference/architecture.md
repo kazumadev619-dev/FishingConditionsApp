@@ -58,7 +58,8 @@ graph TB
 | データベース   | PostgreSQL (Neon)            | 17                       | マネージドクラウド、Prisma ORM           |
 | キャッシュ     | Redis (k3s Pod)              | 7.x                      | 外部API結果のキャッシュ                  |
 | デプロイ       | Raspberry Pi 5 + k3s         | -                        | Cloudflare Tunnel + Traefik、arm64本番   |
-| CI/CD          | GitHub Actions → GHCR        | -                        | linux/arm64 ネイティブビルド → kubectl ローリングデプロイ |
+| CI             | GitHub Actions               | -                        | PR で型・Lint・ビルド・k8s マニフェストを検証           |
+| CD             | GitHub Actions → GHCR        | -                        | **未実装。** linux/arm64 ビルド → kubectl ローリングデプロイを予定 |
 
 > `k8s/` 配下のマニフェストは本番（k3s）一系統である。namespace・Redis・cloudflared は
 > [`fishing-infra`](https://github.com/kazumadev619-dev/fishing-infra) が所有する。詳細は [`k8s/README.md`](../../k8s/README.md)。

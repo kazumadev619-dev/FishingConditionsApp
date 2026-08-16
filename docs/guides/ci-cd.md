@@ -13,9 +13,15 @@ PR作成/push → GitHub Actions CI起動
   │   ├─ Biome Format Check
   │   └─ TypeScript Type Check
   │
-  ├─ Build Verification
+  ├─ Build Verification（Quality Check 通過後）
   │   ├─ Prisma Client生成
   │   └─ Next.js Production Build
+  │
+  ├─ Kubernetes Manifests（Quality Check とは独立に並列実行）
+  │   ├─ kustomize build
+  │   ├─ kubeconform -strict（k8s 1.34 スキーマ）
+  │   ├─ Secret が描画されていないことの確認
+  │   └─ secret.enc.yaml が暗号化されていることの確認
   │
   └─ CI Summary
       └─ 結果サマリー表示
@@ -32,7 +38,7 @@ PR作成/push → GitHub Actions CI起動
 **実行環境:**
 - OS: `ubuntu-latest`
 - Node.js: `24.x` (最新LTS)
-- タイムアウト: Quality Check 10分 / Build 15分
+- タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分
 
 #### ジョブ1: Code Quality Check
 
@@ -66,7 +72,27 @@ steps:
 - Prisma Clientの生成が正しく動作することを確認
 - 依存関係の問題を早期発見
 
-#### ジョブ3: CI Summary
+#### ジョブ3: Kubernetes Manifests
+
+`k8s/` のマニフェストをクラスタ無しで静的検証します。`k8s/overlays/local` を廃止して
+PR 時点の検証手段が減ったため追加しました。npm 依存を使わないので Quality Check には
+従属させず、並列で走らせています。
+
+```yaml
+steps:
+  1. kustomize / kubeconform をバージョン固定で取得
+     - master / latest 参照だと上流の更新だけでCIが赤にも緑にも変わる
+  2. kustomize build k8s/ → kubeconform -strict -kubernetes-version 1.34.0
+     - 本番の k3s v1.34.6+k3s1 に合わせる
+  3. 描画結果に kind: Secret が無いことを確認
+     - kustomize は SOPS を復号できない。混入すると暗号文のまま
+       Secret を上書きして全Podが起動不能になる
+  4. secret.enc.yaml が実際に暗号化されていることを確認
+     - .gitignore が守るのは secret.yaml という名前だけなので、
+       secret.enc.yaml に平文が入る事故はここでしか止められない
+```
+
+#### ジョブ4: CI Summary
 
 全ジョブの結果をGitHub Actions Summaryに表示します。
 
