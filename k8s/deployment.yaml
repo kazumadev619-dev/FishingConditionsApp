@@ -56,6 +56,16 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
+          # maxUnavailable: 0 なので新 Pod が Ready になった直後に旧 Pod へ
+          # SIGTERM が飛ぶ。Traefik が EndpointSlice の更新を受け取るまでの
+          # 数百 ms に振られたリクエストが切れるため、その分だけ待たせる。
+          # Next 16.3.1 の server.js は SIGTERM ハンドラを持たず即死する
+          # （実測 ExitCode 143 / 0.12 秒。16.0.10 では 0 だった）ので、
+          # アプリ側の graceful shutdown には頼れない。
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sleep", "5"]
           resources:
             requests:
               memory: "256Mi"
@@ -103,8 +113,14 @@ spec:
             - name: tmp
               mountPath: /tmp
       volumes:
-        # readOnlyRootFilesystem のため、書き込みが必要な場所だけ emptyDir を当てる
+        # readOnlyRootFilesystem のため、書き込みが必要な場所だけ emptyDir を当てる。
+        # sizeLimit を付けるのは、fishing-infra の ResourceQuota が
+        # ephemeral-storage を見ていないため。単一ノードなので、ここが膨らんで
+        # DiskPressure になると同じノードの cloudflared まで巻き込む
+        # （= クラスタへの到達性を失う）。
         - name: cache
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 256Mi
         - name: tmp
-          emptyDir: {}
+          emptyDir:
+            sizeLimit: 64Mi
