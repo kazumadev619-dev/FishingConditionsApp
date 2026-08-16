@@ -10,7 +10,7 @@ graph TB
     end
 
     subgraph "Infrastructure"
-        K8S[k3s on Raspberry Pi 5<br/>Minikube: ローカル]
+        K8S[k3s on Raspberry Pi 5<br/>Cloudflare Tunnel + Traefik]
     end
 
     subgraph "Application Layer"
@@ -58,10 +58,11 @@ graph TB
 | データベース   | PostgreSQL (Neon)            | 17                       | マネージドクラウド、Prisma ORM           |
 | キャッシュ     | Redis (k3s Pod)              | 7.x                      | 外部API結果のキャッシュ                  |
 | デプロイ       | Raspberry Pi 5 + k3s         | -                        | Cloudflare Tunnel + Traefik、arm64本番   |
-| ローカルk8s    | Minikube                     | -                        | ローカルKubernetes開発環境               |
+| CI/CD          | GitHub Actions → GHCR        | -                        | linux/arm64 ネイティブビルド → kubectl ローリングデプロイ |
 
-> **注意:** `k8s/` 配下のマニフェストは GKE + クラスタ内 PostgreSQL 前提のまま残っており、上表の実態と乖離している。
-> 追従は [#105](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/105) で対応する。
+> `k8s/` 配下のマニフェストは本番（k3s）一系統である。namespace・Redis・cloudflared は
+> [`fishing-infra`](https://github.com/kazumadev619-dev/fishing-infra) が所有する。詳細は [`k8s/README.md`](../../k8s/README.md)。
+> ローカル開発に Kubernetes は使わず、`docker compose` に一本化している。
 
 ### 将来の拡張性
 
