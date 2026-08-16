@@ -13,7 +13,25 @@ namespace・Redis・cloudflared・RBAC は
 - `redis.fishing.svc.cluster.local:6379`（論理 DB 0 / prefix `fc:`）
 - `ingressClassName: traefik`
 
+クラスタは Raspberry Pi 5 上の **k3s v1.34.6+k3s1**（単一ノード / arm64）。
+CI のマニフェスト検証もこのバージョンのスキーマで行う。
+
 DB は Neon（マネージド PostgreSQL）。クラスタ内に PostgreSQL は置かない。
+
+### イメージの公開設定（初回デプロイ前に決めること）
+
+マニフェストには `imagePullSecrets` を置いていない。GHCR は新規パッケージの
+既定が private なので、**パッケージを public にしない限り初回デプロイは
+ImagePullBackOff になる**。`fishing-infra` の RBAC は CI に
+`fishing-app-secret` しか触らせないため、CI 側で pull secret を作って回避する
+こともできない。
+
+どちらかを選ぶ。
+
+1. GHCR のパッケージを public にする（イメージに秘密は含まれない。
+   `.next` 配下と `server.js` を全文検索して確認済み）
+2. `fishing-infra` 側で `ghcr-pull` Secret を作り、`deployment.yaml` と
+   両 Job に `imagePullSecrets` を足す
 
 ## ファイル
 
@@ -25,8 +43,8 @@ DB は Neon（マネージド PostgreSQL）。クラスタ内に PostgreSQL は�
 | `ingress.yaml` | Traefik Ingress（`fishing.kazuma-lab.com`）。TLS は Cloudflare で終端するため `spec.tls` は持たない |
 | `configmap.yaml` | 非機密の環境変数 |
 | `secret.enc.yaml` | SOPS/age 暗号化済みの機密。**kustomization には含めない** |
-| `job-db-migrate.yaml` | `prisma migrate deploy`。deploy のたびに実行される |
-| `job-db-seed.yaml` | 初期データ投入。初回のみ手動 |
+| `job-db-migrate.yaml` | `prisma migrate deploy`。**毎回 delete してから apply する**（下記） |
+| `job-db-seed.yaml` | 初期データ投入。初回のみ手動。**kustomization には含めない** |
 
 ### probe を役割で分けている理由
 
@@ -52,20 +70,47 @@ kustomize build k8s/ | kubeconform -strict -summary
 
 ## デプロイ
 
+**順序が重要。** この順でないと初回・2 回目のどちらかが必ず失敗する。
+
 ```bash
-kustomize build k8s/ | kubectl apply -f -
+# 1. Secret を先に入れる。あとにすると Pod が CreateContainerConfigError で
+#    起動待ちになり、db-migrate は activeDeadlineSeconds で落ちる
 sops -d k8s/secret.enc.yaml | kubectl apply -f -
+
+# 2. 既存の db-migrate Job を消す。Job の spec.template は immutable なので、
+#    イメージタグが変わった状態で apply すると
+#    「field is immutable」で失敗する。しかも kustomize の出力順は
+#    ConfigMap → Service → Deployment → Job なので、
+#    Deployment だけ新イメージに変わってから Job が落ちる
+#    （＝マイグレーション未実行のまま新コードが出る）
+kubectl -n fishing delete job db-migrate --ignore-not-found --wait=true
+
+# 3. まとめて適用
+kustomize build k8s/ | kubectl apply -f -
+
+# 4. マイグレーションの完了を待つ
+kubectl -n fishing wait --for=condition=complete job/db-migrate --timeout=600s
 ```
 
 **`kubectl apply -k` は使わないこと。** kubectl 内蔵の kustomize では SOPS 暗号化された
 Secret を扱えず、暗号文のまま Secret を上書きして全 Pod を起動不能にする。
 常に `kustomize build k8s/ | kubectl apply -f -` を使う。
 
-`db-seed` は `kustomization.yaml` に含まれていないので、初回のみ手動で流す。
+> `ttlSecondsAfterFinished: 3600` があるため、前回から 1 時間以上空けば
+> delete 無しでも偶然通る。だが CI 駆動のデプロイでは常に手順 2 が要る。
+
+### db-seed（初回のみ手動）
+
+`db-seed` は `kustomization.yaml` に含まれないため、**`images` によるタグ差し替えを
+受けない**。ファイルの `image:` はタグを持たないので、そのまま apply すると
+`:latest` に解決されて必ず ImagePullBackOff になる（`:latest` は GHCR に push しない）。
+**タグを明示して流すこと。**
 
 ```bash
-kubectl apply -f k8s/job-db-seed.yaml
+TAG=sha-$(git rev-parse --short HEAD)   # デプロイしたイメージのタグに合わせる
+sed "s|\(fishing-app-migrator\)$|\1:${TAG}|" k8s/job-db-seed.yaml | kubectl apply -f -
 kubectl -n fishing logs -f job/db-seed
+
 # 再実行する場合は先に削除
 kubectl -n fishing delete job db-seed
 ```
