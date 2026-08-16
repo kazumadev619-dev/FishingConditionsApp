@@ -97,12 +97,53 @@ jobs:
         run: npm run build
 
   # ============================================
+  # k8sマニフェスト検証
+  # ============================================
+  # overlays/local を消したことで PR 時点の検証手段が減ったため、
+  # クラスタ不要の静的検証を入れる。
+  manifests:
+    name: Kubernetes Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install kustomize
+        run: |
+          curl -sSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Install kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz \
+            | tar xz -C /tmp
+          sudo mv /tmp/kubeconform /usr/local/bin/
+
+      - name: Build and validate manifests
+        run: |
+          kustomize build k8s/ > /tmp/rendered.yaml
+          kubeconform -strict -summary /tmp/rendered.yaml
+
+      # kustomization に含めない db-seed も構文だけは検証する
+      - name: Validate db-seed job
+        run: kubeconform -strict -summary k8s/job-db-seed.yaml
+
+      - name: Ensure no Secret is rendered
+        run: |
+          if grep -q "^kind: Secret" /tmp/rendered.yaml; then
+            echo "::error::secret.enc.yaml が kustomization に含まれている。暗号文が適用される事故になる"
+            exit 1
+          fi
+
+  # ============================================
   # CIサマリー
   # ============================================
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [quality-check, build]
+    needs: [quality-check, build, manifests]
     if: always() # 失敗してもサマリーは表示
 
     steps:
@@ -111,15 +152,17 @@ jobs:
           echo "## CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ]; then
+          if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ]; then
             echo "🟢 All checks passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- 🟢 Code Quality Check" >> $GITHUB_STEP_SUMMARY
             echo "- 🟢 Build Verification" >> $GITHUB_STEP_SUMMARY
+            echo "- 🟢 Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some checks failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check" >> $GITHUB_STEP_SUMMARY
             echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification" >> $GITHUB_STEP_SUMMARY
+            echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
