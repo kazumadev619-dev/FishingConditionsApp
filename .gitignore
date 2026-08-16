@@ -223,8 +223,10 @@ dist
 ### Kubernetes ###
 # 暗号化前のSecretファイル（API KEYを含む）
 # 暗号化後の *.enc.yaml はgit管理する
-k8s/**/secret.yaml
-!k8s/**/*.enc.yaml
+# .sops.yaml の path_regex (.*secret.*\.ya?ml$) と同じ広さにする。
+# secret.yaml 完全一致だけだと db-secret.yaml / secret.prod.yaml が素通りする。
+k8s/**/*secret*.y*ml
+!k8s/**/*.enc.y*ml
 
 # Git worktrees
 .worktrees/
