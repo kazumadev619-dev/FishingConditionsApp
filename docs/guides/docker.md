@@ -305,8 +305,9 @@ docker compose exec redis redis-cli FLUSHALL
 
 ## 3. Kubernetes
 
-Kubernetes へのデプロイ手順（Minikube でのローカル環境、k3s 本番環境、SOPS による Secret 管理）は
+Kubernetes へのデプロイ手順（k3s 本番環境、SOPS による Secret 管理）は
 マニフェストと同じ場所にある [k8s/README.md](../../k8s/README.md) にまとめている。
+ローカル開発に Kubernetes は使わず、この docker compose 環境に一本化している。
 
 本番環境のデプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しているが、初回デプロイはまだ行っていない。
 

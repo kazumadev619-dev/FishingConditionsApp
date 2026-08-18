@@ -75,7 +75,7 @@
 | データベース   | PostgreSQL (Neon)            | 17                       | マネージドクラウド、Go バックエンドと共用            |
 | キャッシュ     | Redis (k3s Pod)              | 7.x                      | 外部API結果のキャッシュ                              |
 | デプロイ       | Raspberry Pi 5 + k3s         | -                        | Cloudflare Tunnel + Traefik、arm64 本番              |
-| ローカルk8s    | Minikube                     | -                        | ローカルKubernetes開発環境                           |
+| CI/CD          | GitHub Actions               | -                        | PR で型・ビルド・k8s マニフェストを検証（自動デプロイは未導入） |
 
 > **PWA:** `next-pwa` が Turbopack 未対応のため現在無効。対応後に再有効化予定（`next.config.mjs` 参照）。
 

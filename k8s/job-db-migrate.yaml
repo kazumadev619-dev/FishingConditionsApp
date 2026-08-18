@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-migrate
+  namespace: fishing
+  labels:
+    app.kubernetes.io/name: db-migrate
+    app.kubernetes.io/component: migration
+spec:
+  # kubectl wait --for=condition=complete は Job の Failed を検知せず
+  # timeout まで待つ。backoffLimit 0 + activeDeadlineSeconds で早期に確定させる
+  backoffLimit: 0
+  # activeDeadlineSeconds は status.startTime 起点なので、スケジューリングと
+  # イメージ pull の時間も食う。migrator は非圧縮 1.64GB（転送 338MB）あり、
+  # Pi で初回に落とすと 240s では足りない可能性が高い。backoffLimit: 0 で
+  # リトライも無いため、足りなければそのままデプロイ失敗になる。
+  activeDeadlineSeconds: 600
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-migrate
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-migrate
+          # タグは kustomize の images[].newTag が CI で埋める
+          image: ghcr.io/kazumadev619-dev/fishing-app-migrator
+          # npx は $HOME/.npm に書こうとし、見つからなければネットワーク取得を
+          # 試みる。マイグレーションでそのリスクを取る理由が無いので直接叩く
+          command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+          # envFrom は付けない。prisma.config.ts が読むのは DATABASE_URL_DIRECT
+          # だけで、余計な変数を渡すと ConfigMap の変更が Job の再作成理由に
+          # なってしまう（Job の spec.template は immutable）。
+          # なお ConfigMap は kustomize 出力で Job より前に置かれ、同じ
+          # apply で先に作られるので「初回に ConfigMap が無い」ことは起きない。
+          env:
+            - name: DATABASE_URL_DIRECT
+              valueFrom:
+                secretKeyRef:
+                  name: fishing-app-secret
+                  key: DATABASE_URL_DIRECT
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

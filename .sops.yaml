@@ -1,0 +1,23 @@
+# SOPS configuration for Kubernetes secrets encryption
+# https://github.com/getsops/sops
+#
+# sops 3.13 は .sops.yaml を「カレントディレクトリ」から上に辿って探し、
+# path_regex も「カレントディレクトリからの相対パス」にマッチする。
+# k8s/ に置くとリポジトリルートから `sops -e k8s/secret.yaml` が
+# "config file not found" で落ちるため、ルートに置く（fishing-infra と同じ）。
+#
+# recipients はカンマ区切りの 1 文字列（YAML リストではない）。
+# 別々の creation_rules に分けると最初にマッチしたルールしか適用されず、
+# 片方の鍵が抜けたまま暗号化される事故になる。
+#
+# 鍵の内訳（fishing-infra/.sops.yaml と同一）:
+#   1本目: 開発者（~/.config/sops/age/keys.txt）
+#   2本目: CI（GitHub Actions が復号に使う）
+#   3本目: リカバリ（オフライン保管）
+creation_rules:
+  - path_regex: .*secret.*\.ya?ml$
+    encrypted_regex: ^(data|stringData)$
+    age: >-
+      age1wwpnls59pm7a542w3s4le2sgrcqpvtxtchxumdl4qhwph4xu25wqpqjxpn,
+      age19243y8pewm9rq8ldjffptyvkfex2ytem2wncdhzj4gl8q0awyqqq0l56wk,
+      age1uugu7jllxc3lpfzn96wm0kylr0v5m5a0adtg25yst5nn5e3muyssrcyys3

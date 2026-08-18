@@ -1,0 +1,79 @@
+# 初回のみ手動で実行する（kustomization の resources には含めない）:
+#   kubectl apply -f k8s/job-db-seed.yaml
+#   kubectl -n fishing logs -f job/db-seed
+# 再実行する場合は先に削除:
+#   kubectl -n fishing delete job db-seed
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: db-seed
+  namespace: fishing
+  labels:
+    app.kubernetes.io/name: db-seed
+    app.kubernetes.io/component: migration
+spec:
+  backoffLimit: 1
+  # 港座標の更新は tide736.net を港ごとに叩くため数分かかる
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: db-seed
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        runAsGroup: 1001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: db-seed
+          # タグは kustomize の images[].newTag が CI で埋める
+          image: ghcr.io/kazumadev619-dev/fishing-app-migrator
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -e
+              echo "1/2: seed を実行"
+              node --import tsx/esm prisma/seed.ts
+              echo "2/2: 港座標を外部 API から更新（数分かかる）"
+              node --import tsx/esm scripts/update-port-coordinates.ts
+              echo "完了"
+          # prisma/seed.ts と scripts/update-port-coordinates.ts は Prisma CLI を
+          # 通さず process.env.DATABASE_URL から自前で pg.Pool を作る。
+          # そのため DATABASE_URL にも direct の値を入れる（pooled では
+          # seed の一括投入が PgBouncer 経由で詰まる）。
+          env:
+            - name: DATABASE_URL_DIRECT
+              valueFrom:
+                secretKeyRef:
+                  name: fishing-app-secret
+                  key: DATABASE_URL_DIRECT
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef:
+                  name: fishing-app-secret
+                  key: DATABASE_URL_DIRECT
+            - name: HOME
+              value: /tmp
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}

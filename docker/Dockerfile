@@ -110,6 +110,10 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
+# k8s では readOnlyRootFilesystem: true で動かすため、既定の HOME
+# (/home/nextjs) は書き込めない。ライブラリが $HOME に書いた時点で EROFS に
+# なるので、emptyDir を当てている /tmp を向けておく（migrator と同じ扱い）。
+ENV HOME=/tmp
 
 # node_modules は standalone 出力に同梱されるトレース済みのものだけを使う。
 #

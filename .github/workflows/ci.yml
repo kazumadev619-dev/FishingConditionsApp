@@ -14,6 +14,11 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+# CI は読むだけ。リポジトリ既定が read でも、設定変更ひとつで消える防御なので
+# ワークフロー側で明示する。
+permissions:
+  contents: read
+
 jobs:
   # ============================================
   # コード品質チェック
@@ -97,12 +102,79 @@ jobs:
         run: npm run build
 
   # ============================================
+  # k8sマニフェスト検証
+  # ============================================
+  # overlays/local を消したことで PR 時点の検証手段が減ったため、
+  # クラスタ不要の静的検証を入れる。
+  manifests:
+    name: Kubernetes Manifests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # バージョンは固定する。master / latest 参照だと上流の更新だけで
+      # CI が赤にも緑にも変わり、失敗の原因を差分から追えなくなる。
+      # curl は -f を付ける（付けないと 404 本文を取得して exit 0 になる）。
+      - name: Install kustomize
+        env:
+          KUSTOMIZE_VERSION: 5.8.1
+        run: |
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/kustomize%2Fv${KUSTOMIZE_VERSION}/hack/install_kustomize.sh" \
+            | bash -s "${KUSTOMIZE_VERSION}"
+          sudo mv kustomize /usr/local/bin/
+
+      - name: Install kubeconform
+        env:
+          KUBECONFORM_VERSION: v0.8.0
+        run: |
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
+            | tar xz -C /tmp
+          sudo mv /tmp/kubeconform /usr/local/bin/
+
+      # -kubernetes-version を付けないと上流 master のスキーマで検証してしまい、
+      # 本番の k3s とズレる。Pi は k3s v1.34.6+k3s1。
+      - name: Build and validate manifests
+        run: |
+          kustomize build k8s/ > /tmp/rendered.yaml
+          kubeconform -strict -summary -kubernetes-version 1.34.0 /tmp/rendered.yaml
+
+      # kustomization に含めない db-seed も構文だけは検証する
+      - name: Validate db-seed job
+        run: kubeconform -strict -summary -kubernetes-version 1.34.0 k8s/job-db-seed.yaml
+
+      - name: Ensure no Secret is rendered
+        run: |
+          if grep -q "^kind: Secret" /tmp/rendered.yaml; then
+            echo "::error::secret.enc.yaml が kustomization に含まれている。暗号文が適用される事故になる"
+            exit 1
+          fi
+
+      # secret.enc.yaml はどのステップも触らないため、`sops -d > secret.enc.yaml`
+      # のような取り違えで平文がコミットされても CI が無言で緑になる。
+      # .gitignore は secret.yaml しか守らないので、ここで明示的に確かめる。
+      - name: Ensure secret.enc.yaml is actually encrypted
+        run: |
+          if ! grep -q "^sops:" k8s/secret.enc.yaml; then
+            echo "::error::k8s/secret.enc.yaml に sops メタデータが無い。暗号化されていない可能性がある"
+            exit 1
+          fi
+          plain=$(awk '/^stringData:/{f=1;next} /^[a-z]/{f=0} f && /: / && !/ENC\[AES256_GCM/' k8s/secret.enc.yaml)
+          if [ -n "$plain" ]; then
+            echo "::error::k8s/secret.enc.yaml の stringData に暗号化されていない値がある"
+            echo "$plain" | sed 's/:.*/: <伏せ字>/'
+            exit 1
+          fi
+
+  # ============================================
   # CIサマリー
   # ============================================
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [quality-check, build]
+    needs: [quality-check, build, manifests]
     if: always() # 失敗してもサマリーは表示
 
     steps:
@@ -111,15 +183,17 @@ jobs:
           echo "## CI Results" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
 
-          if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ]; then
+          if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ]; then
             echo "🟢 All checks passed!" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- 🟢 Code Quality Check" >> $GITHUB_STEP_SUMMARY
             echo "- 🟢 Build Verification" >> $GITHUB_STEP_SUMMARY
+            echo "- 🟢 Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Some checks failed" >> $GITHUB_STEP_SUMMARY
             echo "" >> $GITHUB_STEP_SUMMARY
             echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check" >> $GITHUB_STEP_SUMMARY
             echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification" >> $GITHUB_STEP_SUMMARY
+            echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
             exit 1
           fi
