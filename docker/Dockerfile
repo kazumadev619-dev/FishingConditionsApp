@@ -68,6 +68,10 @@ RUN AUTH_SECRET=build-time-placeholder-not-used-at-runtime \
 # Web 用イメージから切り離す。
 FROM node:24-alpine AS migrator
 
+# GHCR のパッケージをこのリポジトリに紐づける。これが無いと Packages ページが
+# ソース不明の孤立したイメージとして表示され、権限も repo から継承されない。
+LABEL org.opencontainers.image.source="https://github.com/kazumadev619-dev/FishingConditionsApp"
+
 WORKDIR /app
 
 RUN addgroup --system --gid 1001 nodejs && \
@@ -98,6 +102,10 @@ CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 # 最後のステージをビルドするため、順序を変えると `docker build` や
 # compose の build（target 未指定）が Web イメージを作らなくなる。
 FROM node:24-alpine AS runner
+
+# GHCR のパッケージをこのリポジトリに紐づける。これが無いと Packages ページが
+# ソース不明の孤立したイメージとして表示され、権限も repo から継承されない。
+LABEL org.opencontainers.image.source="https://github.com/kazumadev619-dev/FishingConditionsApp"
 
 WORKDIR /app
 
