@@ -1,0 +1,238 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# デプロイは絶対に途中で殺さない。マイグレーション実行中に中断されると
+# _prisma_migrations に failed レコードが残り、以後の migrate deploy が
+# すべて止まる（prisma migrate resolve の手動介入が必要になる）
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE_APP: ghcr.io/kazumadev619-dev/fishing-app
+  IMAGE_MIGRATOR: ghcr.io/kazumadev619-dev/fishing-app-migrator
+  NAMESPACE: fishing
+  BASE_URL: https://fishing.kazuma-lab.com
+  # sops のリリースアセットはファイル名にバージョンが入るため
+  # releases/latest/download/ が使えない。明示的に固定する
+  SOPS_VERSION: v3.13.3
+
+jobs:
+  # ============================================
+  # arm64 イメージのビルドと push
+  # ============================================
+  build:
+    name: Build arm64 images
+    # public リポジトリでは arm64 ホストランナーが無料で使える。
+    # QEMU を挟まないので Next.js のビルドが現実的な時間で終わる
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      tag: ${{ steps.meta.outputs.tag }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: meta
+        run: echo "tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # :latest は決して push しない。set image を忘れた apply が
+      # :latest を解決してしまうと古いコードが本番に出るため、
+      # 存在しないタグにして ImagePullBackOff で安全側に倒す
+      - name: Build and push app image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: runner
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_APP }}:${{ steps.meta.outputs.tag }}
+          build-args: |
+            NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY }}
+            NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=${{ secrets.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build and push migrator image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/Dockerfile
+          target: migrator
+          platforms: linux/arm64
+          push: true
+          tags: ${{ env.IMAGE_MIGRATOR }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+
+  # ============================================
+  # k3s へのデプロイ
+  # ============================================
+  deploy:
+    name: Deploy to k3s
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: build
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          set -euo pipefail
+          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
+          sudo mv kustomize /usr/local/bin/
+          curl -fsSL "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64" -o /tmp/sops
+          sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+          curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
+          sudo dpkg -i /tmp/cloudflared.deb
+          # yq は ubuntu ランナーに同梱されているが、イメージ更新で消えても
+          # 気づけるようにフォールバックを置く
+          command -v yq >/dev/null || {
+            sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+            sudo chmod +x /usr/local/bin/yq
+          }
+          sops --version
+          yq --version
+
+      - name: Set up kubeconfig
+        run: |
+          echo "${{ secrets.KUBECONFIG_B64 }}" | base64 -d > "$RUNNER_TEMP/kubeconfig"
+          chmod 600 "$RUNNER_TEMP/kubeconfig"
+          echo "KUBECONFIG=$RUNNER_TEMP/kubeconfig" >> "$GITHUB_ENV"
+
+      # cloudflared は CF_ACCESS_* という環境変数を読まない。
+      # 正しくは TUNNEL_SERVICE_TOKEN_ID / TUNNEL_SERVICE_TOKEN_SECRET
+      - name: Open tunnel to kube-apiserver
+        env:
+          TUNNEL_SERVICE_TOKEN_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          TUNNEL_SERVICE_TOKEN_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+          cloudflared access tcp --hostname k8s.kazuma-lab.com --url 127.0.0.1:6443 &
+          timeout 30 bash -c 'until nc -z 127.0.0.1 6443; do sleep 1; done'
+          # ci-deployer の Role は fishing 名前空間限定で ClusterRole は無い。
+          # `get nodes` はクラスタスコープなので必ず Forbidden になる。
+          # 疎通確認は名前空間内のリソースで行うこと
+          kubectl -n "$NAMESPACE" get pods
+
+      # ci-deployer の Role は secrets に resourceNames を付けている。
+      # resourceNames は create には効かない（認可時点で名前が未確定のため）ので、
+      # Secret の新規作成はできない。初回だけ管理者権限で作成済みであり、
+      # ここは既存 Secret への patch として通る。詳細は fishing-infra#1
+      - name: Apply secret
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+        run: |
+          set -euo pipefail
+          sops -d k8s/secret.enc.yaml | kubectl apply -f - > /dev/null
+          echo "secret applied"
+
+      - name: Render manifests
+        env:
+          SOPS_AGE_KEY: ${{ secrets.SOPS_AGE_KEY }}
+          TAG: ${{ needs.build.outputs.tag }}
+        run: |
+          set -euo pipefail
+          # Secret が変わっても Pod は再起動しない（envFrom は起動時にしか
+          # 解決されない）。チェックサムを Pod テンプレートに載せて
+          # ローテーション時に確実にロールアウトさせる
+          SECRET_HASH=$(sops -d k8s/secret.enc.yaml | sha256sum | cut -c1-16)
+          cd k8s
+          kustomize edit set image \
+            "${IMAGE_APP}=${IMAGE_APP}:${TAG}" \
+            "${IMAGE_MIGRATOR}=${IMAGE_MIGRATOR}:${TAG}"
+          kustomize edit add annotation --force "secret-checksum:${SECRET_HASH}"
+          kustomize build . > "$RUNNER_TEMP/rendered.yaml"
+          grep -c "^kind:" "$RUNNER_TEMP/rendered.yaml"
+
+      # migrate は必ず rollout より先。失敗したらロールアウトしない
+      - name: Run migration job
+        run: |
+          set -euo pipefail
+          kubectl -n "$NAMESPACE" delete job db-migrate --ignore-not-found
+          yq 'select(.kind == "Job" and .metadata.name == "db-migrate")' \
+            "$RUNNER_TEMP/rendered.yaml" | kubectl apply -f -
+          # `kubectl wait --for=condition=complete` は Failed を検知せず
+          # timeout まで待ち続ける。Job 側は backoffLimit: 0 /
+          # activeDeadlineSeconds: 600 で失敗が数十秒で確定するので、
+          # complete と failed の両方をポーリングして即座に打ち切る
+          deadline=$(( SECONDS + 660 ))
+          while [ "$SECONDS" -lt "$deadline" ]; do
+            conds=$(kubectl -n "$NAMESPACE" get job db-migrate \
+              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || true)
+            case " $conds " in
+              *" Complete "*)
+                echo "migration completed"
+                kubectl -n "$NAMESPACE" logs job/db-migrate --tail=50
+                exit 0
+                ;;
+              *" Failed "*)
+                echo "migration failed (conditions: $conds)"
+                kubectl -n "$NAMESPACE" logs job/db-migrate --tail=200
+                exit 1
+                ;;
+            esac
+            sleep 5
+          done
+          echo "migration timed out after 660s"
+          kubectl -n "$NAMESPACE" logs job/db-migrate --tail=200
+          exit 1
+
+      - name: Apply manifests
+        run: |
+          set -euo pipefail
+          kubectl apply -f "$RUNNER_TEMP/rendered.yaml"
+          kubectl -n "$NAMESPACE" rollout status deploy/fishing-app --timeout=300s
+
+      # ブロッキングなスモークは外部 API に依存しないパスのみ。
+      # / は潮汐 API が落ちているだけで 500 になるため非ブロッキングにする
+      - name: Smoke test (blocking)
+        run: |
+          set -euo pipefail
+          curl -fsS "${BASE_URL}/healthz" | tee /dev/stderr | grep -q '"status":"ok"'
+          curl -fsS -o /dev/null -w "login: %{http_code}\n" "${BASE_URL}/login"
+
+      - name: Smoke test (non-blocking)
+        continue-on-error: true
+        run: |
+          {
+            echo "## 非ブロッキングスモーク"
+            for p in / /dashboard; do
+              code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}${p}")
+              echo "- \`${p}\` → ${code}"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # ログを先に吸い出す。undo すると手がかりが消える
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          kubectl -n "$NAMESPACE" logs job/db-migrate --tail=100 || true
+          kubectl -n "$NAMESPACE" describe deploy/fishing-app || true
+          kubectl -n "$NAMESPACE" logs deploy/fishing-app --tail=100 || true
+          kubectl -n "$NAMESPACE" rollout undo deploy/fishing-app || true
+          kubectl -n "$NAMESPACE" rollout status deploy/fishing-app --timeout=180s || true
