@@ -5,7 +5,7 @@
 
 import type { CurrentWeatherData, ForecastData } from '@/types/weather';
 import { openWeatherMapClient } from './apiClient';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from './cache';
+import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from './cache';
 
 /**
  * 天気取得時のオプション
@@ -102,13 +102,14 @@ async function fetchWithOptionalCache<T>(
   ttl: number,
   skipCache: boolean,
   fetcher: () => Promise<T>,
+  revive?: (cached: T) => T,
 ): Promise<WeatherResponse<T>> {
   if (skipCache) {
     const data = await fetcher();
     return { data, fromCache: false, fetchedAt: new Date().toISOString() };
   }
 
-  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher);
+  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, revive);
   return { data, fromCache, fetchedAt: new Date().toISOString() };
 }
 
@@ -150,6 +151,23 @@ function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
 }
 
 /**
+ * キャッシュヒット時に Date フィールドを Date インスタンスへ復元する（withCache の revive）。
+ *
+ * キャッシュは JSON で往復するため、Date は ISO 文字列に落ちて戻ってこない。
+ * FormattedWeatherData は sunrise / sunset / dataTime を Date と宣言しているので、
+ * この契約を守らないと呼び出し側（scoring/timeScore.ts の getHours() など）が
+ * 実行時に壊れる。
+ */
+function reviveWeatherDates(data: FormattedWeatherData): FormattedWeatherData {
+  return {
+    ...data,
+    sunrise: reviveDate(data.sunrise, 'sunrise'),
+    sunset: reviveDate(data.sunset, 'sunset'),
+    dataTime: reviveDate(data.dataTime, 'dataTime'),
+  };
+}
+
+/**
  * 座標から現在の天気を取得
  * @param lat 緯度
  * @param lon 経度
@@ -183,7 +201,13 @@ export async function getCurrentWeather(
     return formatWeatherData(rawData);
   };
 
-  return fetchWithOptionalCache(cacheKey, CACHE_TTL.WEATHER, skipCache, fetcher);
+  return fetchWithOptionalCache(
+    cacheKey,
+    CACHE_TTL.WEATHER,
+    skipCache,
+    fetcher,
+    reviveWeatherDates,
+  );
 }
 
 /**

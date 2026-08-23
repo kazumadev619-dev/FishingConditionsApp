@@ -5,17 +5,7 @@
 ## プロジェクト概要
 
 **Fishing Conditions App** - 釣り条件をスコア化するPWA
-- **Phase 1 (現在):** Next.js 16 + React 19 フルスタックMVP
-- **技術スタック:** TypeScript, Prisma, PostgreSQL, Tailwind CSS, Auth.js
-
-## コマンド
-
-```bash
-npm run dev
-npm run type-check && npm run lint && npm run build
-npm run lint:fast   # Oxlint高速チェック
-npm run format      # Biomeフォーマット
-```
+- **Phase 1 (現在):** Next.js + React フルスタックMVP
 
 ## 禁止事項
 
@@ -38,18 +28,4 @@ git commit -m "🐛 fix: バグ修正の説明 #123"
 
 ## 詳細ドキュメント（必要時のみ参照）
 
-まず `docs/README.md`（索引）を見ること。
-
-| ドキュメント | 内容 |
-|-------------|------|
-| `docs/README.md` | 全ドキュメントの索引・置き場所の判断基準 |
-| `docs/guides/development.md` | 開発環境セットアップ、コーディング規約 |
-| `docs/guides/docker.md` | Docker / docker compose 操作 |
-| `docs/guides/ci-cd.md` | CI パイプライン、CI 失敗時の対処 |
-| `docs/reference/architecture.md` | システム設計、DB、キャッシュ戦略 |
-| `docs/reference/authentication.md` | Auth.js設定、認証フロー |
-| `docs/reference/api-integration.md` | 外部API連携詳細 |
-| `docs/reference/scoring-algorithm.md` | 釣りやすさスコア算出式 |
-| `docs/adr/` | 技術的決定記録（ADR） |
-| `docs/roadmap.md` | Phase 進捗と今後の予定 |
-| `k8s/README.md` | Kubernetes デプロイ手順 |
+まず `docs/README.md`（索引）を見ること。目的別の一覧と置き場所の判断基準はそこにある。

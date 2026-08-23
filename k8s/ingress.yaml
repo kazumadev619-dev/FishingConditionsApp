@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: fishing-app
+  namespace: fishing
+  labels:
+    app.kubernetes.io/name: fishing-app
+  annotations:
+    # Stage 5 で /api/v1/* を Go に振る際、Traefik のルール長による暗黙の
+    # 優先度に依存しないよう、フロント側を明示的に低くしておく
+    traefik.ingress.kubernetes.io/router.priority: "10"
+spec:
+  ingressClassName: traefik
+  rules:
+    - host: fishing.kazuma-lab.com
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: fishing-app
+                port:
+                  name: http
+# TLS は Cloudflare 側で終端するため spec.tls は書かない。

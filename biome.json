@@ -44,7 +44,8 @@
       "!.kiro",
       "!.serena",
       "!node_modules",
-      "!.next"
+      "!.next",
+      "!src/generated"
     ]
   }
 }

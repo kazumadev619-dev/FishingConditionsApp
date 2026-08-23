@@ -1,221 +1,141 @@
-# Kubernetes デプロイガイド
+# Kubernetes マニフェスト
 
-Fishing Conditions App の Kubernetes デプロイ手順。
+`FishingConditionsApp`（Next.js）を Raspberry Pi 5 上の k3s にデプロイするための
+マニフェスト。本番一系統のみで、環境ごとの overlay は持たない。
 
-> Docker イメージのビルドや docker compose での開発環境については [docs/guides/docker.md](../docs/guides/docker.md) を参照。
+## 前提
 
-## 構成
+namespace・Redis・cloudflared・RBAC は
+[`fishing-infra`](https://github.com/kazumadev619-dev/fishing-infra) が所有する。
+このリポジトリが依存するのは以下の 3 点のみ。
 
-```
-k8s/
-├── base/                    # 共通リソース定義
-│   ├── namespace.yaml
-│   ├── configmap.yaml
-│   ├── secret.yaml          # テンプレート（実際の値はoverlaysで上書き）
-│   ├── postgres.yaml
-│   ├── redis.yaml
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── ingress.yaml
-│   └── db-init-job.yaml     # DB初期化Job
-├── overlays/
-│   ├── local/               # ローカル開発用（Minikube）
-│   └── production/          # 本番用（EKS）
-└── .sops.yaml               # Secret暗号化設定
-```
+- namespace `fishing`
+- `redis.fishing.svc.cluster.local:6379`（論理 DB 0 / prefix `fc:`）
+- `ingressClassName: traefik`
 
-## ローカル環境（Minikube）セットアップ
+クラスタは Raspberry Pi 5 上の **k3s v1.34.6+k3s1**（単一ノード / arm64）。
+CI のマニフェスト検証もこのバージョンのスキーマで行う。
 
-### クイックスタート（セットアップ済みの場合）
+DB は Neon（マネージド PostgreSQL）。クラスタ内に PostgreSQL は置かない。
 
-```bash
-# 1. Minikube起動 & Docker環境設定
-minikube start --memory=4096 --cpus=2
-eval $(minikube docker-env)
+### イメージの公開設定（初回デプロイ前に決めること）
 
-# 2. イメージビルド（NEXT_PUBLIC_*はビルド時に埋め込み必須）
-# APIキーは .env.local または k8s/overlays/local/secret.yaml から取得
-docker build -f docker/Dockerfile \
-  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="your-api-key" \
-  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID="your-map-id" \
-  -t fishing-app:latest .
+マニフェストには `imagePullSecrets` を置いていない。GHCR は新規パッケージの
+既定が private なので、**パッケージを public にしない限り初回デプロイは
+ImagePullBackOff になる**。`fishing-infra` の RBAC は CI に
+`fishing-app-secret` しか触らせないため、CI 側で pull secret を作って回避する
+こともできない。
 
-# 3. SOPS設定 & デプロイ
-export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
-kustomize build k8s/overlays/local --enable-alpha-plugins --enable-exec | kubectl apply -f -
+どちらかを選ぶ。
 
-# 4. Pod起動待機
-kubectl get pods -n fishing-app -w
+1. GHCR のパッケージを public にする（イメージに秘密は含まれない。
+   `.next` 配下と `server.js` を全文検索して確認済み）
+2. `fishing-infra` 側で `ghcr-pull` Secret を作り、`deployment.yaml` と
+   両 Job に `imagePullSecrets` を足す
 
-# 5. DB初期化（Postgres起動後）
-kubectl apply -f k8s/base/db-init-job.yaml
-kubectl logs -f job/db-init -n fishing-app
+## ファイル
 
-# 6. アクセス
-# 方法: minikube tunnel
-# 1. /etc/hosts にホスト名を追加（初回のみ）
-#    minikube tunnel を使う場合は 127.0.0.1 を使用
-echo "127.0.0.1 fishing-app.local" | sudo tee -a /etc/hosts
+| ファイル | 内容 |
+|---------|------|
+| `kustomization.yaml` | 全リソースを束ねる。CI が `kustomize edit set image` でタグを差し替える |
+| `deployment.yaml` | アプリ本体。liveness は `/healthz`、readiness は `/readyz` |
+| `service.yaml` | ClusterIP |
+| `ingress.yaml` | Traefik Ingress（`fishing.kazuma-lab.com`）。TLS は Cloudflare で終端するため `spec.tls` は持たない |
+| `configmap.yaml` | 非機密の環境変数 |
+| `secret.enc.yaml` | SOPS/age 暗号化済みの機密。**kustomization には含めない** |
+| `job-db-migrate.yaml` | `prisma migrate deploy`。**毎回 delete してから apply する**（下記） |
+| `job-db-seed.yaml` | 初期データ投入。初回のみ手動。**kustomization には含めない** |
 
-# 2. 別ターミナルで minikube tunnel を起動
-sudo minikube tunnel
+### probe を役割で分けている理由
 
-# 3. ブラウザでアクセス
-open http://fishing-app.local
-```
+- **liveness = `/healthz`**: 依存ゼロで「プロセスが生きているか」だけを見る。
+  `/` は潮汐・天気の外部 API に依存するため、外部要因の障害で健全な Pod が
+  再起動ループに入る。
+- **readiness = `/readyz`**: DB 到達性を見る。`/healthz` だと DB 未接続の Pod も
+  Ready になり、Service が流したトラフィックが全て 500 になる。
+  Redis は判定に含めない（落ちてもキャッシュ素通しで動くため。含めると
+  クラスタ全体の Redis 障害で全 Pod が NotReady になる）。
 
----
+## ローカル検証
 
-### 前提条件
+k8s のローカル環境（Minikube など）は用意していない。ローカル開発は
+`docker compose` を使う（`npm run docker:dev`）。マニフェストの構文検証は
+クラスタ無しで行える。
 
 ```bash
-# 必要なツールをインストール
-brew install minikube kubectl sops age
+kustomize build k8s/ | kubeconform -strict -summary
 ```
 
-### Step 1: Minikube起動
+これは PR ごとに CI（`.github/workflows/ci.yml` の `manifests` ジョブ）でも実行される。
+
+## デプロイ
+
+**順序が重要。** この順でないと初回・2 回目のどちらかが必ず失敗する。
 
 ```bash
-# クラスター起動
-minikube start --memory=4096 --cpus=2
+# 1. Secret を先に入れる。あとにすると Pod が CreateContainerConfigError で
+#    起動待ちになり、db-migrate は activeDeadlineSeconds で落ちる
+sops -d k8s/secret.enc.yaml | kubectl apply -f -
 
-# Ingressアドオン有効化
-minikube addons enable ingress
+# 2. 既存の db-migrate Job を消す。Job の spec.template は immutable なので、
+#    イメージタグが変わった状態で apply すると
+#    「field is immutable」で失敗する。しかも kustomize の出力順は
+#    ConfigMap → Service → Deployment → Job なので、
+#    Deployment だけ新イメージに変わってから Job が落ちる
+#    （＝マイグレーション未実行のまま新コードが出る）
+kubectl -n fishing delete job db-migrate --ignore-not-found --wait=true
+
+# 3. まとめて適用
+kustomize build k8s/ | kubectl apply -f -
+
+# 4. マイグレーションの完了を待つ
+kubectl -n fishing wait --for=condition=complete job/db-migrate --timeout=600s
 ```
 
-### Step 2: Dockerイメージビルド
+**`kubectl apply -k` は使わないこと。** kubectl 内蔵の kustomize では SOPS 暗号化された
+Secret を扱えず、暗号文のまま Secret を上書きして全 Pod を起動不能にする。
+常に `kustomize build k8s/ | kubectl apply -f -` を使う。
+
+> `ttlSecondsAfterFinished: 3600` があるため、前回から 1 時間以上空けば
+> delete 無しでも偶然通る。だが CI 駆動のデプロイでは常に手順 2 が要る。
+
+### db-seed（初回のみ手動）
+
+`db-seed` は `kustomization.yaml` に含まれないため、**`images` によるタグ差し替えを
+受けない**。ファイルの `image:` はタグを持たないので、そのまま apply すると
+`:latest` に解決されて必ず ImagePullBackOff になる（`:latest` は GHCR に push しない）。
+**タグを明示して流すこと。**
 
 ```bash
-# Minikubeの内部Docker環境を使用（重要！）
-eval $(minikube docker-env)
+TAG=sha-$(git rev-parse --short HEAD)   # デプロイしたイメージのタグに合わせる
+sed "s|\(fishing-app-migrator\)$|\1:${TAG}|" k8s/job-db-seed.yaml | kubectl apply -f -
+kubectl -n fishing logs -f job/db-seed
 
-# イメージビルド
-# NEXT_PUBLIC_* はクライアントサイド（ブラウザ）で使用するため、ビルド時に埋め込む必要がある
-# APIキーは .env.local または k8s/overlays/local/secret.yaml を参照
-docker build -f docker/Dockerfile \
-  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY="your-api-key" \
-  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID="your-map-id" \
-  -t fishing-app:latest .
+# 再実行する場合は先に削除
+kubectl -n fishing delete job db-seed
 ```
 
-### Step 3: Secret設定
-
-#### SOPS + age で暗号化（推奨）
+## Secret の編集
 
 ```bash
-# 1. age鍵を生成（初回のみ）
-mkdir -p ~/.config/sops/age
-age-keygen -o ~/.config/sops/age/keys.txt
-
-# 2. 公開鍵を.sops.yamlに設定
-#    生成された公開鍵（age1...）を k8s/.sops.yaml に記入
-
-# 3. secretを編集してAPI KEYを設定
-vim k8s/overlays/local/secret.yaml
-
-# 4. 暗号化
-cd k8s/overlays/local
-sops -e secret.yaml > secret.enc.yaml
-
-# 5. kustomization.yamlを更新
-#    patches の secret.yaml を削除し、
-#    resources に secret.enc.yaml を追加
+sops k8s/secret.enc.yaml     # in-place 編集。平文ファイルは作らない
 ```
 
-### Step 4: デプロイ
+recipients は 開発者鍵 / CI 鍵 / recovery 鍵 の 3 つ。増減したら
+`sops updatekeys k8s/secret.enc.yaml` を実行する。
 
-```bash
-# SOPS復号化用の環境変数を設定
-export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
+### 注意点
 
-# Kustomize + SOPS でデプロイ（Secret自動復号化）
-kustomize build k8s/overlays/local --enable-alpha-plugins --enable-exec | kubectl apply -f -
-
-# Pod状態確認（全てRunningになるまで待機）
-kubectl get pods -n fishing-app -w
-```
-
-> **Note:** `kubectl apply -k` ではSOPSプラグインが動作しないため、`kustomize build` を使用する。
-
-### Step 5: DB初期化
-
-PostgresがRunningになったことを確認してから実行。
-
-```bash
-# Postgres起動確認
-kubectl get pods -n fishing-app -l app=postgres
-
-# DB初期化Job実行（migrate + seed + 座標更新）
-# ※ ConfigMap/Secretが先に作成されている必要がある
-kubectl apply -f k8s/base/db-init-job.yaml
-
-# ログ確認
-kubectl logs -f job/db-init -n fishing-app
-```
-
-**Job実行時にエラーが出た場合:**
-
-```bash
-# Pod詳細でエラー原因を確認
-kubectl describe pod -l job-name=db-init -n fishing-app
-
-# Jobを削除して再実行
-kubectl delete job db-init -n fishing-app
-kubectl apply -f k8s/base/db-init-job.yaml
-```
-
-### Step 6: アクセス
-
-#### 方法: Ingress経由
-
-Ingress経由でアクセスする場合は、`minikube tunnel` と `/etc/hosts` の設定が必要。
-
-```bash
-# 1. /etc/hosts にホスト名を追加（初回のみ）
-#    minikube tunnel を使う場合は 127.0.0.1 を使用
-echo "127.0.0.1 fishing-app.local" | sudo tee -a /etc/hosts
-
-# 2. 別ターミナルで minikube tunnel を起動
-sudo minikube tunnel
-
-# 3. ブラウザでアクセス
-open http://fishing-app.local
-```
-
-## Pod状態確認
-
-```bash
-# 全Pod確認
-kubectl get pods -n fishing-app
-
-# Pod詳細
-kubectl describe pod <pod-name> -n fishing-app
-
-# ログ確認
-kubectl logs <pod-name> -n fishing-app
-```
-
-### リソース削除
-
-```bash
-# 全リソース削除
-export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"
-kustomize build k8s/overlays/local --enable-alpha-plugins --enable-exec | kubectl delete -f -
-
-# Job削除（再実行前に必要）
-kubectl delete job db-init -n fishing-app
-
-# Minikube停止
-minikube stop
-```
-
-## 本番環境（EKS）への移行
-
-1. `.sops.yaml` の production セクションに AWS KMS ARN を設定
-2. `overlays/production/` に本番用設定を追加
-3. AWS KMS で暗号化した secret を作成
-4. EKS クラスターにデプロイ
-
-```bash
-kubectl apply -k k8s/overlays/production
-```
+- **設定は `.sops.yaml`（リポジトリルート）にある。** sops は `.sops.yaml` を
+  *カレントディレクトリ* から上に辿って探すため、`k8s/` に置くと
+  リポジトリルートからの `sops -e k8s/secret.yaml` が `config file not found` で落ちる。
+- **macOS では `SOPS_AGE_KEY_FILE` の指定が要る。** sops は既定で
+  `~/Library/Application Support/sops/age/keys.txt` を探すが、鍵は
+  `~/.config/sops/age/keys.txt` にある。`~/.zshrc` で
+  `export SOPS_AGE_KEY_FILE="$HOME/.config/sops/age/keys.txt"` しておく。
+  設定しないと「鍵が壊れた」ように見える `no master key was able to decrypt` が出る。
+- **recipients は 1 つの `creation_rules` 内のカンマ区切り 1 文字列で書く。**
+  鍵ごとにルールを分けると最初にマッチした 1 つしか適用されず、
+  エラーも出ないまま CI 鍵が抜けた暗号文ができる。
+- 平文の `secret.yaml` は `.gitignore` の `k8s/**/secret.yaml` で保護されている。
+  作業後は `rm -P` で消すこと。

@@ -1,15 +1,20 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
+import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import {
-  DATE_REGEX,
   getTodayDateString,
+  isValidDateString,
   PORT_CODE_REGEX,
   PREFECTURE_CODE_REGEX,
 } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
+  return withServerTiming('tide', () => handleGet(request));
+}
+
+async function handleGet(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
     const prefectureCode = searchParams.get('prefectureCode');
@@ -34,8 +39,8 @@ export async function GET(request: NextRequest) {
       return createErrorResponse('Invalid portCode format', 400);
     }
 
-    if (!DATE_REGEX.test(date)) {
-      return createErrorResponse('Invalid date format. Use YYYY-MM-DD', 400);
+    if (!isValidDateString(date)) {
+      return createErrorResponse('Invalid date. Use an existing date in YYYY-MM-DD format', 400);
     }
 
     if (!['day', 'week', 'month'].includes(range)) {
@@ -59,7 +64,9 @@ export async function GET(request: NextRequest) {
       {
         status: 200,
         headers: {
-          'Cache-Control': response.fromCache ? 'public, max-age=3600' : 'public, max-age=300',
+          // private にすること。認証必須になったので public だと共有キャッシュ
+          // が保存でき、未認証リクエストが authorized() を通らないまま配られうる。
+          'Cache-Control': response.fromCache ? 'private, max-age=3600' : 'private, max-age=300',
         },
       },
     );

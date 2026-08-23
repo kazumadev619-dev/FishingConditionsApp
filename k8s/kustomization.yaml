@@ -1,0 +1,31 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+namespace: fishing
+
+# secret.enc.yaml は resources に入れないこと。
+# kustomize は SOPS を復号できないため、暗号文のまま Secret が上書きされ
+# 全 Pod が起動不能になる。Secret は
+# `sops -d k8s/secret.enc.yaml | kubectl apply -f -` で別途、しかも
+# この kustomization より先に適用する（手順は k8s/README.md）。
+resources:
+  - configmap.yaml
+  - service.yaml
+  - ingress.yaml
+  - deployment.yaml
+  - job-db-migrate.yaml
+
+# db-seed は初回手動実行なので resources に含めない
+
+labels:
+  - pairs:
+      app.kubernetes.io/managed-by: kustomize
+
+images:
+  # newTag はプレースホルダ。CI が `kustomize edit set image` で SHA タグに
+  # 差し替える。:latest は GHCR に push しないので、差し替え忘れは
+  # ImagePullBackOff で安全側に倒れる。
+  - name: ghcr.io/kazumadev619-dev/fishing-app
+    newTag: latest
+  - name: ghcr.io/kazumadev619-dev/fishing-app-migrator
+    newTag: latest

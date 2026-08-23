@@ -32,6 +32,9 @@ export function usePortsData() {
       const response = await fetch('/api/ports');
 
       if (!response.ok) {
+        if (response.status === 401) {
+          throw new Error('ログインが必要です');
+        }
         throw new Error('港情報の取得に失敗しました');
       }
 

@@ -63,8 +63,22 @@
 
 `src/auth/edge.ts` の `authorized` コールバックでアクセス制御を行っています（Edge Runtime専用）。
 
-- `/dashboard` で始まるパスへのアクセスには認証が必要です。未認証のユーザーはログインページ (`/login`) にリダイレクトされます。
-- 認証済みのユーザーがログインページ (`/login`) や登録ページ (`/register`) にアクセスすると、ダッシュボード (`/dashboard`) に自動的にリダイレクトされます。
+**既定は「認証必須」で、公開するパスだけを allowlist に列挙する方式です。** 新しいルートを足すと自動的に保護されるため、書き忘れが穴にならないようにしています。
+
+| 対象 | 未認証でのアクセス |
+|---|---|
+| `/login`、`/register` | 許可（`PUBLIC_PATHS`） |
+| `/auth/*` | 許可（メール検証リンクの着地ページ） |
+| `/api/auth/*` | 許可（Auth.js 本体） |
+| `/healthz`、`/readyz`、`/_next/*` などの静的・メタデータ系 | `proxy.ts` の matcher で除外され、そもそもここへ来ない |
+| 上記以外の `/api/*` | **401 `{"error":"Unauthorized"}`** |
+| 上記以外のページ | `/login` へリダイレクト |
+
+- API だけリダイレクトではなく 401 を返すのは、`fetch` の呼び出し側がログインページの HTML を掴んでしまうのを避けるためです。
+- 認証済みのユーザーがログインページ (`/login`)、登録ページ (`/register`)、ルート (`/`) にアクセスすると、ダッシュボード (`/dashboard`) に自動的にリダイレクトされます。
+- `/api/auth/*` は `proxy.ts` の matcher で除外済みですが、allowlist にも重複して入れています。matcher を変更した拍子にここが 401 を返すと「ログインするためのエンドポイントにログインが必要」になり復旧できなくなるためです。
+
+> **Stage 2 の性能計測について**: 計測対象の `/api/weather`、`/api/scores`、`/api/conditions/tide`、`/api/locations/search` も認証必須です。k6 などの計測クライアントは `/api/auth/csrf` → `/api/auth/callback/credentials` でセッション Cookie を一度取得し、それを使い回してください。
 
 ### 4. Google OAuth認証
 

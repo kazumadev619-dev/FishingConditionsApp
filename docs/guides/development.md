@@ -139,7 +139,13 @@ git commit -m "📝 docs: 開発ガイドを更新"
 
 ```bash
 # データベース
+# アプリ実行時の接続（本番は Neon の pooled エンドポイント）
 DATABASE_URL=postgresql://...
+# Prisma CLI（migrate/seed）用の接続（本番は Neon の direct エンドポイント）
+# ローカルでは DATABASE_URL と同じ値でよい。未設定だと prisma:generate /
+# prisma:migrate / prisma:seed / prisma:studio / prisma:reset が
+# PrismaConfigEnvError で落ちる
+DATABASE_URL_DIRECT=postgresql://...
 SUPABASE_URL=https://...
 SUPABASE_ANON_KEY=...
 
@@ -163,7 +169,7 @@ AUTH_GOOGLE_SECRET=...               # Google Cloud ConsoleのClient Secret
 ### 環境別設定
 
 - **開発環境**: `.env.local`
-- **Kubernetes**: `k8s/overlays/<env>/secret.yaml`（SOPS で暗号化して `secret.enc.yaml` として管理）
+- **Kubernetes**: `k8s/secret.enc.yaml`（SOPS/age で暗号化済み。編集は `sops k8s/secret.enc.yaml`。詳細は [k8s/README.md](../../k8s/README.md)）
 
 ---
 
@@ -310,8 +316,8 @@ logger.info('User login successful', { userId, timestamp });
 
 **本番環境はまだ公開していない。** デプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しており、初回デプロイはこれから行う。
 
-- **ローカル Kubernetes**: Minikube（手順は [k8s/README.md](../../k8s/README.md)）
-- **本番相当**: Raspberry Pi 5 + k3s（arm64）
+- **ローカル**: docker compose に一本化（k8s のローカル環境は用意していない）
+- **本番相当**: Raspberry Pi 5 + k3s（arm64）。マニフェストは [k8s/README.md](../../k8s/README.md)
 - **ステージング環境**: 未構築。今後整備する
 
 ### CI/CD の現状

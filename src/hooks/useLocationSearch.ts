@@ -45,6 +45,9 @@ export function useLocationSearch(query: string) {
         );
 
         if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('ログインが必要です');
+          }
           throw new Error('検索に失敗しました');
         }
 

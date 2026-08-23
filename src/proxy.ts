@@ -12,10 +12,17 @@ export const config = {
     /*
      * Match all request paths except for the ones starting with:
      * - api/auth (Auth.js routes)
+     * - healthz (liveness probe)
+     * - readyz (readiness probe)
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico, sitemap.xml, robots.txt (metadata files)
+     *
+     * 除外は全て `(?:/|$)` でパス境界に固定する。固定しないと /healthz-debug や
+     * /_next/static-evil のような別ルートまで proxy を素通りする。
+     * メタデータ系の `.` も正規表現のワイルドカードにならないようエスケープする
+     * （素の `.` だと /faviconZico が favicon.ico として除外される）。
      */
-    '/((?!api/auth|_next/static|_next/image|favicon.ico|sitemap.xml|robots.txt).*)',
+    '/((?!api/auth(?:/|$)|healthz(?:/|$)|readyz(?:/|$)|_next/static(?:/|$)|_next/image(?:/|$)|favicon\\.ico(?:/|$)|sitemap\\.xml(?:/|$)|robots\\.txt(?:/|$)).*)',
   ],
 };

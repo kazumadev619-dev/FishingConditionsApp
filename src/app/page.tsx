@@ -32,11 +32,6 @@ export default async function Home() {
   const weatherData = weatherResponse.data;
   const tideData = tideResponse.data;
 
-  // キャッシュから取得した場合、Dateオブジェクトが文字列になっているので変換
-  weatherData.sunrise = new Date(weatherData.sunrise);
-  weatherData.sunset = new Date(weatherData.sunset);
-  weatherData.dataTime = new Date(weatherData.dataTime);
-
   const fishingScore = calculateFishingScore(tideData, weatherData, currentTime);
 
   const todayTideData = tideData.tides.find((t: { date: string }) => t.date === today);

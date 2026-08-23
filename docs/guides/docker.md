@@ -205,8 +205,8 @@ docker compose ps
 docker compose exec app sh
 docker compose exec postgres psql -U postgres -d fishing_app
 
-# 新しいコンテナでコマンド実行
-docker compose run app npm run prisma:migrate
+# 新しいコンテナでコマンド実行（マイグレーションは migrator サービスを使う）
+docker compose --profile tools run --rm migrator
 
 # スケーリング（特定サービスの複数インスタンス起動）
 docker compose up -d --scale app=3
@@ -274,10 +274,15 @@ docker compose exec postgres pg_dump -U postgres fishing_app > backup.sql
 docker compose exec -T postgres psql -U postgres -d fishing_app < backup.sql
 
 # Prisma マイグレーション実行
-docker compose exec app npm run prisma:migrate
+# app（runner イメージ）には Prisma CLI が入っていないため migrator を使う
+docker compose --profile tools run --rm migrator
 
-# Prisma Studio 起動
-docker compose exec app npm run prisma:studio
+# seed 実行
+docker compose --profile tools run --rm migrator node --import tsx/esm prisma/seed.ts
+
+# Prisma Studio は migrator イメージのCLIで起動する（ポート公開が必要）
+docker compose --profile tools run --rm --service-ports migrator \
+  node_modules/.bin/prisma studio
 ```
 
 ### 2.7 Redis 操作
@@ -300,8 +305,9 @@ docker compose exec redis redis-cli FLUSHALL
 
 ## 3. Kubernetes
 
-Kubernetes へのデプロイ手順（Minikube でのローカル環境、k3s 本番環境、SOPS による Secret 管理）は
+Kubernetes へのデプロイ手順（k3s 本番環境、SOPS による Secret 管理）は
 マニフェストと同じ場所にある [k8s/README.md](../../k8s/README.md) にまとめている。
+ローカル開発に Kubernetes は使わず、この docker compose 環境に一本化している。
 
 本番環境のデプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しているが、初回デプロイはまだ行っていない。
 
@@ -412,8 +418,7 @@ docker compose down -v         # ボリュームも削除
 
 # データベース操作
 docker compose exec postgres psql -U postgres -d fishing_app
-docker compose exec app npm run prisma:migrate
-docker compose exec app npm run prisma:studio
+docker compose --profile tools run --rm migrator          # マイグレーション
 ```
 
 ---

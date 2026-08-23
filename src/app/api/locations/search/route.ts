@@ -2,9 +2,14 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
+import { withServerTiming } from '@/lib/serverTiming';
 import { isValidQuery, LIMIT_REGEX } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
+  return withServerTiming('locations-search', () => handleGet(request));
+}
+
+async function handleGet(request: NextRequest) {
   try {
     if (!isLocationSearchConfigured()) {
       return createErrorResponse(
@@ -59,7 +64,9 @@ export async function GET(request: NextRequest) {
       {
         status: 200,
         headers: {
-          'Cache-Control': response.fromCache ? 'public, max-age=3600' : 'public, max-age=300',
+          // private にすること。認証必須になったので public だと共有キャッシュ
+          // が保存でき、未認証リクエストが authorized() を通らないまま配られうる。
+          'Cache-Control': response.fromCache ? 'private, max-age=3600' : 'private, max-age=300',
         },
       },
     );
