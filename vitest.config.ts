@@ -8,8 +8,9 @@ export default defineConfig({
     },
   },
   test: {
-    // テストは src/ 配下にコロケートする（実装の隣に置いて見つけやすくする）
-    include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],
+    // テストは実装の隣に置く。src/ 配下がほとんどだが、next.config.mjs のような
+    // ルート直下の設定ファイルもテスト対象なので、ルート直下の *.test.ts も拾う
+    include: ['src/**/*.test.ts', 'src/**/*.test.tsx', '*.test.ts'],
     environment: 'node',
   },
 });
