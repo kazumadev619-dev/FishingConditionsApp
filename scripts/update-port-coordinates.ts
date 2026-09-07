@@ -3,12 +3,17 @@
  * tide736.net API から座標情報を取得してDBを更新
  *
  * 使い方:
- * npx tsx scripts/update-port-coordinates.ts [--dry-run]
+ * npx tsx scripts/update-port-coordinates.ts [--dry-run] [--only-missing]
+ *
+ * --dry-run      DBを更新せず差分だけ表示する
+ * --only-missing 座標が未設定の港だけを対象にする（既定は全港を再取得する）
  */
 
 import { PrismaPg } from '@prisma/adapter-pg';
 import pg from 'pg';
 import { PrismaClient } from '../src/generated/prisma/client';
+import { dmToDegrees } from '../src/lib/validators/coordinateValidator';
+import type { TideApiResponse } from '../src/types/tide';
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
@@ -17,22 +22,11 @@ const pool = new pg.Pool({
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter });
 
-interface TideApiResponse {
-  status: number;
-  message: string;
-  tide: {
-    port: {
-      prefecture_code: string;
-      harbor_code: string;
-      harbor_namej: string;
-      latitude: string;
-      longitude: string;
-    };
-  };
-}
-
 /**
- * tide736.net API から座標情報を取得
+ * tide736.net API から座標情報を取得し、十進度に変換して返す
+ *
+ * API は座標を度分形式（DD.MM）の JSON number で返す。例: 35.4 は 35度40分。
+ * そのまま十進度として保存すると常に南西へ最大約44km ずれる（#71）。
  */
 async function fetchCoordinates(
   prefectureCode: string,
@@ -62,12 +56,21 @@ async function fetchCoordinates(
       return null;
     }
 
-    const lat = parseFloat(data.tide.port.latitude);
-    const lng = parseFloat(data.tide.port.longitude);
-
-    if (isNaN(lat) || isNaN(lng)) {
+    let lat: number;
+    let lng: number;
+    try {
+      lat = dmToDegrees(data.tide.port.latitude);
+      lng = dmToDegrees(data.tide.port.longitude);
+    } catch (error) {
       console.warn(
-        `⚠️  Invalid coordinates for ${prefectureCode}-${portCode}: lat=${data.tide.port.latitude}, lng=${data.tide.port.longitude}`,
+        `⚠️  Invalid coordinates for ${prefectureCode}-${portCode}: lat=${data.tide.port.latitude}, lng=${data.tide.port.longitude} (${error instanceof Error ? error.message : error})`,
+      );
+      return null;
+    }
+
+    if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+      console.warn(
+        `⚠️  Coordinates out of range for ${prefectureCode}-${portCode}: lat=${lat}, lng=${lng}`,
       );
       return null;
     }
@@ -84,16 +87,17 @@ async function fetchCoordinates(
  */
 async function main() {
   const isDryRun = process.argv.includes('--dry-run');
+  const onlyMissing = process.argv.includes('--only-missing');
 
   console.log('🌊 Starting port coordinates update...');
-  console.log(`Mode: ${isDryRun ? '🔍 DRY RUN (no changes will be made)' : '✍️  LIVE UPDATE'}\n`);
+  console.log(`Mode: ${isDryRun ? '🔍 DRY RUN (no changes will be made)' : '✍️  LIVE UPDATE'}`);
+  console.log(`Target: ${onlyMissing ? '座標が未設定の港のみ' : '全港（既存の値も上書きする）'}\n`);
 
   try {
-    // 座標が未設定の港を取得
-    const portsWithoutCoords = await prisma.ports.findMany({
-      where: {
-        OR: [{ latitude: null }, { longitude: null }],
-      },
+    // 既定は全港。座標未設定だけを対象にすると、既に誤った値が入っている港が
+    // 永久に更新されない（#71 でこれが原因で誤った座標が残り続けた）。
+    const targetPorts = await prisma.ports.findMany({
+      where: onlyMissing ? { OR: [{ latitude: null }, { longitude: null }] } : {},
       select: {
         id: true,
         name: true,
@@ -104,10 +108,10 @@ async function main() {
       },
     });
 
-    console.log(`📍 Found ${portsWithoutCoords.length} ports without coordinates\n`);
+    console.log(`📍 Found ${targetPorts.length} ports to update\n`);
 
-    if (portsWithoutCoords.length === 0) {
-      console.log('✅ All ports already have coordinates!');
+    if (targetPorts.length === 0) {
+      console.log('✅ No ports to update.');
       return;
     }
 
@@ -115,9 +119,9 @@ async function main() {
     let failCount = 0;
     let skipCount = 0;
 
-    for (let i = 0; i < portsWithoutCoords.length; i++) {
-      const port = portsWithoutCoords[i];
-      const progress = `[${i + 1}/${portsWithoutCoords.length}]`;
+    for (let i = 0; i < targetPorts.length; i++) {
+      const port = targetPorts[i];
+      const progress = `[${i + 1}/${targetPorts.length}]`;
 
       // 進捗表示
       process.stdout.write(
@@ -140,7 +144,13 @@ async function main() {
 
       // DRY RUN の場合は更新をスキップ
       if (isDryRun) {
-        console.log(`✅ Would update: lat=${coords.latitude}, lng=${coords.longitude}`);
+        const before =
+          port.latitude === null || port.longitude === null
+            ? '(未設定)'
+            : `${port.latitude.toFixed(4)}, ${port.longitude.toFixed(4)}`;
+        console.log(
+          `✅ Would update: ${before} → ${coords.latitude.toFixed(4)}, ${coords.longitude.toFixed(4)}`,
+        );
         skipCount++;
         continue;
       }
@@ -166,7 +176,7 @@ async function main() {
     // サマリー
     console.log('\n' + '='.repeat(60));
     console.log('📊 Summary:');
-    console.log(`  Total ports: ${portsWithoutCoords.length}`);
+    console.log(`  Total ports: ${targetPorts.length}`);
     if (isDryRun) {
       console.log(`  Would update: ${skipCount}`);
       console.log(`  Would fail: ${failCount}`);

@@ -60,6 +60,10 @@ jobs:
       - name: Run TypeScript type check
         run: npm run type-check
 
+      # 7. ユニットテスト（Vitest）
+      - name: Run unit tests
+        run: npm run test
+
   # ============================================
   # ビルド検証
   # ============================================

@@ -59,8 +59,9 @@ function formatTideData(raw: TideApiResponse): FormattedTideData {
 
   return {
     port: {
-      prefecture_code: raw.tide.port.prefecture_code,
-      port_code: raw.tide.port.harbor_code,
+      // API は数値で返すが、DB の ports テーブル側が VarChar なので文字列で揃える
+      prefecture_code: String(raw.tide.port.prefecture_code),
+      port_code: String(raw.tide.port.harbor_code),
       port_name: raw.tide.port.harbor_namej,
     },
     tides,

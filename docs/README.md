@@ -10,6 +10,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | Docker で動かしたい | [guides/docker.md](./guides/docker.md) |
 | Kubernetes にデプロイしたい | [../k8s/README.md](../k8s/README.md) |
 | CI が落ちた原因を知りたい | [guides/ci-cd.md](./guides/ci-cd.md) |
+| テストを書きたい | [guides/development.md](./guides/development.md#テスト戦略) ／ [選定理由](./adr/003-testing-strategy.md) |
 | システム全体の構成を知りたい | [reference/architecture.md](./reference/architecture.md) |
 | 認証の仕組みを知りたい | [reference/authentication.md](./reference/authentication.md) ／ [図解](./reference/authentication-diagrams.md) |
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |

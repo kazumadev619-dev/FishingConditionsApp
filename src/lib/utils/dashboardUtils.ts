@@ -78,13 +78,13 @@ export interface TideEventDisplay {
   height: string;
 }
 
-export function formatTideEvent(timeStr: string, cmStr: string): TideEventDisplay {
+export function formatTideEvent(timeStr: string, cm: number): TideEventDisplay {
   const [hours, minutes] = timeStr.split(':');
   const timeDate = new Date();
   timeDate.setHours(parseInt(hours, 10), parseInt(minutes, 10));
 
   return {
     time: formatTime(timeDate),
-    height: `${(parseInt(cmStr, 10) / 100).toFixed(1)}m`,
+    height: `${(cm / 100).toFixed(1)}m`,
   };
 }
