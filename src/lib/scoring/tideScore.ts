@@ -18,12 +18,12 @@ export function calculateTideScore(tideData: FormattedTideData, currentTime: Dat
     ...dailyTide.flood.map((f) => ({
       time: f.time,
       type: 'flood' as const,
-      height: parseInt(f.cm, 10),
+      height: f.cm,
     })),
     ...dailyTide.edd.map((e) => ({
       time: e.time,
       type: 'edd' as const,
-      height: parseInt(e.cm, 10),
+      height: e.cm,
     })),
   ].map((e) => {
     const [hours, minutes] = e.time.split(':').map(Number);
