@@ -53,13 +53,22 @@ describe('dmToDegrees', () => {
     expect(dmToDegrees(-35.4)).toBeCloseTo(-(35 + 40 / 60), 10);
   });
 
+  it('分が 59 は有効な値として変換する（例外にする境界の直前）', () => {
+    expect(dmToDegrees(35.59)).toBeCloseTo(35 + 59 / 60, 10);
+  });
+
   it('分が 60 以上の値は度分形式ではないので例外にする', () => {
     expect(() => dmToDegrees(35.6)).toThrow(/分/);
     expect(() => dmToDegrees(35.99)).toThrow(/分/);
   });
 
+  it('-0 は 0 として扱う', () => {
+    expect(dmToDegrees(-0)).toBe(0);
+  });
+
   it('数値でない値は例外にする', () => {
     expect(() => dmToDegrees(Number.NaN)).toThrow();
     expect(() => dmToDegrees(Number.POSITIVE_INFINITY)).toThrow();
+    expect(() => dmToDegrees(Number.NEGATIVE_INFINITY)).toThrow();
   });
 });
