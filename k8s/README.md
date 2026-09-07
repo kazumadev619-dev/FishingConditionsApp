@@ -139,3 +139,47 @@ recipients は 開発者鍵 / CI 鍵 / recovery 鍵 の 3 つ。増減したら
   エラーも出ないまま CI 鍵が抜けた暗号文ができる。
 - 平文の `secret.yaml` は `.gitignore` の `k8s/**/secret.yaml` で保護されている。
   作業後は `rm -P` で消すこと。
+
+## Cloudflare を迂回して直接アクセスできる（対策せず許容している）
+
+Traefik は Pi の LAN IP で 80/443 を受けている。正しい Host ヘッダを付けて
+そこへ直接届けば、Cloudflare の WAF / レート制限を通らずにアプリへ到達する。
+
+```bash
+curl -H 'Host: fishing.kazuma-lab.com' http://<PiのLAN IP>/healthz   # → 200
+```
+
+2026-09-07 時点で実測した範囲:
+
+- **到達できるのは同一 LAN 内のみ。** ルータは 80/443 をポートフォワード
+  していない（モバイル回線からグローバル IP へは到達不可を確認）
+- cloudflared は namespace `fishing` の Pod（当時 `10.42.0.9`）
+- 迂回経路で触れるのは公開ページ（`/login` `/register`）と
+  `/api/auth/*` のみ。`/api/*` は #116 の deny-by-default で 401 を返す
+
+実害が「LAN 内からレート制限なしで認証エンドポイントを叩ける」に留まるため、
+#134 では対策しないと判断した。
+
+> **ルータで 80/443 を開けるときは、先にこれを塞ぐこと。**
+
+塞ぐなら Traefik v3（`3.6.10`）の IPAllowList ミドルウェアを
+`ingress.yaml` に付けるのが第一候補。
+
+```yaml
+apiVersion: traefik.io/v1alpha1   # v2 系の traefik.containo.us ではない
+kind: Middleware
+metadata:
+  name: cloudflared-only
+  namespace: fishing
+spec:
+  ipAllowList:                    # v2 系の ipWhiteList ではない
+    sourceRange:
+      - 10.42.0.0/16              # k3s の Pod CIDR
+```
+
+適用前に必ず確認すること。外すと本番が落ちる。
+
+1. cloudflared がアプリへ **Traefik 経由** で届いているか。
+   Service 直結ならこのミドルウェアは本番経路に効かない
+2. CI の kubeconfig に `Middleware` CRD を作る権限があるか。
+   RBAC は `fishing-infra` が所有しており、CI の権限は絞られている
