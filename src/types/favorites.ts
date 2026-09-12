@@ -59,3 +59,16 @@ export interface FavoriteAddResponse {
   /** 登録された釣り場ID（URL更新用） */
   locationId: string;
 }
+
+/**
+ * お気に入り API のエラーレスポンス
+ */
+export interface FavoriteErrorResponse {
+  /** エラーメッセージ */
+  error: string;
+  /**
+   * 409（既に登録済み）のときだけ入る。
+   * 「登録済みなのに UI が未登録と思っている」状態から復帰するために使う（#78）。
+   */
+  locationId?: string;
+}

@@ -2,7 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
-import { useFavorites } from './useFavorites';
+import { useFavorites } from '@/components/providers/favorites-provider';
+import { logger } from '@/lib/logger';
 
 interface LocationSource {
   type: 'port' | 'coordinates';
@@ -49,8 +50,9 @@ export function useDashboardFavorite(location: DashboardLocation) {
       }
 
       router.replace(`/dashboard?locationId=${newLocationId}`);
-    } catch {
-      // エラーはuseFavorites内でログ出力済み
+    } catch (err) {
+      // useFavorites 側でも記録しているが、どの地点の操作が失敗したかはここにしかない
+      logger.error({ err, locationId, source: location.source?.type }, 'Failed to toggle favorite');
     }
   }, [locationId, location, addFavorite, removeFavorite, router, checkIsFavorite]);
 
