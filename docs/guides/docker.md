@@ -22,11 +22,12 @@ Fishing Conditions App のコンテナ化に関するガイドです。Kubernete
 # 基本的なビルド
 docker build -t fishing-app:latest -f docker/Dockerfile .
 
-# ビルド引数を指定（Google Maps API Key）
+# ビルド引数を指定（ブラウザ用の Google Maps API Key）
+# サーバー用の GOOGLE_MAPS_API_KEY はビルド時に不要（ランタイムに env で渡す / #143）
 docker build \
   -t fishing-app:latest \
   -f docker/Dockerfile \
-  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_api_key_here \
+  --build-arg NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_browser_api_key_here \
   .
 
 # タグを複数付与
@@ -230,8 +231,12 @@ cp .env.example .env.local
 `.env.local` を開いて、以下の必須項目を設定してください：
 
 ```bash
-# [必須] Google Maps API Key
-NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_actual_api_key_here
+# [必須] Google Maps API Key（ブラウザ用 / Maps JavaScript API）
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY=your_browser_api_key_here
+
+# [必須] Google Maps API Key（サーバー用 / Geocoding API）
+# リファラ制限の有無が違うのでブラウザ用と共用できない（#143）
+GOOGLE_MAPS_API_KEY=your_server_api_key_here
 
 # [必須] OpenWeatherMap API Key
 OPENWEATHERMAP_API_KEY=your_actual_api_key_here
