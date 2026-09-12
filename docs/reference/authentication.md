@@ -187,17 +187,50 @@ EMAIL_FROM="noreply@yourdomain.com"
 
 ### Google Cloud Console設定
 
-1. **OAuth 2.0クライアントを作成**:
+**OAuth クライアントは本番用とローカル用で分ける。1つのクライアントに
+localhost と本番の両方のリダイレクト URI を登録してはいけない（#144）。**
+
+共用すると次の3つが同時に起きる:
+
+- **設定変更の巻き込み**: 片方の都合でリダイレクト URI や同意画面を触ると、
+  もう片方が巻き添えで壊れる
+- **露出面の拡大**: ローカルの `.env.local` が漏れると本番の認証情報も同時に漏れる
+- **ローテーション不能**: ローカル用にシークレットを再発行すると本番が即死するため、
+  怖くて回せない状態が固定化する
+
+1. **OAuth 2.0クライアントを2つ作成**:
    - [Google Cloud Console](https://console.cloud.google.com/) にアクセス
    - 「APIとサービス」→「認証情報」→「認証情報を作成」→「OAuth 2.0 クライアントID」
 
-2. **承認済みリダイレクトURI**:
-   ```
-   http://localhost:3000/api/auth/callback/google
-   https://yourdomain.com/api/auth/callback/google
-   ```
+2. **承認済みリダイレクトURI**（クライアントごとに1つだけ）:
+
+   | クライアント | リダイレクト URI | 認証情報の置き場所 |
+   | --- | --- | --- |
+   | ローカル用 | `http://localhost:3000/api/auth/callback/google` | `.env.local` |
+   | 本番用 | `https://fishing.kazuma-lab.com/api/auth/callback/google` | `k8s/secret.enc.yaml`（SOPS） |
+
+   「承認済みの JavaScript 生成元」は**不要**。Auth.js は認可コードフロー
+   （サーバー側リダイレクト）なので、ブラウザから直接トークンを取らない。
 
 3. **スコープ**: `email`, `profile`（デフォルト）
+
+4. **クライアントを差し替えても既存ユーザーは維持される**。
+   `identities.provider_id` に入る Google の `sub` は Google アカウント単位で
+   一意であり、OAuth クライアントを跨いでも変わらない。ただし差し替え後は
+   必ず既存アカウントでログインし、`users` の行が増えていないことを確認すること。
+
+#### `redirect_uri_mismatch` が出たときの切り分け
+
+`GET /api/auth/providers` は**未認証でも 200 を返す**。ここに出る
+`callbackUrl` と、エラー画面の `redirect_uri=` を突き合わせれば、
+アプリ側の設定ミスかコンソール側の登録漏れかが即座に判定できる。
+
+```bash
+curl -s https://fishing.kazuma-lab.com/api/auth/providers | jq '.google.callbackUrl'
+# => "https://fishing.kazuma-lab.com/api/auth/callback/google"
+```
+
+一致していればアプリ側は正しく、コンソールに URI が登録されていない。
 
 ## フロントエンドでの利用
 

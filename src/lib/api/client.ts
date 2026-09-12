@@ -199,9 +199,13 @@ export const openWeatherMapClient = new ApiClient(
   true,
 );
 
+// サーバー専用キー。NEXT_PUBLIC_ を付けてはいけない。付けるとビルド時に
+// クライアントバンドルへインライン化され、ブラウザ用キーと同じく第三者から
+// 取り出せる状態に戻る（#143）。Geocoding はサーバーからしか呼ばないため
+// Referer が付かず、ブラウザ用キーのリファラ制限とは両立しない。
 export const googleMapsClient = new ApiClient(
   'https://maps.googleapis.com/maps/api',
-  process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || '',
+  process.env.GOOGLE_MAPS_API_KEY || '',
   'query',
   'key',
   true,

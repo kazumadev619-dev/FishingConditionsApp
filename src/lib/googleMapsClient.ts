@@ -13,7 +13,7 @@ export const geocode = async (address: string): Promise<GeocodingResponse> => {
   // Google Maps APIが正しく設定されているかチェック
   if (!googleMapsClient.isAvailable()) {
     throw new Error(
-      'Google Maps API is not configured. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY in your environment variables.',
+      'Google Maps API is not configured. Please set GOOGLE_MAPS_API_KEY in your environment variables.',
     );
   }
 
