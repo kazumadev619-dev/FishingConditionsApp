@@ -1,11 +1,42 @@
 import { NextResponse } from 'next/server';
+import { findLocationByCoordinates, toLocationCoordinates } from '@/lib/locationIdentity';
 import prisma from '@/lib/prisma';
-import { roundCoordinate } from '@/lib/validators';
 import type { FavoriteRequest } from '@/types/favorites';
 
 type LocationResult =
   | { success: true; locationId: string }
   | { success: false; response: NextResponse<{ error: string }> };
+
+/**
+ * 座標に対応する locations を返す。無ければ作る。
+ *
+ * 検索条件（丸め）はダッシュボード側の id 解決と同じ規則を使う。
+ * ここだけ独自に丸めると「表示は未登録・DB は登録済み」がずれて 409 になる（#78）。
+ */
+async function findOrCreateLocation(
+  latitude: number,
+  longitude: number,
+  name: string,
+  portId: string | null,
+): Promise<string> {
+  const existing = await findLocationByCoordinates(latitude, longitude);
+
+  if (existing) {
+    return existing.id;
+  }
+
+  const created = await prisma.locations.create({
+    data: {
+      name,
+      ...toLocationCoordinates(latitude, longitude),
+      region: null,
+      prefecture: null,
+      port_id: portId,
+    },
+  });
+
+  return created.id;
+}
 
 export async function resolveLocationId(body: FavoriteRequest): Promise<LocationResult> {
   const { locationId, portId, coordinates } = body;
@@ -41,29 +72,10 @@ export async function resolveLocationId(body: FavoriteRequest): Promise<Location
       };
     }
 
-    const roundedLat = roundCoordinate(port.latitude);
-    const roundedLng = roundCoordinate(port.longitude);
-
-    const existingLocation = await prisma.locations.findFirst({
-      where: { latitude: roundedLat, longitude: roundedLng },
-    });
-
-    if (existingLocation) {
-      return { success: true, locationId: existingLocation.id };
-    }
-
-    const newLocation = await prisma.locations.create({
-      data: {
-        name: port.name,
-        latitude: roundedLat,
-        longitude: roundedLng,
-        region: null,
-        prefecture: null,
-        port_id: portId,
-      },
-    });
-
-    return { success: true, locationId: newLocation.id };
+    return {
+      success: true,
+      locationId: await findOrCreateLocation(port.latitude, port.longitude, port.name, portId),
+    };
   }
 
   if (coordinates) {
@@ -83,29 +95,10 @@ export async function resolveLocationId(body: FavoriteRequest): Promise<Location
       };
     }
 
-    const roundedLat = roundCoordinate(lat);
-    const roundedLng = roundCoordinate(lng);
-
-    const existingLocation = await prisma.locations.findFirst({
-      where: { latitude: roundedLat, longitude: roundedLng },
-    });
-
-    if (existingLocation) {
-      return { success: true, locationId: existingLocation.id };
-    }
-
-    const newLocation = await prisma.locations.create({
-      data: {
-        name,
-        latitude: roundedLat,
-        longitude: roundedLng,
-        region: null,
-        prefecture: null,
-        port_id: null,
-      },
-    });
-
-    return { success: true, locationId: newLocation.id };
+    return {
+      success: true,
+      locationId: await findOrCreateLocation(lat, lng, name, null),
+    };
   }
 
   return {
