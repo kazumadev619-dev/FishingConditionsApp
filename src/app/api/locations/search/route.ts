@@ -13,7 +13,7 @@ async function handleGet(request: NextRequest) {
   try {
     if (!isLocationSearchConfigured()) {
       return createErrorResponse(
-        'Location search is not configured. Please set NEXT_PUBLIC_GOOGLE_MAPS_API_KEY.',
+        'Location search is not configured. Please set GOOGLE_MAPS_API_KEY.',
         503,
       );
     }

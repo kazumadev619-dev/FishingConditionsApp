@@ -126,8 +126,9 @@ export async function searchLocations(
 }
 
 /**
- * Google Maps API が設定されているか確認
+ * サーバー専用の Google Maps キー（Geocoding 用）が設定されているか確認。
+ * ブラウザ用の NEXT_PUBLIC_GOOGLE_MAPS_API_KEY とは別物なので混同しない（#143）。
  */
 export function isLocationSearchConfigured(): boolean {
-  return !!process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY;
+  return !!process.env.GOOGLE_MAPS_API_KEY;
 }
