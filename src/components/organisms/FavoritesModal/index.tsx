@@ -1,8 +1,8 @@
 'use client';
 
 import { FavoriteTab } from '@/components/organisms/LocationSearchTabs';
+import { useFavorites } from '@/components/providers/favorites-provider';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
-import { useFavorites } from '@/hooks/useFavorites';
 
 interface FavoritesModalProps {
   open: boolean;

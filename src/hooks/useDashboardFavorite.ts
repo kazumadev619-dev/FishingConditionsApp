@@ -2,8 +2,8 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
+import { useFavorites } from '@/components/providers/favorites-provider';
 import { logger } from '@/lib/logger';
-import { useFavorites } from './useFavorites';
 
 interface LocationSource {
   type: 'port' | 'coordinates';
