@@ -66,9 +66,16 @@ export async function resolveLocation(searchParams: DashboardSearchParams): Prom
     return location;
   }
 
-  const existing = await findLocationByCoordinates(location.latitude, location.longitude);
-
-  return existing ? { ...location, id: existing.id } : location;
+  try {
+    const existing = await findLocationByCoordinates(location.latitude, location.longitude);
+    return existing ? { ...location, id: existing.id } : location;
+  } catch (error) {
+    // id が引けなくても画面は出す。ここで投げると、解決パターン側が DB 障害を
+    // 握ってデフォルト地点に落としている意味が無くなり、ダッシュボード全体が落ちる。
+    // 影響はお気に入りが未登録に見えることだけで、押せば API 側が正しく解決する
+    logger.error({ err: error, name: location.name }, 'Error resolving existing location id');
+    return location;
+  }
 }
 
 async function resolveFromSearchParams(searchParams: DashboardSearchParams): Promise<LocationData> {

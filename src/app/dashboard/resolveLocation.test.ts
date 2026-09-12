@@ -104,3 +104,17 @@ describe('resolveLocation（?locationId=）', () => {
     expect(location.portCode).toBe('2');
   });
 });
+
+describe('resolveLocation（DB 障害時）', () => {
+  it('id を引けなくても地点そのものは返す', async () => {
+    // 解決パターン側は DB 障害をデフォルト地点に落としている。
+    // 出口の id 解決だけが投げると、その保険が効かずダッシュボードごと落ちる
+    prismaMock.ports.findUnique.mockResolvedValue(TSUKIJI_PORT);
+    prismaMock.locations.findFirst.mockRejectedValue(new Error('DB unreachable'));
+
+    const location = await resolveLocation({ portId: 'port-1' });
+
+    expect(location.id).toBeUndefined();
+    expect(location.name).toBe('築地');
+  });
+});
