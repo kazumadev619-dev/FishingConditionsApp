@@ -56,11 +56,8 @@ fishing-conditions-app/
 ├── public/                        # 静的ファイル
 │   ├── icons/
 │   └── manifest.json
-├── tests/                         # テストファイル
-│   ├── unit/
-│   ├── integration/
-│   └── e2e/
 ├── package.json
+├── vitest.config.ts               # テスト設定（テスト本体は実装の隣に置く）
 ├── next.config.mjs
 ├── tailwind.config.js
 ├── tsconfig.json
@@ -125,8 +122,7 @@ git commit -m "📝 docs: 開発ガイドを更新"
 
 ### 2. 品質保証
 
-- **自動テスト**: Jest + React Testing Library
-- **E2Eテスト**: Playwright
+- **自動テスト**: Vitest（選定理由は [ADR-003](../adr/003-testing-strategy.md)）
 - **型チェック**: TypeScript strict mode
 - **リント**: Oxlint（高速チェック）+ Biome（整形）+ ESLint（CIでの深い静的解析）
 - **CI/CD**: GitHub Actions
@@ -175,52 +171,52 @@ AUTH_GOOGLE_SECRET=...               # Google Cloud ConsoleのClient Secret
 
 ## テスト戦略
 
-### 単体テスト（Jest + React Testing Library）
+ランナーは **Vitest**。選定理由と却下した候補は [ADR-003: テスト基盤の選定](../adr/003-testing-strategy.md) に記録している。
+
+```bash
+npm run test          # 一度だけ実行（CI と同じ）
+npm run test:watch    # 変更を監視して再実行
+npm run check-code    # lint + format + 型チェック + テスト
+```
+
+### テストファイルの置き場所
+
+**実装の隣にコロケートする。** `tests/` にまとめない。
+
+```
+src/lib/validators/coordinateValidator.ts
+src/lib/validators/coordinateValidator.test.ts   ← 隣に置く
+```
+
+対応関係が一目で分かり、実装ファイルを移動したときにテストが取り残されにくいためである。
+
+### 単体テスト（Node 環境）
+
+現在有効なのはこの段階のみ。外部依存を持たない純粋関数を対象にする。
 
 ```typescript
-// components/ScoreIndicator.test.tsx
-import { render, screen } from '@testing-library/react';
-import { ScoreIndicator } from './ScoreIndicator';
+// src/lib/validators/coordinateValidator.test.ts
+import { describe, expect, it } from 'vitest';
+import { dmToDegrees } from './coordinateValidator';
 
-describe('ScoreIndicator', () => {
-  it('should display score correctly', () => {
-    render(<ScoreIndicator score={85} />);
-    expect(screen.getByText('85')).toBeInTheDocument();
-    expect(screen.getByText('絶好調')).toBeInTheDocument();
+describe('dmToDegrees', () => {
+  it('度分形式を十進度に変換する', () => {
+    // 35.4 は 35度40分。十進度の 35.4 ではない
+    expect(dmToDegrees(35.4)).toBeCloseTo(35.6667, 4);
   });
 });
 ```
 
-### 統合テスト（API Routes）
+### 統合テスト・コンポーネントテスト（未導入）
 
-```typescript
-// tests/api/conditions.test.ts
-import { GET } from '@/app/api/conditions/[locationId]/route';
-import { NextRequest } from 'next/server';
+ADR-003 の Stage 2 / Stage 3 にあたる。着手時に以下を追加する。
 
-describe('/api/conditions/[locationId]', () => {
-  it('should return fishing conditions', async () => {
-    const request = new NextRequest('http://localhost:3000/api/conditions/test-location');
-    const response = await GET(request, { params: { locationId: 'test-location' } });
+| 段階 | 対象 | 追加するもの |
+|------|------|-------------|
+| Stage 2 | API Route Handler | （追加なし。Node 環境のまま） |
+| Stage 3 | Client Component | jsdom + React Testing Library |
 
-    expect(response.status).toBe(200);
-    const data = await response.json();
-    expect(data).toHaveProperty('score');
-  });
-});
-```
-
-### E2Eテスト（Playwright）
-
-```typescript
-// tests/e2e/dashboard.spec.ts
-import { test, expect } from '@playwright/test';
-
-test('dashboard displays fishing score', async ({ page }) => {
-  await page.goto('/dashboard');
-  await expect(page.locator('[data-testid=fishing-score]')).toBeVisible();
-});
-```
+E2E（Playwright）は導入するかどうかも含めて未定である。Vitest とは別ランナーとして扱う。
 
 ---
 

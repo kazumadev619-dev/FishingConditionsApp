@@ -1,4 +1,4 @@
-export { parseAndValidateCoordinates, roundCoordinate } from './coordinateValidator';
+export { dmToDegrees, parseAndValidateCoordinates, roundCoordinate } from './coordinateValidator';
 export { DATE_REGEX, getTodayDateString, isValidDateString } from './dateValidator';
 export { PORT_CODE_REGEX, PREFECTURE_CODE_REGEX } from './portCodeValidator';
 export { isValidQuery, LIMIT_REGEX } from './queryValidator';

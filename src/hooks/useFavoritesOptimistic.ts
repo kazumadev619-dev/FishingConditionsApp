@@ -4,7 +4,11 @@
 import type { Dispatch, SetStateAction } from 'react';
 import { useCallback } from 'react';
 import { logger } from '@/lib/logger';
-import type { FavoriteAddResponse, FavoriteLocation } from '@/types/favorites';
+import type {
+  FavoriteAddResponse,
+  FavoriteErrorResponse,
+  FavoriteLocation,
+} from '@/types/favorites';
 import { buildFavoriteRequestBody } from './utils/favoriteRequestBuilder';
 
 interface UseFavoritesOptimisticProps {
@@ -47,13 +51,24 @@ export function useFavoritesOptimistic({
         });
 
         if (!response.ok) {
-          const errorData = await response.json();
+          const errorData: FavoriteErrorResponse = await response.json();
 
           if (response.status === 409) {
-            throw new Error('既にお気に入りに追加されています');
-          } else if (response.status === 404) {
+            // サーバ上では既に登録済み。ここでロールバックすると
+            // 「登録済みなのにハートが灰色」という誤った表示に戻ってしまうので、
+            // 一覧を取り直して UI を実態に合わせる（#78）
+            await fetchFavorites();
+
+            if (!errorData.locationId) {
+              throw new Error('既にお気に入りに追加されています');
+            }
+            return errorData.locationId;
+          }
+
+          if (response.status === 404) {
             throw new Error('釣り場が見つかりません');
-          } else if (response.status === 401) {
+          }
+          if (response.status === 401) {
             throw new Error('ログインが必要です');
           }
 

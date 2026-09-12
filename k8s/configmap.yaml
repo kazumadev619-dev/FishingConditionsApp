@@ -9,6 +9,11 @@ data:
   NODE_ENV: "production"
   LOG_LEVEL: "info"
   # Auth.js
+  #
+  # ⚠️ AUTH_URL は消してはいけない。TLS は Cloudflare で終端しており Pod には
+  # 平文 HTTP で届くため、Auth.js は「HTTPS かどうか」を AUTH_URL のスキームだけで
+  # 判断している。ここが消える / http:// になると、セッション Cookie から
+  # __Host- プレフィックスと Secure 属性が静かに外れる（エラーは出ない）。#134
   AUTH_URL: "https://fishing.kazuma-lab.com"
   NEXTAUTH_URL: "https://fishing.kazuma-lab.com"
   # AUTH_URL があれば trustHost は true になるが、AUTH_URL を消したときに
