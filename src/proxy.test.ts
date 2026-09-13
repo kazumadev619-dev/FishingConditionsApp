@@ -16,8 +16,8 @@ import { fileURLToPath } from 'node:url';
 import { unstable_doesMiddlewareMatch } from 'next/experimental/testing/server';
 import { NextRequest } from 'next/server';
 import type { Session } from 'next-auth';
-import { describe, expect, it } from 'vitest';
-import { authorized } from '@/auth/edge';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { auth, authorized } from '@/auth/edge';
 import { config } from './proxy';
 
 const ORIGIN = 'https://fishing.kazuma-lab.com';
@@ -212,19 +212,40 @@ const ROUTES: RouteExpectation[] = [
   },
 ];
 
-/** src/app を走査して、実在するルート・ページの URL パスを列挙する */
+/**
+ * src/app を走査して、実在するルート・ページの URL パスを列挙する。
+ *
+ * この関数が取りこぼすと期待値表のチェックが素通りするので、Next.js が
+ * ルートとして認識する条件に合わせる。拡張子は `.ts` だけでなく `.js` も対象
+ * （このリポジトリは今のところ TypeScript だけだが、拾えないこと自体が死角になる）。
+ */
 function routePatternsOnDisk(): string[] {
   const appDir = fileURLToPath(new URL('./app', import.meta.url));
 
-  return readdirSync(appDir, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && /^(route\.tsx?|page\.tsx?)$/.test(entry.name))
-    .map((entry) => {
-      const dir = entry.parentPath.slice(appDir.length);
-      // ルートグループ `(group)` と プライベートフォルダ `_folder` は URL に出ない
-      const segments = dir.split('/').filter((s) => s && !s.startsWith('(') && !s.startsWith('_'));
-      return `/${segments.join('/')}`;
-    })
-    .sort();
+  return (
+    readdirSync(appDir, { recursive: true, withFileTypes: true })
+      .filter((entry) => entry.isFile() && /^(route|page)\.[jt]sx?$/.test(entry.name))
+      .map((entry) => entry.parentPath.slice(appDir.length).split('/').filter(Boolean))
+      // プライベートフォルダ `_folder` は配下ごとルーティングから外れる。
+      // セグメントを削るのではなく、ルートとして数えない。
+      .filter((segments) => !segments.some((s) => s.startsWith('_')))
+      .map((segments) => {
+        // 未対応の規約は、黙って誤った URL を作らずその場で落とす。
+        // 例えば parallel route の `@modal` をそのまま繋ぐと実在しない URL になり、
+        // 直す人が期待値表にその URL を足して辻褄を合わせてしまう。
+        const unsupported = segments.find((s) => s.startsWith('@') || /^\(\.{1,3}\)/.test(s));
+        if (unsupported) {
+          throw new Error(
+            `この走査器は parallel route / intercepting route に未対応: ${segments.join('/')}\n` +
+              'routePatternsOnDisk() を実際の URL へ変換できるよう直すこと。',
+          );
+        }
+
+        // ルートグループ `(group)` は URL に出ない
+        return `/${segments.filter((s) => !s.startsWith('(')).join('/')}`;
+      })
+      .sort()
+  );
 }
 
 describe('認証 allowlist', () => {
@@ -289,11 +310,63 @@ describe('既定 deny', () => {
       request: new NextRequest(`${ORIGIN}/api/ports`),
     });
 
-    expect(result).toBeInstanceOf(Response);
-    const response = result as Response;
+    if (!(result instanceof Response)) throw new Error(`Response が返っていない: ${result}`);
+    expect(result.status).toBe(401);
+    expect(result.headers.get('content-type')).toContain('application/json');
+    await expect(result.json()).resolves.toEqual({ error: 'Unauthorized' });
+  });
+});
+
+describe('NextAuth への配線', () => {
+  // proxy.ts が実際に使うのは authorized() ではなく、それを NextAuth() に渡して
+  // 得た auth() のほう。next-auth は authorized コールバックが渡されなかった場合、
+  // 既定で許可に倒す（node_modules/next-auth/lib/index.js の `let authorized = true`）。
+  //
+  // つまり NextAuth() の引数から `authorized,` の1行が消えると、判定ロジックが
+  // 1文字も壊れていないのに保護が丸ごと外れる。authorized() を直接呼ぶ上の
+  // テストではこれを検知できないので、ここだけ auth() を通して確かめる。
+  //
+  // 認証済みの経路は署名済み JWT クッキーが要るので扱わない。配線が外れたときに
+  // 開くのは未認証の経路なので、そこが押さえられていれば目的は果たせる。
+  beforeAll(() => {
+    // 実際の値は使わない。未設定だと @auth/core が MissingSecret を吐くだけで
+    // 判定結果は変わらないが、テストを例外経路に依存させない
+    vi.stubEnv('AUTH_SECRET', 'test-secret-not-used-for-signing');
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
+  /** proxy として呼ばれたときの auth() の応答 */
+  async function callAuth(pathname: string): Promise<Response> {
+    const handler = auth as unknown as (request: NextRequest) => Promise<Response>;
+    return handler(new NextRequest(`${ORIGIN}${pathname}`));
+  }
+
+  it('未認証で保護対象の API を叩くと 401', async () => {
+    const response = await callAuth('/api/ports');
+
     expect(response.status).toBe(401);
-    expect(response.headers.get('content-type')).toContain('application/json');
     await expect(response.json()).resolves.toEqual({ error: 'Unauthorized' });
+  });
+
+  it('未認証で保護対象のページを開くとログインへ飛ぶ', async () => {
+    const response = await callAuth('/dashboard');
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get('location')).toBe(
+      `${ORIGIN}/login?callbackUrl=${encodeURIComponent(`${ORIGIN}/dashboard`)}`,
+    );
+  });
+
+  it('公開ページはそのままハンドラへ渡る', async () => {
+    const response = await callAuth('/login');
+
+    expect(response.status).toBe(200);
+    // next-auth が「後続へ進める」ときに付けるヘッダ。
+    // 配線が外れると、保護対象でもこれが付いた 200 が返るようになる
+    expect(response.headers.get('x-middleware-next')).toBe('1');
   });
 });
 
