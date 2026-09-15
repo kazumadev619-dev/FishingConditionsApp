@@ -21,6 +21,11 @@ env:
   # sops のリリースアセットはファイル名にバージョンが入るため
   # releases/latest/download/ が使えない。明示的に固定する
   SOPS_VERSION: v3.13.3
+  # 本番マニフェストをレンダリングするツール。ci.yml と同じ版に揃える。
+  # ズレると「CI では通るが本番で出力が変わる」が起こりうる（#157）
+  KUSTOMIZE_VERSION: v5.8.1
+  # ローカルで YAML を切り出すだけなので、版を固定して出力を安定させる
+  YQ_VERSION: v4.48.1
 
 jobs:
   # ============================================
@@ -103,8 +108,13 @@ jobs:
       - name: Install tools
         run: |
           set -euo pipefail
-          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh" | bash
-          sudo mv kustomize /usr/local/bin/
+          # 上流の install_kustomize.sh は使わない。GitHub の releases API を
+          # 未認証で引くためレートリミットに当たると落ちるうえ、引数を渡さないと
+          # 最新版が入る。本番マニフェストのレンダリングに使うツールが未固定だと
+          # 上流のリリースだけでレビューを経ずに出力が変わる（#157）
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp
+          sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
           curl -fsSL "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64" -o /tmp/sops
           sudo install -m 0755 /tmp/sops /usr/local/bin/sops
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
@@ -112,9 +122,10 @@ jobs:
           # yq は ubuntu ランナーに同梱されているが、イメージ更新で消えても
           # 気づけるようにフォールバックを置く
           command -v yq >/dev/null || {
-            sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+            sudo curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
             sudo chmod +x /usr/local/bin/yq
           }
+          kustomize version
           sops --version
           yq --version
 

@@ -122,13 +122,20 @@ jobs:
       # バージョンは固定する。master / latest 参照だと上流の更新だけで
       # CI が赤にも緑にも変わり、失敗の原因を差分から追えなくなる。
       # curl は -f を付ける（付けないと 404 本文を取得して exit 0 になる）。
+      #
+      # 上流の install_kustomize.sh は使わない。あれはダウンロード URL を
+      # 解決するために GitHub の releases API を未認証で引くため、ランナーの
+      # 共有 IP がレートリミットに当たると
+      # `Github rate-limiter failed the request.` で job ごと落ちる（#157）。
+      # releases/download/ は API ではなく単なるリダイレクトなので当たらない。
       - name: Install kustomize
         env:
-          KUSTOMIZE_VERSION: 5.8.1
+          KUSTOMIZE_VERSION: v5.8.1
         run: |
-          curl -fsSL "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/kustomize%2Fv${KUSTOMIZE_VERSION}/hack/install_kustomize.sh" \
-            | bash -s "${KUSTOMIZE_VERSION}"
-          sudo mv kustomize /usr/local/bin/
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp
+          sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
+          kustomize version
 
       - name: Install kubeconform
         env:
