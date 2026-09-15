@@ -230,6 +230,10 @@ k8s/**/*secret*.y*ml
 
 # Git worktrees
 .worktrees/
+# Claude Code のサブエージェントが isolation: worktree で作る作業用ツリー。
+# .worktrees/ とはパスが違うので別途無視する。無視しないと `git add .` で
+# ネストしたリポジトリごとコミットされる
+.claude/worktrees/
 
 # superpowers skill の生成物（設計書・実装計画）はローカル作業用
 # 恒久的に残す決定は docs/adr/ に ADR として記録する
