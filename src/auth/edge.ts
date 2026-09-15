@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import NextAuth from 'next-auth';
+import NextAuth, { type NextAuthConfig } from 'next-auth';
 import { baseAuthConfig } from './config';
 
 /**
@@ -49,30 +49,41 @@ function isPublicPath(pathname: string): boolean {
   );
 }
 
+type AuthorizedCallback = NonNullable<NonNullable<NextAuthConfig['callbacks']>['authorized']>;
+
+/**
+ * アクセス可否の判定本体。proxy.ts の matcher を通ったリクエストだけがここへ来る。
+ *
+ * NextAuth() の引数に直接書かず名前付きで export しているのは、テストから呼ぶため。
+ * 「既定 deny」を実装しているのはこの関数ひとつだけで、保護が外れても型チェックも
+ * ビルドも通ってしまうため、外から検証できる形にしておく（#129）。
+ */
+export const authorized: AuthorizedCallback = ({ auth, request: { nextUrl } }) => {
+  const isLoggedIn = !!auth?.user;
+  const { pathname } = nextUrl;
+
+  // ログイン済み & 認証ページ / ルート → ダッシュボードへ
+  if (isLoggedIn && (PUBLIC_PATHS.has(pathname) || pathname === '/')) {
+    return Response.redirect(new URL('/dashboard', nextUrl));
+  }
+
+  if (isPublicPath(pathname) || isLoggedIn) {
+    return true;
+  }
+
+  // 未ログインで保護対象。API はリダイレクトすると呼び出し側が
+  // ログインページの HTML を掴んでしまうので、401 を返して区別できるようにする。
+  if (pathname.startsWith('/api/')) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  return false; // pages.signIn（/login）へリダイレクト
+};
+
 export const { auth } = NextAuth({
   ...baseAuthConfig,
   callbacks: {
     ...baseAuthConfig.callbacks,
-    authorized({ auth, request: { nextUrl } }) {
-      const isLoggedIn = !!auth?.user;
-      const { pathname } = nextUrl;
-
-      // ログイン済み & 認証ページ / ルート → ダッシュボードへ
-      if (isLoggedIn && (PUBLIC_PATHS.has(pathname) || pathname === '/')) {
-        return Response.redirect(new URL('/dashboard', nextUrl));
-      }
-
-      if (isPublicPath(pathname) || isLoggedIn) {
-        return true;
-      }
-
-      // 未ログインで保護対象。API はリダイレクトすると呼び出し側が
-      // ログインページの HTML を掴んでしまうので、401 を返して区別できるようにする。
-      if (pathname.startsWith('/api/')) {
-        return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-      }
-
-      return false; // pages.signIn（/login）へリダイレクト
-    },
+    authorized,
   },
 });
