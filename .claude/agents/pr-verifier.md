@@ -11,13 +11,14 @@ tools: ["Read", "Grep", "Glob", "Bash", "WebFetch", "WebSearch"]
 ## 0. 自分がどこにいるかを確かめる
 
 ```bash
-git rev-parse --git-dir
-git rev-parse --git-common-dir
+git rev-parse --path-format=absolute --git-dir --git-common-dir
 ```
 
-2つの出力が**同じなら本体の作業ツリーにいる**。その場合はファイルを書き換える検証（変異の注入、依存の入れ替え、`npm ci`）を一切せず、読むだけのレビューに切り替え、報告の冒頭にその旨を書く。
+2行の出力が**同じなら本体の作業ツリーにいる**（`--path-format=absolute` を付けないと、サブディレクトリから実行したとき `--git-common-dir` が `../.git` のような相対パスになり、本体を worktree と取り違える）。
 
-## 1. PR の先端を手元に置く
+本体にいたら、**手順1の `git checkout` をしない。** ファイルを書き換える検証（変異の注入、依存の入れ替え、`npm ci`）も一切せず、`gh pr diff <N>` と `git show <headRefOid>:<path>` で読むだけのレビューに切り替え、報告の冒頭にその旨を書く。
+
+## 1. PR の先端を手元に置く（worktree にいるときだけ）
 
 ```bash
 gh pr view <N> --json number,title,baseRefName,headRefName,headRefOid,files
@@ -27,6 +28,13 @@ git diff --stat origin/<baseRefName>...HEAD
 ```
 
 **差分が空、または fetch / checkout が失敗したら、そこで止めて報告する。** 差分が無いまま推論でレポートを書かない。
+
+コマンドが `Refusing to run it — a worktree-isolated agent's git operations must target its own worktree` で拒否されたら、次の書き方に分けて流し直す。
+
+- `git` / `gh` はパイプ、ループ、`$()` に入れず、1コマンドずつ単独で流す
+- `mktemp -d` の出力は、次の呼び出しで絶対パスとして書き写して使う（呼び出しの間でシェル変数は残らない）
+- JSON などのファイルはヒアドキュメントではなく `python3 -c` で書き出す
+- skill の例が複数行を `&&` でつないでいても、分けて実行してよい
 
 ## 2. 検証に使えるもの
 
@@ -38,7 +46,7 @@ git diff --stat origin/<baseRefName>...HEAD
 | 変数が設定されているかだけ知りたい | `grep -c '^NAME=' .env.local`（値は出さない） |
 | DB / Redis | Docker の `fishing-postgres`（5432）と `fishing-redis`（6379）が稼働していれば使える |
 | テスト / 型 / lint | `npm run check-code`、`npm run build` |
-| テストが退行を検知できるか | **mutation-test スキル**を使う。手で置換して戻す検証はしない |
+| テストが退行を検知できるか | `.claude/skills/mutation-test/SKILL.md` を Read して、その手順（同じディレクトリの `mutate.py`）で確かめる。手で置換して戻す検証はしない |
 | k8s マニフェスト | `kustomize build k8s/` を `origin/<base>` と PR 先端で取り、`diff` する |
 | デプロイのワークフロー | `run:` の中身を `ubuntu:24.04` コンテナで実行する（`deploy.yml` は PR では走らない） |
 | ライブラリの挙動変化 | CHANGELOG / リリースノートを WebFetch で読み、該当する使い方が `src/` にあるか grep する |

@@ -33,8 +33,15 @@ class RepoTestCase(unittest.TestCase):
         git(self.repo, "config", "user.name", "t")
         (self.repo / "target.txt").write_text("alpha\nbeta\n")
         (self.repo / "other.txt").write_text("keep\n")
+        (self.repo / "sub").mkdir()
+        (self.repo / "sub" / "inner.txt").write_text("inner\n")
+        (self.repo / "crlf.txt").write_bytes(b"alpha\r\nbeta\r\n")
+        (self.repo / "bin.dat").write_bytes(b"\xff\xfe\x00x")
+        (self.repo / ".gitignore").write_text("ignored.txt\n")
         git(self.repo, "add", ".")
         git(self.repo, "commit", "-q", "-m", "init")
+        # git status に出ないファイル。中身の比較でしか戻し損ねに気づけない
+        (self.repo / "ignored.txt").write_text("one\ntwo\n")
 
     def tearDown(self):
         self._tmp.cleanup()
@@ -43,11 +50,13 @@ class RepoTestCase(unittest.TestCase):
         spec_path = Path(self._tmp.name).parent / f"mutate-spec-{os.getpid()}-{id(spec)}.json"
         spec_path.write_text(json.dumps(spec, ensure_ascii=False))
         self.addCleanup(lambda: spec_path.unlink(missing_ok=True))
+        env = popen.pop("env", None)
         return subprocess.run(
             [sys.executable, str(SCRIPT), "run", str(spec_path), *extra],
             cwd=self.repo,
             capture_output=True,
             text=True,
+            env={**os.environ, **env} if env else None,
             **popen,
         )
 
@@ -85,6 +94,20 @@ class VerdictTest(RepoTestCase):
         self.assertEqual(result.returncode, 1, out + result.stderr)
         self.assertRegex(out, r"KILLED\s+検知される")
         self.assertRegex(out, r"SURVIVED\s+素通りする")
+
+    def test_全件を正しく検知して出力が同じでも成功(self):
+        result = self.run_spec({
+            # vitest と同じく、通過時にも失敗時にも要約行を出す
+            "command": "if grep -q alpha target.txt; then echo 'Tests  2 passed'; else echo 'Tests  1 failed'; exit 1; fi",
+            "summary_pattern": r"^Tests .*",
+            "mutations": [
+                {"label": "a", "edits": [{"file": "target.txt", "old": "alpha", "new": "A1"}]},
+                {"label": "b", "edits": [{"file": "target.txt", "old": "alpha", "new": "A2"}]},
+            ],
+        })
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("警告:", result.stdout)
+        self.assertIn("警告 0 件", result.stdout)
 
     def test_落ちないのが正解の変異(self):
         result = self.run_spec({
@@ -152,6 +175,187 @@ class HarnessErrorTest(RepoTestCase):
         })
         self.assertRegex(result.stdout, r"HARNESS_ERROR\s+上書き")
         self.assertEqual((self.repo / "target.txt").read_text(), "alpha\nbeta\n")
+
+
+class HarnessErrorMoreTest(RepoTestCase):
+    def assertHarnessError(self, result, label, reason=""):
+        # 理由まで確かめる。検査が重なっていても、どの検査で止まったかが
+        # メッセージから分からなければ spec を直せない
+        self.assertRegex(result.stdout, r"HARNESS_ERROR\s+" + label + r"\s+.*" + reason)
+        self.assertNotIn("Traceback", result.stderr)
+
+    # spec を組み立てるときに new の置換が空振りすると old と同じになる。
+    # 何も変えない変異を PASSED にすると「落ちないのが正解」を確かめたことになってしまう
+    def test_old_と_new_が同じ変異はエラー(self):
+        result = self.run_spec({
+            "command": "grep -q alpha target.txt",
+            "mutations": [{"label": "同じ", "expect": "pass", "edits": [
+                {"file": "other.txt", "old": "keep", "new": "keep"}]}],
+        })
+        self.assertHarnessError(result, "同じ", "old と new が同じ")
+        self.assertNotEqual(result.returncode, 0)
+
+    def test_count_0_はエラー(self):
+        result = self.run_spec({
+            "command": "grep -q alpha target.txt",
+            "mutations": [{"label": "ゼロ", "expect": "pass", "edits": [
+                {"file": "other.txt", "old": "typo", "new": "x", "count": 0}]}],
+        })
+        self.assertHarnessError(result, "ゼロ", "count は1以上")
+
+    # 1つずつ見ると変えているが、合わせると元に戻る変異。old == new や count の検査では
+    # 止まらず、適用後の中身を元と比べて初めて止まる
+    def test_edit_を合わせると元に戻る変異はエラー(self):
+        result = self.run_spec({
+            "command": "grep -q alpha target.txt",
+            "mutations": [{"label": "往復", "expect": "pass", "edits": [
+                {"file": "target.txt", "old": "alpha", "new": "ALPHA"},
+                {"file": "target.txt", "old": "ALPHA", "new": "alpha"}]}],
+        })
+        self.assertHarnessError(result, "往復", "中身が変わらない")
+
+    def test_edit_を積み上げて後の置換対象が消えたらエラー(self):
+        result = self.run_spec({
+            "command": "true",
+            "mutations": [{"label": "消える", "edits": [
+                {"file": "target.txt", "old": "alpha\nbeta", "new": "x"},
+                {"file": "target.txt", "old": "beta", "new": "y"}]}],
+        })
+        self.assertHarnessError(result, "消える", "置換対象が 0 箇所")
+
+    def test_リポジトリの外はエラー(self):
+        result = self.run_spec({
+            "command": "true",
+            "mutations": [{"label": "外", "create": [
+                {"file": "../outside.txt", "content": "x"}]}],
+        })
+        self.assertHarnessError(result, "外", "リポジトリの外")
+
+    def test_UTF8_で読めないファイルはエラーにして他の変異は続ける(self):
+        result = self.run_spec({
+            "command": "grep -q alpha target.txt",
+            "mutations": [
+                {"label": "バイナリ", "edits": [{"file": "bin.dat", "old": "x", "new": "y"}]},
+                {"label": "普通", "edits": [{"file": "target.txt", "old": "alpha", "new": "A"}]},
+            ],
+        })
+        self.assertHarnessError(result, "バイナリ", "UTF-8 として読めない")
+        self.assertRegex(result.stdout, r"KILLED\s+普通")
+
+    def test_親がファイルのパスへの_create_はエラー(self):
+        result = self.run_spec({
+            "command": "true",
+            "mutations": [{"label": "親がファイル", "create": [
+                {"file": "target.txt/child.txt", "content": "x"}]}],
+        })
+        self.assertHarnessError(result, "親がファイル", "親がディレクトリではない")
+        self.assertEqual((self.repo / "target.txt").read_text(), "alpha\nbeta\n")
+
+    def test_落ちないのが正解の変異がエラーでも検知の分母に数えない(self):
+        result = self.run_spec({
+            "command": "grep -q alpha target.txt",
+            "mutations": [
+                {"label": "検知", "edits": [{"file": "target.txt", "old": "alpha", "new": "A"}]},
+                {"label": "空振り", "expect": "pass", "edits": [
+                    {"file": "other.txt", "old": "nothing", "new": "x"}]},
+            ],
+        })
+        self.assertIn("検知 1/1", result.stdout)
+
+    def test_変異が1件も無ければ止まる(self):
+        result = self.run_spec({"command": "true", "mutations": []})
+        self.assertEqual(result.returncode, 2)
+
+
+class RestoreMoreTest(RepoTestCase):
+    def test_同じ_ignored_ファイルへの2つの_edit_を元どおりに戻す(self):
+        result = self.run_spec({
+            "command": "grep -q one ignored.txt",
+            "mutations": [{"label": "2箇所", "edits": [
+                {"file": "ignored.txt", "old": "one", "new": "ONE"},
+                {"file": "ignored.txt", "old": "two", "new": "TWO"}]}],
+        })
+        self.assertEqual((self.repo / "ignored.txt").read_text(), "one\ntwo\n")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    # 変異を入れたときだけリポジトリを汚すコマンドは、元の状態に戻っていないので止める
+    def test_変異中にだけ未追跡ファイルが増えたら止まる(self):
+        result = self.run_spec({
+            "command": "if grep -q ALPHA target.txt; then echo x > leak.txt; fi; grep -q alpha target.txt",
+            "mutations": [{"label": "漏れる", "edits": [
+                {"file": "target.txt", "old": "alpha", "new": "ALPHA"}]}],
+        })
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("git status", result.stdout)
+
+    # 変異なしの実行で作られたものまで「復元に失敗」と言わない
+    def test_変異なしの実行が作った未追跡ファイルは失敗扱いしない(self):
+        result = self.run_spec({
+            "command": "echo x > made.txt; grep -q alpha target.txt",
+            "mutations": [{"label": "普通", "edits": [
+                {"file": "target.txt", "old": "alpha", "new": "A"}]}],
+        })
+        self.assertNotIn("復元に失敗", result.stdout)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_書き戻しに失敗しても残りを戻して止まる(self):
+        result = self.run_spec({
+            "command": "if grep -q INNER sub/inner.txt; then rm sub/inner.txt && mkdir sub/inner.txt; fi; true",
+            "mutations": [{"label": "壊す", "edits": [
+                {"file": "sub/inner.txt", "old": "inner", "new": "INNER"},
+                {"file": "other.txt", "old": "keep", "new": "KEEP"}]}],
+        })
+        self.assertEqual((self.repo / "other.txt").read_text(), "keep\n")
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("sub/inner.txt", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
+
+    def test_CRLF_を保つ(self):
+        result = self.run_spec({
+            "command": "test \"$(tr -cd '\\r' < crlf.txt | wc -c | tr -d ' ')\" = 2",
+            "mutations": [{"label": "改行", "expect": "pass", "edits": [
+                {"file": "crlf.txt", "old": "alpha", "new": "ALPHA"}]}],
+        })
+        self.assertRegex(result.stdout, r"PASSED\s+改行")
+        self.assertEqual((self.repo / "crlf.txt").read_bytes(), b"alpha\r\nbeta\r\n")
+
+
+class ExecutionTest(RepoTestCase):
+    def test_時間切れでも出力を残し孫プロセスも止める(self):
+        marker = f"mutate-orphan-{os.getpid()}"
+        result = self.run_spec({
+            "command": f"echo before-timeout; if grep -q ALPHA target.txt; then (exec -a {marker} sleep 30) & wait; fi",
+            "timeout": 2,
+            "mutations": [{"label": "遅い", "edits": [
+                {"file": "target.txt", "old": "alpha", "new": "ALPHA"}]}],
+        })
+        self.assertRegex(result.stdout, r"TIMEOUT\s+遅い")
+        # 先頭に表示するコマンド文字列にも before-timeout が含まれるので、
+        # 出力の末尾セクションの中にあることを確かめる
+        self.assertRegex(result.stdout, r"--- TIMEOUT: 遅い の出力（末尾）---\nbefore-timeout")
+        time.sleep(0.5)
+        left = subprocess.run(["pgrep", "-f", marker], capture_output=True, text=True).stdout
+        if left.strip():
+            subprocess.run(["pkill", "-f", marker])
+        self.assertEqual(left.strip(), "", "孫プロセスが残っている")
+
+    def test_unset_env_で環境変数を外す(self):
+        result = self.run_spec({
+            "command": 'test -z "${MUTATE_TEST_FLAG:-}" && grep -q alpha target.txt',
+            "unset_env": ["MUTATE_TEST_FLAG"],
+            "mutations": [{"label": "m", "edits": [
+                {"file": "target.txt", "old": "alpha", "new": "A"}]}],
+        }, env={"MUTATE_TEST_FLAG": "1"})
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    def test_cwd_で実行ディレクトリを変える(self):
+        result = self.run_spec({
+            "command": "grep -q inner inner.txt",
+            "cwd": "sub",
+            "mutations": [{"label": "m", "edits": [
+                {"file": "sub/inner.txt", "old": "inner", "new": "I"}]}],
+        })
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class RestoreTest(RepoTestCase):

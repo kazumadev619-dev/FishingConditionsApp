@@ -128,7 +128,17 @@ Agent(
 - **`isolation: "worktree"` を付ける。** レビュアーは変異の注入や依存の入れ替えでファイルを書き換える
 - 角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）
 
-`pr-verifier` が選べないとき（agent 定義を足したばかりのセッションなど）は、`general-purpose` に `.claude/agents/pr-verifier.md` の本文をそのまま渡す。**Bash を持たない agent type（例: `everything-claude-code:architect`）には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
+`pr-verifier` が選べないとき（agent 定義を足したばかりのセッション、定義がまだ develop に無いブランチにいるときなど）は、`general-purpose` に「最初に `.claude/agents/pr-verifier.md` を Read し、frontmatter より下の本文に従う。使うツールは frontmatter の `tools` だけ」と指示して投げる。**Bash を持たない agent type（例: `everything-claude-code:architect`）には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
+
+**レビューが走っている間、本体の作業ツリーのブランチを切り替えない。** agent 定義や skill は作業ツリーのファイルから読まれるので、定義が無いブランチに切り替えると agent type が選べなくなる（切り替えた直後にレビューが停止したことがある。因果は断定できていない）。別のブランチを触る必要があれば、別の worktree で作業する。
+
+```bash
+W=$(mktemp -d)/wt
+git worktree add "$W" <branch>
+cmp package-lock.json "$W/package-lock.json" && ln -s "$PWD/node_modules" "$W/node_modules"   # lock が同じときだけ
+# ... "$W" で編集・コミット・プッシュ（husky のフックがそのまま動く。--no-verify は使わない）
+rm "$W/node_modules" && git worktree remove "$W"
+```
 
 エージェントが走っている間、**同じファイルを触らない**。別 issue を進めるか、衝突しない調査をする。
 
@@ -172,7 +182,7 @@ Closes #133
 Refs #110（残り: メジャー8件。完了条件が「メジャーは個別 PR」のため開けておく）
 ```
 
-`Closes` は1行1件。`Closes #129 #133` と並べると #129 しか閉じない。
+**番号ごとにキーワードを付ける。** GitHub の公式ドキュメントは「Use full syntax for each issue」（例: `Resolves #10, resolves #123`）としている。`Closes #129 #133` のように1つのキーワードに番号を並べる書き方は規則から外れ、閉じる対象に入らない可能性がある。上のように1行1件で書くのが一番確実。どう認識されたかは次の手順4で確かめる。
 
 ```bash
 gh pr create --base main --head develop --title "<まとめ> (#129 #133)" --body-file <本文>
