@@ -121,17 +121,8 @@ PR の作り方は `github-push-pr` スキルに従う。加えて:
 
 GitHub が自動クローズするのは**デフォルトブランチ（main）にマージされたとき**だけ。`develop` 向け PR に `Closes #N` と書いても何も起きない。
 
-- **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する
-- **main 昇格 PR**: そこに `Closes` をまとめて書く
-
-**`Closes` は参照ごとに必要。1行に並べると最初の1件しか閉じない。**
-
-```
-Closes #143
-Closes #144
-```
-
-`Closes #143 #144` と書くと #143 しか閉じない。実際に4件を閉じた PR #153 は1行1件で書いている。
+- **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する。issue の一部だけを扱う PR なら「この PR では閉じない」と書く（ステップ6で `Closes` と `Refs` を分けるときの手がかりになる）
+- **main 昇格 PR**: ステップ6の手順で書く
 
 ### レビューはサブエージェントに worktree 隔離で投げる
 
@@ -167,11 +158,64 @@ Agent(subagent_type: <reviewer>, isolation: "worktree", prompt: ...)
 
 `develop` に溜まった分をまとめて `main` へ。ここで初めて `Deploy` ワークフローが走る。
 
+### 1. 対象の issue を機械的に列挙する
+
+目で追うと落とす。コミット件名の末尾の番号から拾う（マージコミットは PR 番号が混ざるので除く）。
+
 ```bash
-git log --oneline origin/main..origin/develop   # 未リリース分の確認
+git fetch origin
+for n in $(git log --no-merges --format=%s origin/main..origin/develop | grep -oE '#[0-9]+$' | tr -d '#' | sort -n -u); do
+  gh api "repos/{owner}/{repo}/issues/$n" \
+    --jq '"#\(.number)  \(if .pull_request then "PR" else "issue" end)  \(.state)  \(.title)"'
+done
 ```
 
-昇格 PR の本文に `Closes #A #B #C` を並べる。デプロイ後に本番で実際に確認する（`/healthz`、変更した機能の画面）。
+### 2. 閉じるものと閉じないものを分ける
+
+列挙した issue ごとに、その issue を扱った develop 向け PR の本文を読む。
+
+- PR 本文に「この PR では閉じない」「残りのタスク」「第1弾」と書いてある issue → **`Refs #N`**
+- それ以外 → **`Closes #N`**
+
+### 3. PR 本文の先頭をこの形で書く
+
+```
+Closes #129
+Closes #133
+
+Refs #110（残り: メジャー8件。完了条件が「メジャーは個別 PR」のため開けておく）
+```
+
+`Closes` は1行1件。`Closes #129 #133` と並べると #129 しか閉じない。
+
+```bash
+gh pr create --base main --head develop --title "<まとめ> (#129 #133)" --body-file <本文>
+```
+
+### 4. マージ前に GitHub の認識を確かめる
+
+```bash
+gh pr view <N> --json closingIssuesReferences --jq '[.closingIssuesReferences[].number] | sort'
+```
+
+出力が手順2で `Closes` にしたものと一致すること。`Refs` にした番号が入っていたら本文を直す。
+
+### 5. デプロイを見守り、本番で確かめる
+
+```bash
+gh run list --workflow=deploy.yml --limit 1
+gh run watch <run-id>
+```
+
+**デプロイは途中で止めない。** マイグレーション中に中断すると `_prisma_migrations` に failed レコードが残り、以後の `migrate deploy` がすべて止まる。
+
+本番で確かめるもの:
+
+- `/healthz` が `{"status":"ok"}`、`/readyz` が `database` / `cache` ともに `ok`
+- 未認証の `/api/ports` が 401
+- この昇格に含まれる変更それぞれについて、変わったことが外から見える点（画面、ヘッダ、デプロイログの `configured` / `created` 行など）
+
+最後に手順2で `Closes` にした issue が CLOSED、`Refs` にした issue が OPEN のままであることを確かめる。
 
 ## commitlint の落とし穴（github-push-pr に加えて）
 
