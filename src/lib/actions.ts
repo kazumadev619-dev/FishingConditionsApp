@@ -10,6 +10,7 @@ import { Prisma } from '@/generated/prisma/client';
 import { sendVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
+import { CONSTRAINTS, isViolationOf } from '@/lib/prismaConstraints';
 import { createVerificationToken } from '@/lib/token';
 
 const SignupFormSchema = z.object({
@@ -91,8 +92,9 @@ export async function signup(_prevState: string | undefined, formData: FormData)
 
         case 'P2002': {
           // Unique constraint violation
-          const target = error.meta?.target;
-          if (Array.isArray(target) && target.includes('email')) {
+          // error.meta の形は driver adapter の有無とバージョンで変わるため、
+          // meta.target を直接読まない（#161）
+          if (isViolationOf(error, CONSTRAINTS.usersEmail)) {
             return 'このメールアドレスは既に使用されています。';
           }
           return 'このデータは既に登録されています。';

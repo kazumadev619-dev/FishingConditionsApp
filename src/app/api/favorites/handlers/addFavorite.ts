@@ -3,6 +3,7 @@ import { auth } from '@/auth';
 import { Prisma } from '@/generated/prisma/client';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
+import { CONSTRAINTS, isViolationOf } from '@/lib/prismaConstraints';
 import { isValidUUID } from '@/lib/validators';
 import type {
   FavoriteAddResponse,
@@ -33,8 +34,9 @@ function toKnownErrorResponse(error: unknown, locationId: string): AddFavoriteRe
       );
 
     case 'P2003': {
-      const meta = error.meta as { constraint?: string } | undefined;
-      if (meta?.constraint?.includes('user_id')) {
+      // error.meta の形は driver adapter の有無とバージョンで変わるため、
+      // meta.constraint を直接読まない（#161）
+      if (isViolationOf(error, CONSTRAINTS.favoritesUserId)) {
         return NextResponse.json({ error: 'User not found' }, { status: 401 });
       }
       return NextResponse.json({ error: 'Location not found' }, { status: 404 });

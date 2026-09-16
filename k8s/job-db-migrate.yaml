@@ -39,8 +39,12 @@ spec:
           # envFrom は付けない。prisma.config.ts が読むのは DATABASE_URL_DIRECT
           # だけで、余計な変数を渡すと ConfigMap の変更が Job の再作成理由に
           # なってしまう（Job の spec.template は immutable）。
-          # なお ConfigMap は kustomize 出力で Job より前に置かれ、同じ
-          # apply で先に作られるので「初回に ConfigMap が無い」ことは起きない。
+          #
+          # さらに、deploy.yml は rendered.yaml から Job だけを yq で切り出して
+          # 先に apply する。その時点で ConfigMap はまだ適用されていない。
+          # 加えて ConfigMap は configMapGenerator でハッシュ付きの名前になり
+          # 内容を変えるたびに別名になるので（#133）、envFrom を足すと
+          # CreateContainerConfigError で activeDeadlineSeconds まで待つことになる。
           env:
             - name: DATABASE_URL_DIRECT
               valueFrom:

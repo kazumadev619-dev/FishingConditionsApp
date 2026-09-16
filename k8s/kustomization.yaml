@@ -9,13 +9,34 @@ namespace: fishing
 # `sops -d k8s/secret.enc.yaml | kubectl apply -f -` で別途、しかも
 # この kustomization より先に適用する（手順は k8s/README.md）。
 resources:
-  - configmap.yaml
   - service.yaml
   - ingress.yaml
   - deployment.yaml
   - job-db-migrate.yaml
 
 # db-seed は初回手動実行なので resources に含めない
+
+# ConfigMap は resources に固定名で置かず、ここで生成する。
+# 生成名には内容のハッシュが付き（fishing-app-config-t676559hhk のような形）、
+# Deployment の configMapRef ごと kustomize が書き換える。これにより
+# config.env を変えると Pod テンプレートが変わり、確実にロールアウトされる。
+#
+# 固定名だと apply しても Deployment は無変更のままで、環境変数は Pod 起動時に
+# しか読まれないため反映されない。イメージタグが変わるデプロイでは Pod が
+# 入れ替わるので気づかず、ConfigMap だけ直したときに静かに無反映になる（#133）。
+#
+# disableNameSuffixHash は付けないこと。付けると固定名に戻り、この仕組みが死ぬ。
+#
+# 古い ConfigMap は apply では消えずクラスタに残るが、これは意図的。
+# deploy.yml は失敗時に `kubectl rollout undo` するため、巻き戻し先の Pod
+# テンプレートが参照する ConfigMap が消えていると復旧できなくなる。
+configMapGenerator:
+  - name: fishing-app-config
+    envs:
+      - config.env
+    options:
+      labels:
+        app.kubernetes.io/name: fishing-app
 
 labels:
   - pairs:
