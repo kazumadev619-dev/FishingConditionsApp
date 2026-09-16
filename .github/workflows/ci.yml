@@ -185,7 +185,12 @@ jobs:
           # `configMapRef:` の直後の行だけを見る。ファイル全体を探すと ConfigMap 自身の
           # metadata.name に一致して常に通り、configMapRef を消しても素通りした（#172）。
           # grep -q にパイプで渡すと、早く抜けたときの SIGPIPE が pipefail で失敗扱いに
-          # なりうるので、いったん変数に入れる
+          # なりうるので、いったん変数に入れる。
+          #
+          # 前提: 生成名を参照する configMapRef は Deployment の唯一のコンテナにしか無い。
+          # rendered.yaml 全体のどこかに参照があれば通るので、サイドカーや initContainer、
+          # Job に同じ参照を足したうえで本体から消すと素通りする。コンテナを増やすときは
+          # Deployment の文書だけを切り出して見るよう直すこと
           refs=$(grep -A1 -E '^ +- configMapRef:$' /tmp/rendered.yaml || true)
           if ! grep -qE "^ +name: ${generated}$" <<<"$refs"; then
             echo "::error::Deployment が configMapRef で ${generated} を参照していない（configMapRef が無い、名前が違う、deployment.yaml が resources に無い、のいずれか）"
