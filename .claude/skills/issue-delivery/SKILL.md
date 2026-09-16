@@ -135,10 +135,12 @@ Agent(
 ```bash
 W=$(mktemp -d)/wt
 git worktree add "$W" <branch>
-cmp package-lock.json "$W/package-lock.json" && ln -s "$PWD/node_modules" "$W/node_modules"   # lock が同じときだけ
-# ... "$W" で編集・コミット・プッシュ（husky のフックがそのまま動く。--no-verify は使わない）
-rm "$W/node_modules" && git worktree remove "$W"
+(cd "$W" && npm ci)   # husky のフックに要る。--no-verify で飛ばさない
+# ... "$W" で編集・コミット・プッシュ
+git worktree remove --force "$W"
 ```
+
+本体の `node_modules` をリンクして `npm ci` を省く手もあるが、**lock ファイルが同じでも本体の `node_modules` が古いことがある**（別ブランチで `npm ci` したまま切り替えていた。lock は prisma 7.10.0 なのに 7.9.1 が入っていた）。リンクするなら先に本体で `npm ci` を流す。
 
 エージェントが走っている間、**同じファイルを触らない**。別 issue を進めるか、衝突しない調査をする。
 
