@@ -1,6 +1,6 @@
 ---
 name: issue-delivery
-description: GitHub issue を1本ずつ仕上げて本番まで届けるスキル。ユーザーが「次のISSUEをやろう」「他に対応すべきISSUEはある？」「#123を進めて」「並行して動かせるISSUEはある？」などと言ったとき、または issue を選ぶ・実装する・レビューさせる・develop から main へ昇格させるときに使う。commit/push/PR の書式そのものは github-push-pr スキルに従う。
+description: GitHub issue を1本ずつ仕上げて本番まで届けるスキル。ユーザーが「次のissueをやろう」「他に対応すべきissueはある？」「#123を進めて」「並行して動かせるissueはある？」「本番に出して」「リリースして」「main にマージして」などと言ったとき、または issue を選ぶ・実装する・レビューさせる・develop から main へ昇格させるときに使う。commit/push/PR の書式そのものは github-push-pr スキルに従う。
 ---
 
 # Issue を仕上げて本番へ届ける
@@ -43,7 +43,12 @@ gh pr view <N> --json files --jq '.files[].path'
 
 ## ステップ2: 実装
 
-CLAUDE.md の禁止事項を守る。`@ts-ignore` / 空 catch / リンター設定ファイルの直接編集は不可。
+CLAUDE.md の禁止事項を守る。
+
+- `@ts-ignore` / 空 catch 禁止（根本原因を修正する）
+- リンター設定ファイル（`biome.json` / `.oxlintrc.json` / `eslint.config.*`）の直接編集禁止。直す必要があるならユーザーに方針を確認する
+- 関連が薄く見えるエラーの放置禁止（対処するか、理由を明示して記録する）
+- **テストを通すためだけのテスト改変禁止（実装の誤りを疑う）**。ステップ3の変異テストで落ちたときに一番効く
 
 **スコープを勝手に広げない。** 作業中に見つけた無関係な問題は、このブランチに混ぜず別 issue にする（ステップ5参照）。
 
@@ -57,11 +62,15 @@ CLAUDE.md の禁止事項を守る。`@ts-ignore` / 空 catch / リンター設�
 
 ```bash
 # 例: 過去の退行を実際に注入してテストを走らせ、毎回元に戻す
+SCRATCH=$(mktemp -d)
 cp src/target.ts "$SCRATCH/orig"
 # ... 変異を注入 ...
 npx vitest run <test> | grep -E '^ +Tests +'
 cp "$SCRATCH/orig" src/target.ts
+git diff --stat src/target.ts   # 差分が無いこと＝復元できたことを毎回確かめる
 ```
+
+**ハーネス自体が壊れていないか確かめる。** 「変異なし」で通ることを必ず最初に測る。全件が同じ結果になったらテストではなくハーネスを疑う（ワークフローから `run:` を切り出す処理が途中で切れていて、実行していたのは `set -euo pipefail` の1行だけ、ということが実際にあった）。
 
 過去に修正した issue の退行を再現するのが最も価値が高い（そのバグは実際に起きたのだから）。
 
@@ -69,14 +78,30 @@ cp "$SCRATCH/orig" src/target.ts
 
 ### インフラを変えたとき: 実際に動かす
 
-`deploy.yml` は `main` への push でしか動かず CI で検証できない。**本番が初回テストになる変更は、ローカルで実行して確かめる。**
+`deploy.yml` は PR では走らない（`push: branches: [main]` と `workflow_dispatch` のみ）。**本番が初回テストになる変更は、ローカルで実行して確かめる。**
 
 ```bash
-# ランナー相当の環境でステップの中身をそのまま流す
-docker run --rm --platform linux/amd64 -v "$PWD":/repo:ro ubuntu:24.04 bash /script.sh
+# ワークフローの run: の中身を切り出して、ランナー相当の環境でそのまま流す。
+# deploy ジョブは runs-on: ubuntu-latest（amd64）、build ジョブは
+# ubuntu-24.04-arm なので、再現したい方に --platform を合わせる
+SCRATCH=$(mktemp -d)
+cat > "$SCRATCH/step.sh" <<'SH'
+set -euo pipefail
+# ここにワークフローの run: の中身を貼る
+SH
+docker run --rm --platform linux/amd64 \
+  -v "$SCRATCH":/scratch:ro -v "$PWD":/repo:ro ubuntu:24.04 bash /scratch/step.sh
 ```
 
 k8s マニフェストは `develop` との**レンダリング差分**を取る。意図した行だけが変わっていることを示す。
+
+```bash
+kustomize build k8s/ > /tmp/new.yaml
+git stash -u && git checkout develop
+kustomize build k8s/ > /tmp/old.yaml
+git checkout - && git stash pop
+diff /tmp/old.yaml /tmp/new.yaml
+```
 
 ### 依存を更新したとき
 
@@ -86,7 +111,7 @@ k8s マニフェストは `develop` との**レンダリング差分**を取る�
 
 ### 外部の主張は自分で確かめる
 
-advisory の影響範囲、ライブラリの挙動、エージェントの報告——**自分でコマンドを流して裏を取ってから報告する。**
+advisory の影響範囲もライブラリの挙動も、**自分でコマンドを流して裏を取ってから報告する。**「メジャーじゃないから安全なはず」は根拠にならない。
 
 ## ステップ4: PR とレビュー
 
@@ -96,8 +121,17 @@ PR の作り方は `github-push-pr` スキルに従う。加えて:
 
 GitHub が自動クローズするのは**デフォルトブランチ（main）にマージされたとき**だけ。`develop` 向け PR に `Closes #N` と書いても何も起きない。
 
-- develop 向け PR: 本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する
-- main 昇格 PR: そこに `Closes #A #B #C` をまとめて書く
+- **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する
+- **main 昇格 PR**: そこに `Closes` をまとめて書く
+
+**`Closes` は参照ごとに必要。1行に並べると最初の1件しか閉じない。**
+
+```
+Closes #143
+Closes #144
+```
+
+`Closes #143 #144` と書くと #143 しか閉じない。実際に4件を閉じた PR #153 は1行1件で書いている。
 
 ### レビューはサブエージェントに worktree 隔離で投げる
 
@@ -106,6 +140,8 @@ GitHub が自動クローズするのは**デフォルトブランチ（main）�
 ```
 Agent(subagent_type: <reviewer>, isolation: "worktree", prompt: ...)
 ```
+
+**agent type によって使えるツールが違う。投げる前に確認する。** `everything-claude-code:architect` は Read/Grep/Glob のみで **Bash が無く**、`git fetch` すらできずに推論だけのレポートが返ってきたことがある。Bash を持つのは `security-reviewer` / `typescript-reviewer` / `code-reviewer` / `database-reviewer` / `general-purpose` など。
 
 プロンプトに必ず入れること:
 
@@ -149,10 +185,26 @@ OK: PR（#156）の CI で実際に踏んだ。   ← 全角括弧で囲む
 OK: 段落の1行目に置く
 ```
 
-コミット前に `npx --no-install commitlint < msg.txt` で検証する。
+半角括弧 `(#123)` では回避できない（実測）。
+
+**本文に `:word:` の形のトークンを書くと gitmoji コードとして検証され、実在しないコードだと `start-with-gitmoji` に落ちる。** 実測:
+
+| 本文に書いたもの | 結果 |
+|---|---|
+| `:fire:`（実在する gitmoji コード） | 通る |
+| `:notacode:` | 落ちる |
+| `::`（空のコード扱い） | 落ちる |
+| `::error::` を単語として置く | 落ちる |
+| `::error::foo`（前後がくっついている） | 通る |
+
+GitHub Actions のアノテーション記法をコミット本文に貼ったときに踏んだ。コード片を本文に入れるときは言い換える。
+
+コミット前に `npx --no-install commitlint < msg.txt` で検証する。**`echo "<msg>" | npx commitlint` ではこの手の落とし穴を検出できない**（1行に潰れるので `subject-empty` など無関係なエラーになる）。ファイルから流し込むこと。
 
 ## 秘密情報
 
+`.env` などを git add しない話は `github-push-pr` と CLAUDE.md にあるので、ここでは重複させない。加えて:
+
 - `sops` を Claude Code の `!` から実行しない（TTY が無くエディタが異常終了し、復号内容が会話ログへ出る。2026-09-12 に実際に事故った）
 - 秘密の値をコマンドラインに渡さない。`npx dotenv -e .env.local -- <cmd>` の形を使う
-- `.env` / `*.key` / `kubeconfig` / `*_rsa` は git add 禁止。`git add .` を使わず**パスを明示**する
+- サブエージェントにも同じ制約を明示する（レビュアーが `.env.local` の中身を出力してしまったことがある）
