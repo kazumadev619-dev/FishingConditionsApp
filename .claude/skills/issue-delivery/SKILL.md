@@ -124,25 +124,23 @@ GitHub が自動クローズするのは**デフォルトブランチ（main）�
 - **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する。issue の一部だけを扱う PR なら「この PR では閉じない」と書く（ステップ6で `Closes` と `Refs` を分けるときの手がかりになる）
 - **main 昇格 PR**: ステップ6の手順で書く
 
-### レビューはサブエージェントに worktree 隔離で投げる
+### レビューは `pr-verifier` agent に worktree 隔離で投げる
 
-レビュアーは検証のためにファイルを書き換える（バグを注入する、依存を入れ替える）。作業ツリーを共有すると衝突する。
+守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.claude/agents/pr-verifier.md` に書いてある。呼ぶ側が渡すのは次の3つだけ。
 
 ```
-Agent(subagent_type: <reviewer>, isolation: "worktree", prompt: ...)
+Agent(
+  subagent_type: "pr-verifier",
+  isolation: "worktree",
+  prompt: "PR #<N>。本文で主張していること: 1) ... 2) ...。重点的に見てほしい観点: ...",
+)
 ```
 
-**agent type によって使えるツールが違う。投げる前に確認する。** `everything-claude-code:architect` は Read/Grep/Glob のみで **Bash が無く**、`git fetch` すらできずに推論だけのレポートが返ってきたことがある。Bash を持つのは `security-reviewer` / `typescript-reviewer` / `code-reviewer` / `database-reviewer` / `general-purpose` など。
+- **主張は番号付きで列挙する。** agent は報告の「PR 本文の主張の検証」で1つずつ判定を返す。自分の PR 本文の誤りや過少な記述はここで見つかる
+- **`isolation: "worktree"` を付ける。** レビュアーは変異の注入や依存の入れ替えでファイルを書き換える
+- 角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）
 
-プロンプトに必ず入れること:
-
-- **「レビューのみ。コミットもプッシュもしない。本体のブランチに触れない」**
-- **「推測で指摘しない。実際にコマンドを流して再現してから報告する」**
-- **「問題なしと確認したものも、何をどう確認したか列挙する」**
-- **秘密情報**: `.env.local` や `k8s/secret.enc.yaml` の中身を出力しない。`sops` を実行しない
-- **PR 本文で自分が主張したことを列挙し、「間違っていたら指摘して」と明示する**
-
-角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）。
+`pr-verifier` が選べないとき（agent 定義を足したばかりのセッションなど）は、`general-purpose` に `.claude/agents/pr-verifier.md` の本文をそのまま渡す。**Bash を持たない agent type（例: `everything-claude-code:architect`）には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
 
 エージェントが走っている間、**同じファイルを触らない**。別 issue を進めるか、衝突しない調査をする。
 
