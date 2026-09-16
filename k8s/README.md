@@ -41,7 +41,7 @@ ImagePullBackOff になる**。`fishing-infra` の RBAC は CI に
 | `deployment.yaml` | アプリ本体。liveness は `/healthz`、readiness は `/readyz` |
 | `service.yaml` | ClusterIP |
 | `ingress.yaml` | Traefik Ingress（`fishing.kazuma-lab.com`）。TLS は Cloudflare で終端するため `spec.tls` は持たない |
-| `configmap.yaml` | 非機密の環境変数 |
+| `config.env` | 非機密の環境変数。`kustomization.yaml` の `configMapGenerator` が ConfigMap を生成する（下記） |
 | `secret.enc.yaml` | SOPS/age 暗号化済みの機密。**kustomization には含めない** |
 | `job-db-migrate.yaml` | `prisma migrate deploy`。**毎回 delete してから apply する**（下記） |
 | `job-db-seed.yaml` | 初期データ投入。初回のみ手動。**kustomization には含めない** |
@@ -98,6 +98,41 @@ Secret を扱えず、暗号文のまま Secret を上書きして全 Pod を起
 
 > `ttlSecondsAfterFinished: 3600` があるため、前回から 1 時間以上空けば
 > delete 無しでも偶然通る。だが CI 駆動のデプロイでは常に手順 2 が要る。
+
+### ConfigMap は名前にハッシュが付く
+
+`config.env` を変更すると、生成される ConfigMap の名前が
+`fishing-app-config-t676559hhk` のように変わり、`deployment.yaml` の
+`configMapRef` も kustomize が同時に書き換える。Pod テンプレートが変わるので、
+`kustomize build k8s/ | kubectl apply -f -` するだけで確実にロールアウトされる。
+
+固定名の ConfigMap を `resources` に置いていた頃は、環境変数が Pod 起動時にしか
+読まれないため **`config.env` だけ直しても Deployment は無変更のままで反映されなかった**。
+イメージタグが変わるデプロイでは Pod が入れ替わるので気づかず、ConfigMap だけ
+直したときに静かに無反映になる（#133）。
+
+`kustomization.yaml` の `configMapGenerator` に `disableNameSuffixHash` を
+**付けないこと。** 付けると固定名に戻り、この仕組みが死ぬ。
+
+#### 古い ConfigMap は残る
+
+`kubectl apply` は削除を行わないため、変更のたびに古い名前の ConfigMap が
+クラスタに残る。**これは消さないこと。** デプロイ失敗時の
+`kubectl rollout undo` は以前の Pod テンプレートに戻すが、そのテンプレートが
+参照する ConfigMap を消していると復旧できなくなる。
+
+一覧は次で確認できる。
+
+```bash
+kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app
+```
+
+現行の Deployment が参照しているものは次で分かる。
+
+```bash
+kubectl -n fishing get deploy fishing-app \
+  -o jsonpath='{.spec.template.spec.containers[0].envFrom[0].configMapRef.name}'
+```
 
 ### db-seed（初回のみ手動）
 

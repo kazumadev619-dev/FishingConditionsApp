@@ -156,6 +156,50 @@ jobs:
       - name: Validate db-seed job
         run: kubeconform -strict -summary -kubernetes-version 1.34.0 k8s/job-db-seed.yaml
 
+      # configMapGenerator の書き間違いは静かに壊れる（#133）。
+      # `envs:` を `files:` と書くと「キーがファイル名、値が全文」の ConfigMap が
+      # でき、envFrom はそれを不正な変数名として捨てるため、環境変数が全部消えた
+      # Pod が正常に起動する。ConfigMap としては妥当なので kubeconform も通るし、
+      # deploy.yml のスモークが見る /healthz と /login も 200 を返す。
+      # disableNameSuffixHash を足した場合も、固定名に戻って無反映が復活するだけで
+      # 何も落ちない。yq を足すと #157 と競合するので grep だけで確かめる。
+      - name: Ensure ConfigMap is generated correctly
+        run: |
+          set -euo pipefail
+
+          # 生成名にハッシュ接尾辞が付いていること（generator が効いている証拠）。
+          # `|| true` が要る。grep は一致しないと exit 1 を返し、set -e のもとでは
+          # 代入の時点でスクリプトが死ぬため、下の ::error:: に到達せず
+          # 「exit code 1」だけがログに残る（＝一番見たいメッセージが出ない）
+          generated=$(grep -oE '^  name: fishing-app-config-[a-z0-9]+$' /tmp/rendered.yaml \
+            | head -1 | awk '{print $2}' || true)
+          if [ -z "$generated" ]; then
+            echo "::error::ConfigMap 名にハッシュ接尾辞が無い。configMapGenerator と disableNameSuffixHash を確認"
+            exit 1
+          fi
+
+          # Deployment の configMapRef がその生成名を指していること
+          if ! grep -qE "^ +name: ${generated}$" /tmp/rendered.yaml; then
+            echo "::error::Deployment の configMapRef が生成された ConfigMap を指していない"
+            exit 1
+          fi
+
+          # 環境変数が個別のキーとして入っていること。
+          # envs: ではなく files: で取り込むと `config.env:` という1キーになる
+          for key in NODE_ENV LOG_LEVEL AUTH_URL NEXTAUTH_URL AUTH_TRUST_HOST REDIS_URL; do
+            if ! grep -qE "^  ${key}: " /tmp/rendered.yaml; then
+              echo "::error::ConfigMap に ${key} が無い。config.env の取り込み方（envs:）を確認"
+              exit 1
+            fi
+          done
+
+          # AUTH_URL は消えても画面が壊れず、セッション Cookie の __Host- と
+          # Secure が静かに外れる（#134）。https で始まることまで見る
+          if ! grep -qE '^  AUTH_URL: https://' /tmp/rendered.yaml; then
+            echo "::error::AUTH_URL が https:// で始まっていない。Cookie の Secure 属性が外れる"
+            exit 1
+          fi
+
       - name: Ensure no Secret is rendered
         run: |
           if grep -q "^kind: Secret" /tmp/rendered.yaml; then
