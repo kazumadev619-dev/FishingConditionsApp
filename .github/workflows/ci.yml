@@ -160,9 +160,12 @@ jobs:
         run: |
           set -euo pipefail
 
-          # 生成名にハッシュ接尾辞が付いていること（generator が効いている証拠）
+          # 生成名にハッシュ接尾辞が付いていること（generator が効いている証拠）。
+          # `|| true` が要る。grep は一致しないと exit 1 を返し、set -e のもとでは
+          # 代入の時点でスクリプトが死ぬため、下の ::error:: に到達せず
+          # 「exit code 1」だけがログに残る（＝一番見たいメッセージが出ない）
           generated=$(grep -oE '^  name: fishing-app-config-[a-z0-9]+$' /tmp/rendered.yaml \
-            | head -1 | awk '{print $2}')
+            | head -1 | awk '{print $2}' || true)
           if [ -z "$generated" ]; then
             echo "::error::ConfigMap 名にハッシュ接尾辞が無い。configMapGenerator と disableNameSuffixHash を確認"
             exit 1
