@@ -69,10 +69,14 @@ def package_name(path: str) -> str:
     return path.rsplit("node_modules/", 1)[-1]
 
 
+class PreconditionError(Exception):
+    """前提が満たされていない。main が終了コード 2 にする。"""
+
+
 def load_lock(text: str) -> dict:
     data = json.loads(text)
     if data.get("lockfileVersion", 0) < 2 or "packages" not in data:
-        raise SystemExit("lockfileVersion 2 以上の package-lock.json が必要")
+        raise PreconditionError("lockfileVersion 2 以上の package-lock.json が必要")
     return data
 
 
@@ -150,9 +154,14 @@ def npm_json(args: List[str], root: Path) -> dict:
     out = subprocess.run(["npm", *args, "--json"], cwd=root, capture_output=True, text=True)
     # npm outdated は古いものがあると exit 1 を返すので、終了コードでは判断しない
     try:
-        return json.loads(out.stdout or "{}")
+        data = json.loads(out.stdout or "{}")
     except json.JSONDecodeError:
-        raise SystemExit(f"npm {' '.join(args)} の出力を読めない:\n{out.stderr[-500:]}")
+        raise PreconditionError(f"npm {' '.join(args)} の出力を読めない:\n{out.stderr[-500:]}")
+    # レジストリに届かないときなどは {"error": {"code": ..., "summary": ...}} が返る
+    error = data.get("error") if isinstance(data, dict) else None
+    if isinstance(error, dict):
+        raise PreconditionError(f"npm {' '.join(args)} が失敗した: {error.get('code')} {error.get('summary', '')}".rstrip())
+    return data
 
 
 def cmd_outdated(root: Path) -> int:
@@ -163,6 +172,13 @@ def cmd_outdated(root: Path) -> int:
         return EXIT_PRECONDITION
 
     outdated = npm_json(["outdated"], root)
+    missing = [f"{name}: package.json は {info.get('wanted')} を求めている"
+               for name, info in sorted(outdated.items()) if not info.get("current")]
+    if missing:
+        print_list("入っていない依存（package.json にあって lock に無い）", missing)
+        print("\nnpm install で lock を更新してから実行すること")
+        return EXIT_PRECONDITION
+
     rows = []
     for name, info in sorted(outdated.items()):
         versions = npm_json(["view", name, "versions"], root)
@@ -187,6 +203,10 @@ def cmd_outdated(root: Path) -> int:
 
 # ---------------------------------------------------------------- lockdiff
 
+def registry_url(name: str, version: str) -> str:
+    return f"{REGISTRY}{name}/-/{name.split('/')[-1]}-{version}.tgz"
+
+
 def cmd_lockdiff(root: Path, base_ref: str, allow_major: List[str]) -> int:
     shown = subprocess.run(["git", "show", f"{base_ref}:package-lock.json"],
                            cwd=root, capture_output=True, text=True)
@@ -203,6 +223,12 @@ def cmd_lockdiff(root: Path, base_ref: str, allow_major: List[str]) -> int:
     for field in ("dependencies", "devDependencies", "optionalDependencies"):
         direct_names |= set(root_meta.get(field, {}))
 
+    # 別の場所にある同じパッケージ（npm の別名は name が実体の名前）
+    old_by_name: Dict[str, List[dict]] = {}
+    for path, meta in old.items():
+        if path and not meta.get("link"):
+            old_by_name.setdefault(meta.get("name") or package_name(path), []).append(meta)
+
     for path in sorted(set(new) - set(old)):
         if path:
             added.append(f"{package_name(path)} {new[path].get('version')}  [{path}]")
@@ -210,38 +236,66 @@ def cmd_lockdiff(root: Path, base_ref: str, allow_major: List[str]) -> int:
         if path:
             removed.append(f"{package_name(path)} {old[path].get('version')}  [{path}]")
 
+    def judge(name: str, old_v: str, new_v: str, path: str, where: str = "") -> None:
+        is_direct = path == f"node_modules/{name}" and name in direct_names
+        if name in allow_major:
+            return
+        if major_changed(old_v, new_v):
+            attention.append(f"メジャー（壊れうる）更新{where}: {name} {old_v} → {new_v}  [{path}]")
+        elif breaking(old_v, new_v):
+            # 0.x の minor。直接の依存なら ^ でも越えないので意図した破壊的更新。
+            # 推移的なものは親の指定範囲に従っているので、一覧に出すだけにする
+            if is_direct:
+                attention.append(f"メジャー（壊れうる）更新{where}: {name} {old_v} → {new_v}  [{path}]")
+            else:
+                zero_minor.append(f"{name}: {old_v} → {new_v}  [{path}]")
+        elif is_direct and parse(new_v) < parse(old_v):
+            attention.append(f"直接の依存が後退した: {name} {old_v} → {new_v}  [{path}]")
+        elif is_direct and is_prerelease(new_v) and not is_prerelease(old_v):
+            attention.append(f"直接の依存が prerelease になった: {name} {old_v} → {new_v}  [{path}]")
+
     for path in sorted(new):
         if not path:
             continue
         meta = new[path]
-        name = package_name(path)
-        before = old.get(path)
-        if meta.get("link"):
+        # link は実体が別の場所、inBundle は親の tarball に入っていて resolved も integrity も持たない
+        if meta.get("link") or meta.get("inBundle"):
             continue
+        name = package_name(path)
+        real_name = meta.get("name") or name
+        version = meta.get("version", "")
+        before = old.get(path)
+        if before is not None and all(before.get(k) == meta.get(k)
+                                      for k in ("version", "resolved", "integrity", "hasInstallScript")):
+            continue  # base の時点で受け入れている
 
-        if meta.get("hasInstallScript") and not (before or {}).get("hasInstallScript"):
-            attention.append(f"install script を持つパッケージが増えた: {name} {meta.get('version')}  [{path}]")
+        # 場所が移っただけ・版を上げただけのものは増えたとみなさない（同じパッケージが前から持っていた）
+        had_script = any(m.get("hasInstallScript") for m in old_by_name.get(real_name, []))
+        if meta.get("hasInstallScript") and not had_script:
+            attention.append(f"install script を持つパッケージが増えた: {name} {version}  [{path}]")
         resolved = meta.get("resolved")
         if resolved and not resolved.startswith(REGISTRY):
             attention.append(f"公式レジストリ以外から取る: {name} {resolved}  [{path}]")
+        elif resolved and resolved != registry_url(real_name, version):
+            # 公式レジストリ上の別パッケージを指すように書き換えられると、npm ci はそれを入れる
+            attention.append(f"resolved の URL が名前か版と合わない: {name} {version} {resolved}  [{path}]")
         if "integrity" not in meta:
-            attention.append(f"integrity が無い: {name} {meta.get('version')}  [{path}]")
+            attention.append(f"integrity が無い: {name} {version}  [{path}]")
 
-        if before and before.get("version") != meta.get("version"):
-            old_v, new_v = before.get("version", ""), meta.get("version", "")
-            changed.append(f"{name}: {old_v} → {new_v}  [{path}]")
-            is_direct = path == f"node_modules/{name}" and name in direct_names
-            if name in allow_major:
-                pass
-            elif major_changed(old_v, new_v):
-                attention.append(f"メジャー（壊れうる）更新: {name} {old_v} → {new_v}  [{path}]")
-            elif breaking(old_v, new_v):
-                # 0.x の minor。直接の依存なら ^ でも越えないので意図した破壊的更新。
-                # 推移的なものは親の指定範囲に従っているので、一覧に出すだけにする
-                if is_direct:
-                    attention.append(f"メジャー（壊れうる）更新: {name} {old_v} → {new_v}  [{path}]")
-                else:
-                    zero_minor.append(f"{name}: {old_v} → {new_v}  [{path}]")
+        # 版が同じなら resolved の URL は1つに決まるので、書き換えは上の2つで捕まる。integrity は別に見る
+        if before is not None and before.get("version") == version:
+            if before.get("integrity") != meta.get("integrity"):
+                attention.append(f"版が同じなのに integrity が変わった: {name} {version}  [{path}]")
+        elif before is not None:
+            old_v = before.get("version", "")
+            changed.append(f"{name}: {old_v} → {version}  [{path}]")
+            judge(name, old_v, version, path)
+        else:
+            # 他の依存元が旧版を使い続けていると、新しい版はネストした場所に「追加」される。
+            # 同じパッケージの旧版のどれとも互換でなければ、その版からの更新として扱う
+            siblings = [m.get("version", "") for m in old_by_name.get(real_name, [])]
+            if siblings and all(breaking(v, version) for v in siblings):
+                judge(name, max(siblings, key=parse), version, path, where="（新しい場所に入った）")
 
     direct = []
     for field in ("dependencies", "devDependencies", "optionalDependencies"):
@@ -266,6 +320,14 @@ def cmd_lockdiff(root: Path, base_ref: str, allow_major: List[str]) -> int:
 # ---------------------------------------------------------------- main
 
 def main(argv: List[str]) -> int:
+    try:
+        return dispatch(argv)
+    except PreconditionError as error:
+        print(error, file=sys.stderr)
+        return EXIT_PRECONDITION
+
+
+def dispatch(argv: List[str]) -> int:
     root = Path.cwd()
     if argv[:1] == ["check-install"]:
         return cmd_check_install(root)

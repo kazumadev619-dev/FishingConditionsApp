@@ -6,6 +6,7 @@
 """
 
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -41,8 +42,11 @@ def entry(version, name=None, **extra):
     return e
 
 
-def run(*args, cwd):
-    return subprocess.run([sys.executable, str(SCRIPT), *args], cwd=cwd, capture_output=True, text=True)
+def run(*args, cwd, env=None):
+    return subprocess.run(
+        [sys.executable, str(SCRIPT), *args], cwd=cwd, capture_output=True, text=True,
+        env={**os.environ, **env} if env else None,
+    )
 
 
 class VersionTest(unittest.TestCase):
@@ -102,6 +106,14 @@ class CheckInstallTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("zod", result.stdout)
 
+    # workspace などの link は node_modules/<name>/package.json が実体ではない
+    def test_link_のエントリは見ない(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/ws-a": {"resolved": "packages/ws-a", "link": True},
+        })))
+        result = run("check-install", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
     # sharp の linux 用バイナリなど、別プラットフォーム向けの optional は入らないのが普通
     def test_入っていない_optional_は無視する(self):
         (self.root / "package-lock.json").write_text(json.dumps(lock({
@@ -111,7 +123,9 @@ class CheckInstallTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
-class LockDiffTest(unittest.TestCase):
+class LockRepoCase(unittest.TestCase):
+    """一時ディレクトリの git リポジトリに base の lock をコミットして比べる。"""
+
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
         self.root = Path(self._tmp.name)
@@ -133,6 +147,8 @@ class LockDiffTest(unittest.TestCase):
             "node_modules/zod": entry("4.4.3", "zod"),
         }, root_deps={"next": "^16.3.1", "zod": "^4.4.3"}, root_dev={"prisma": "^7.9.1"})
 
+
+class LockDiffTest(LockRepoCase):
     def test_レンジ内の更新だけなら通る(self):
         self.commit_lock(self.base())
         head = self.base()
@@ -245,6 +261,258 @@ class LockDiffTest(unittest.TestCase):
         self.assertIn("confbox", result.stdout)
         self.assertRegex(result.stdout, r"削除（1 件）\n  zod 4\.4\.3")
         self.assertIn("^16.3.1 → ^16.3.5", result.stdout)
+
+
+class LockDiffSupplyChainTest(LockRepoCase):
+    """レビュー（PR #174）で見つかった見逃しと誤検知。"""
+
+    def write_head(self, head):
+        (self.root / "package-lock.json").write_text(json.dumps(head))
+
+    # 版を変えずに resolved と integrity を別パッケージのものにすると、npm ci は別物を入れる
+    def test_同じ版のまま取得元が別パッケージに変わったら落ちる(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/zod"]["resolved"] = "https://registry.npmjs.org/left-pad/-/left-pad-1.3.0.tgz"
+        head["packages"]["node_modules/zod"]["integrity"] = "sha512-BBBB"
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r"要確認.*\n.*zod")
+
+    def test_同じ版のまま_integrity_だけ変わったら落ちる(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/zod"]["integrity"] = "sha512-BBBB"
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r"integrity が変わった.*zod")
+
+    def test_resolved_の_URL_が名前と版に合わなければ落ちる(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/next"] = entry("16.3.5", "next")
+        head["packages"]["node_modules/next"]["resolved"] = "https://registry.npmjs.org/next-evil/-/next-evil-16.3.5.tgz"
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r"名前か版と合わない.*next")
+
+    def test_npm_の別名は_name_で_URL_を照らし合わせる(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        alias = entry("4.2.3", "string-width")
+        alias["name"] = "string-width"
+        head["packages"]["node_modules/string-width-cjs"] = alias
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    # 他の依存元が旧メジャーを使い続けていると、新メジャーはネストして「追加」になる
+    def test_推移的な新メジャーがネストして追加されたら落ちる(self):
+        base = self.base()
+        base["packages"]["node_modules/tinyexec"] = entry("1.3.0", "tinyexec")
+        self.commit_lock(base)
+        head = json.loads(json.dumps(base))
+        head["packages"]["node_modules/next/node_modules/tinyexec"] = entry("2.0.0", "tinyexec")
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r"メジャー.*tinyexec.*1\.3\.0 → 2\.0\.0")
+
+    # PR #158 の実データ: pkg-types が confbox を ^0.3.1 に上げ、c12 用の 0.2.4 はトップに残った
+    def test_推移的な_0x_minor_がネストして追加されたら一覧に出す(self):
+        base = self.base()
+        base["packages"]["node_modules/confbox"] = entry("0.2.4", "confbox")
+        self.commit_lock(base)
+        head = json.loads(json.dumps(base))
+        head["packages"]["node_modules/pkg-types/node_modules/confbox"] = entry("0.3.1", "confbox")
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertRegex(result.stdout, r"0\.x の minor 更新（推移的）.*\n  confbox: 0\.2\.4 → 0\.3\.1")
+
+    def test_同じメジャーが既にあるパッケージのネスト追加は通す(self):
+        base = self.base()
+        base["packages"]["node_modules/tinyexec"] = entry("1.3.0", "tinyexec")
+        self.commit_lock(base)
+        head = json.loads(json.dumps(base))
+        head["packages"]["node_modules/next/node_modules/tinyexec"] = entry("1.1.0", "tinyexec")
+        self.write_head(head)
+        self.assertEqual(run("lockdiff", "HEAD", cwd=self.root).returncode, 0)
+
+    def test_旧版のどれかと互換なネスト追加は通す(self):
+        base = self.base()
+        base["packages"]["node_modules/tinyexec"] = entry("3.0.0", "tinyexec")
+        base["packages"]["node_modules/next/node_modules/tinyexec"] = entry("2.0.0", "tinyexec")
+        self.commit_lock(base)
+        head = json.loads(json.dumps(base))
+        head["packages"]["node_modules/zod/node_modules/tinyexec"] = entry("2.1.0", "tinyexec")
+        self.write_head(head)
+        self.assertEqual(run("lockdiff", "HEAD", cwd=self.root).returncode, 0)
+
+    # 変わっていないエントリは base の時点で受け入れている。bundled / file / git の形で毎回落ちないように
+    def test_変わっていないエントリの_integrity_欠落やレジストリ外は問わない(self):
+        base = self.base()
+        base["packages"]["node_modules/localdir"] = {"version": "1.0.0", "resolved": "file:localdir"}
+        base["packages"]["node_modules/npm/node_modules/abbrev"] = {"version": "3.0.1", "inBundle": True}
+        self.commit_lock(base)
+        self.write_head(base)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_bundle_の中身は_integrity_が無くても問わない(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/npm/node_modules/abbrev"] = {"version": "3.0.1", "inBundle": True}
+        self.write_head(head)
+        self.assertEqual(run("lockdiff", "HEAD", cwd=self.root).returncode, 0)
+
+    def test_install_script_を持つ同じ版が場所を移っただけなら通す(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/next/node_modules/prisma"] = head["packages"].pop("node_modules/prisma")
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+
+    def test_直接の依存が後退したら落ちる(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/next"] = entry("16.3.0", "next")
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r"後退.*next.*16\.3\.1 → 16\.3\.0")
+
+    def test_直接の依存が_prerelease_になったら落ちる(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/next"] = entry("16.4.0-canary.3", "next")
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertRegex(result.stdout, r"prerelease.*next")
+
+    def test_推移的な依存の後退は問わない(self):
+        base = self.base()
+        base["packages"]["node_modules/next/node_modules/deep"] = entry("1.2.0", "deep")
+        self.commit_lock(base)
+        head = json.loads(json.dumps(base))
+        head["packages"]["node_modules/next/node_modules/deep"] = entry("1.1.0", "deep")
+        self.write_head(head)
+        self.assertEqual(run("lockdiff", "HEAD", cwd=self.root).returncode, 0)
+
+    # 直接の依存と同じ名前でも、ネストした場所のものは推移的
+    def test_直接の依存と同名でもネストしたものは推移的に扱う(self):
+        base = self.base()
+        base["packages"]["node_modules/next/node_modules/zod"] = entry("0.5.0", "zod")
+        self.commit_lock(base)
+        head = json.loads(json.dumps(base))
+        head["packages"]["node_modules/next/node_modules/zod"] = entry("0.6.0", "zod")
+        self.write_head(head)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("zod: 0.5.0 → 0.6.0", result.stdout)
+
+    def test_link_のエントリは見ない(self):
+        self.commit_lock(self.base())
+        head = self.base()
+        head["packages"]["node_modules/ws-a"] = {"resolved": "packages/ws-a", "link": True}
+        self.write_head(head)
+        self.assertEqual(run("lockdiff", "HEAD", cwd=self.root).returncode, 0)
+
+    def test_比べる_ref_が無ければ終了コード_2(self):
+        self.commit_lock(self.base())
+        result = run("lockdiff", "no-such-ref", cwd=self.root)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+
+    def test_lockfileVersion_1_は終了コード_2(self):
+        old = self.base()
+        old["lockfileVersion"] = 1
+        self.commit_lock(old)
+        result = run("lockdiff", "HEAD", cwd=self.root)
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("lockfileVersion", result.stderr)
+
+
+FAKE_NPM = """#!/usr/bin/env python3
+import json, os, sys
+args = sys.argv[1:]
+if args[:1] == ["outdated"]:
+    print(os.environ["FAKE_OUTDATED"])
+    sys.exit(1)
+if args[:1] == ["view"]:
+    print(json.dumps(json.loads(os.environ["FAKE_VIEW"])[args[1]]))
+    sys.exit(0)
+sys.exit(3)
+"""
+
+
+class OutdatedTest(unittest.TestCase):
+    """PATH に偽の npm を置いて cmd_outdated を通す。"""
+
+    def setUp(self):
+        self._tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self._tmp.name) / "app"
+        self.bin = Path(self._tmp.name) / "bin"
+        self.root.mkdir()
+        self.bin.mkdir()
+        npm = self.bin / "npm"
+        npm.write_text(FAKE_NPM)
+        npm.chmod(0o755)
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/next-auth": entry("5.0.0-beta.32", "next-auth"),
+        })))
+        d = self.root / "node_modules" / "next-auth"
+        d.mkdir(parents=True)
+        (d / "package.json").write_text(json.dumps({"version": "5.0.0-beta.32"}))
+
+    def tearDown(self):
+        self._tmp.cleanup()
+
+    def outdated(self, outdated, view=None):
+        env = {
+            "PATH": f"{self.bin}{os.pathsep}{os.environ['PATH']}",
+            "FAKE_OUTDATED": json.dumps(outdated),
+            "FAKE_VIEW": json.dumps(view or {}),
+        }
+        return run("outdated", cwd=self.root, env=env)
+
+    def test_罠があっても終了コード_0(self):
+        result = self.outdated(
+            {"next-auth": {"current": "5.0.0-beta.32", "wanted": "5.0.0-beta.32", "latest": "4.24.15"}},
+            {"next-auth": ["4.24.15", "5.0.0-beta.32"]},
+        )
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertRegex(result.stdout, r"Latest 列を信じてはいけない.*\n  next-auth")
+
+    def test_node_modules_が_lock_と違えば_npm_を呼ばずに終了コード_2(self):
+        (self.root / "node_modules" / "next-auth" / "package.json").write_text(json.dumps({"version": "4.24.15"}))
+        result = self.outdated({"next-auth": {"current": "4.24.15", "wanted": "4.24.15", "latest": "4.24.15"}})
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertNotIn("npm outdated:", result.stdout)
+
+    # レジストリに届かないと npm outdated --json は {"error": {...}} を返す
+    def test_npm_がエラーを返したら終了コード_2(self):
+        result = self.outdated({"error": {"code": "ECONNREFUSED", "summary": "request to http://127.0.0.1:9/ failed"}})
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("ECONNREFUSED", result.stderr)
+
+    def test_npm_view_がエラーを返したら終了コード_2(self):
+        result = self.outdated(
+            {"next-auth": {"current": "5.0.0-beta.32", "wanted": "5.0.0-beta.32", "latest": "4.24.15"}},
+            {"next-auth": {"error": {"code": "E404", "summary": "Not Found"}}},
+        )
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("E404", result.stderr)
+
+    # package.json にあって lock に無い依存は Current が無い
+    def test_入っていない依存があれば終了コード_2(self):
+        result = self.outdated({"left-pad": {"wanted": "1.3.0", "latest": "1.3.0"}}, {"left-pad": ["1.3.0"]})
+        self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
+        self.assertIn("left-pad", result.stdout)
 
 
 class ClassifyTest(unittest.TestCase):
