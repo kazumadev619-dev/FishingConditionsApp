@@ -25,7 +25,7 @@ for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:3000/healthz &&
 curl -s http://localhost:3000/readyz    # {"status":"ready","checks":{"database":"ok","cache":"ok"}}
 ```
 
-**Claude が `next dev` を起動すると、Next.js がリポジトリの `CLAUDE.md` にブロックを書き足す**（`<!-- BEGIN:nextjs-agent-rules -->`）。`CLAUDECODE` などの環境変数で AI エージェントを検出したときだけ動き、人が自分のターミナルで起動したときは起きない。止めるには `next.config` の `agentRules: false`。入れるか止めるかはプロジェクトの判断なので、勝手に決めない。**終わったら `git diff CLAUDE.md` を見て、自分の起動で増えた追記なら戻し、ユーザーに伝える。**
+**Claude が `next dev` を起動すると、Next.js がリポジトリの `CLAUDE.md` にブロックを書き足す**（`<!-- BEGIN:nextjs-agent-rules -->`）。`CLAUDECODE`・`AI_AGENT`・`CURSOR_TRACE_ID` などの環境変数で AI エージェントを検出したときだけ動き、それらが無い端末で人が起動したときは起きない。止めるには `next.config` の `agentRules: false`。入れるか止めるかはプロジェクトの判断なので、勝手に決めない。**終わったら `git diff CLAUDE.md` を見て、自分の起動で増えた追記なら戻し、ユーザーに伝える。**
 
 ポート 3000 が使われていたら、`lsof -nP -iTCP:3000 -sTCP:LISTEN` で誰のプロセスか確かめる。**自分が起動していないプロセスは止めない。** 別のポート（`npm run dev -- -p 3100`）で起動してよいが、下の表の違いがある。
 
@@ -42,11 +42,13 @@ curl -s http://localhost:3000/readyz    # {"status":"ready","checks":{"database"
 ```bash
 J=$(mktemp -d)/cookies.txt
 npx dotenv -e .env.local -- node .claude/skills/run-app-locally/session-cookie.mjs "$J" [email]
-curl -s -b "$J" http://localhost:3000/api/ports       # 200
-curl -s -b "$J" -o /dev/null -w '%{http_code}' http://localhost:3000/dashboard   # 200
+curl -s -b "$J" -o /dev/null -w '%{http_code}\n' http://localhost:3000/api/ports     # 200
+curl -s -b "$J" -o /dev/null -w '%{http_code}\n' http://localhost:3000/dashboard     # 200
 ```
 
 - email を省くと最初に作られたユーザーを使う。有効期限は1時間
+- jar は作った時点から権限 600。既にあるファイルには書かないので、同じパスに作り直すときは先に消す
+- **curl に `-i` `-v` `-D` を付けない。** Auth.js はリクエストのたびにトークンを作り直し、`Set-Cookie` で返す（有効期限は `session.maxAge` の7日）。付けるとその値が出力に出る。`-c` で jar に書き戻すこともしない
 - トークンには `id` と `email` を載せる（`src/auth/callbacks/jwtCallback.ts` と `sessionCallback.ts` が読む項目）。これらが変わったらスクリプトも直す
 - 終わったら jar を消す
 
@@ -66,14 +68,16 @@ npx dotenv -e .env.local -- node --import tsx/esm check.ts
 ```bash
 cd docker
 APP_PORT=3100 docker compose --env-file ../.env.local up -d --build app    # runner イメージ
-docker compose --env-file ../.env.local --profile tools run --rm migrator    # "No pending migrations to apply."
+docker compose --env-file ../.env.local --profile tools run --rm --build migrator    # "No pending migrations to apply."
 docker compose rm -sf app
 ```
+
+**migrator には `--build` を付ける。** `run` は付けないとイメージを作り直さず、前に作った `docker-migrator` のまま通る。PR で足したマイグレーションが入っていなくても同じ出力になる。
 
 イメージは `NODE_ENV=production` で、`AUTH_URL` は `.env.local` の値のまま。ヘルスと 401 は確かめられるが、ブラウザでのログインは上の表のとおり通らない。
 
 ## 6. 片付け
 
-- 起動したサーバーのタスクを止め、`pgrep -fl "next dev"` で残っていないことを確かめる
+- 起動したサーバーのタスクを止め、`lsof -nP -iTCP:<使ったポート> -sTCP:LISTEN` が何も返さないことを確かめる。`pgrep -f "next dev"` は親の node しか当たらず、実際に listen している `next-server` が残っていても見逃す
 - `git status`。`CLAUDE.md` の追記（2.を参照）以外に変わったファイルが無いこと
 - DB と Redis のコンテナは、自分が起動したのでなければ止めない

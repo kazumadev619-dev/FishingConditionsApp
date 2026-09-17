@@ -4,9 +4,12 @@
 //
 // セッションは JWT 戦略なので、AUTH_SECRET でトークンを作ればパスワードも OAuth も要らない。
 // トークンの値は標準出力に出さない（jar のパスだけを出す）。email を省くと最初に作られたユーザーを使う。
-import { chmodSync, writeFileSync } from 'node:fs';
-import pg from 'pg';
+import console from 'node:console';
+import { writeFileSync } from 'node:fs';
+import process from 'node:process';
+import { URL } from 'node:url';
 import { encode } from 'next-auth/jwt';
+import pg from 'pg';
 
 const [jarPath, email] = process.argv.slice(2);
 if (!jarPath) {
@@ -33,7 +36,11 @@ const { rows } = email
 await client.end();
 
 if (rows.length === 0) {
-  console.error(email ? 'そのメールアドレスのユーザーがローカル DB に無い' : 'ローカル DB にユーザーが1人もいない');
+  console.error(
+    email
+      ? 'そのメールアドレスのユーザーがローカル DB に無い'
+      : 'ローカル DB にユーザーが1人もいない',
+  );
   process.exit(1);
 }
 const user = rows[0];
@@ -47,11 +54,19 @@ const token = await encode({
 });
 
 const expires = Math.floor(Date.now() / 1000) + maxAge;
-writeFileSync(
-  jarPath,
-  `# Netscape HTTP Cookie File\n${baseUrl.hostname}\tFALSE\t/\t${secure ? 'TRUE' : 'FALSE'}\t${expires}\t${cookieName}\t${token}\n`,
-);
-chmodSync(jarPath, 0o600);
+try {
+  // 作った瞬間から 600 にする（書いてから chmod すると、その間 umask しだいで 644 になる）。
+  // 既にあるファイルやシンボリックリンクには書かない（リンク先にトークンを書いてしまうため）
+  writeFileSync(
+    jarPath,
+    `# Netscape HTTP Cookie File\n${baseUrl.hostname}\tFALSE\t/\t${secure ? 'TRUE' : 'FALSE'}\t${expires}\t${cookieName}\t${token}\n`,
+    { mode: 0o600, flag: 'wx' },
+  );
+} catch (error) {
+  if (error.code !== 'EEXIST') throw error;
+  console.error(`${jarPath} は既にある。上書きしないので、消してから実行するか別のパスを渡すこと`);
+  process.exit(1);
+}
 
 const [local, domain] = user.email.split('@');
 console.log(`cookie jar: ${jarPath}`);
