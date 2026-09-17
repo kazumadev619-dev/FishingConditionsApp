@@ -56,25 +56,13 @@ CLAUDE.md の禁止事項を守る。
 
 **「型チェックとビルドが通った」は検証ではない。壊れることを確かめて初めて検証になる。**
 
-### 回帰テストを書いたとき: 変異テスト
+### 回帰テストや CI ガードを書いたとき: 変異テスト
 
 テストが本当に退行を検知できるかは、**実装を壊して落ちることを確認する**まで分からない。
 
-```bash
-# 例: 過去の退行を実際に注入してテストを走らせ、毎回元に戻す
-SCRATCH=$(mktemp -d)
-cp src/target.ts "$SCRATCH/orig"
-# ... 変異を注入 ...
-npx vitest run <test> | grep -E '^ +Tests +'
-cp "$SCRATCH/orig" src/target.ts
-git diff --stat src/target.ts   # 差分が無いこと＝復元できたことを毎回確かめる
-```
+**REQUIRED SUB-SKILL:** `mutation-test` を使う。手でファイルを書き換えて戻さない（置換の空振り、抜き出しの途中切れ、戻し忘れをスクリプトが止める）。
 
-**ハーネス自体が壊れていないか確かめる。** 「変異なし」で通ることを必ず最初に測る。全件が同じ結果になったらテストではなくハーネスを疑う（ワークフローから `run:` を切り出す処理が途中で切れていて、実行していたのは `set -euo pipefail` の1行だけ、ということが実際にあった）。
-
-過去に修正した issue の退行を再現するのが最も価値が高い（そのバグは実際に起きたのだから）。
-
-#129 では8パターンを注入して全て検知できることを確認し、レビューで指摘された穴を塞いだあと再度測り直した。
+レビュー指摘でテストを足したら、**変異テストをやり直す。**
 
 ### インフラを変えたとき: 実際に動かす
 
@@ -121,37 +109,38 @@ PR の作り方は `github-push-pr` スキルに従う。加えて:
 
 GitHub が自動クローズするのは**デフォルトブランチ（main）にマージされたとき**だけ。`develop` 向け PR に `Closes #N` と書いても何も起きない。
 
-- **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する
-- **main 昇格 PR**: そこに `Closes` をまとめて書く
+- **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する。issue の一部だけを扱う PR なら「この PR では閉じない」と書く（ステップ6で `Closes` と `Refs` を分けるときの手がかりになる）
+- **main 昇格 PR**: ステップ6の手順で書く
 
-**`Closes` は参照ごとに必要。1行に並べると最初の1件しか閉じない。**
+### レビューは `pr-verifier` agent に worktree 隔離で投げる
 
-```
-Closes #143
-Closes #144
-```
-
-`Closes #143 #144` と書くと #143 しか閉じない。実際に4件を閉じた PR #153 は1行1件で書いている。
-
-### レビューはサブエージェントに worktree 隔離で投げる
-
-レビュアーは検証のためにファイルを書き換える（バグを注入する、依存を入れ替える）。作業ツリーを共有すると衝突する。
+守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.claude/agents/pr-verifier.md` に書いてある。呼ぶ側が渡すのは次の3つだけ。
 
 ```
-Agent(subagent_type: <reviewer>, isolation: "worktree", prompt: ...)
+Agent(
+  subagent_type: "pr-verifier",
+  isolation: "worktree",
+  prompt: "PR #<N>。本文で主張していること: 1) ... 2) ...。重点的に見てほしい観点: ...",
+)
 ```
 
-**agent type によって使えるツールが違う。投げる前に確認する。** `everything-claude-code:architect` は Read/Grep/Glob のみで **Bash が無く**、`git fetch` すらできずに推論だけのレポートが返ってきたことがある。Bash を持つのは `security-reviewer` / `typescript-reviewer` / `code-reviewer` / `database-reviewer` / `general-purpose` など。
+- **主張は番号付きで列挙する。** agent は報告の「PR 本文の主張の検証」で1つずつ判定を返す。自分の PR 本文の誤りや過少な記述はここで見つかる
+- **`isolation: "worktree"` を付ける。** レビュアーは変異の注入や依存の入れ替えでファイルを書き換える
+- 角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）
 
-プロンプトに必ず入れること:
+`pr-verifier` が選べないとき（agent 定義を足したばかりのセッション、定義がまだ develop に無いブランチにいるときなど）は、`general-purpose` に「最初に `.claude/agents/pr-verifier.md` を Read し、frontmatter より下の本文に従う。使うツールは frontmatter の `tools` だけ」と指示して投げる。**Bash を持たない agent type（例: `everything-claude-code:architect`）には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
 
-- **「レビューのみ。コミットもプッシュもしない。本体のブランチに触れない」**
-- **「推測で指摘しない。実際にコマンドを流して再現してから報告する」**
-- **「問題なしと確認したものも、何をどう確認したか列挙する」**
-- **秘密情報**: `.env.local` や `k8s/secret.enc.yaml` の中身を出力しない。`sops` を実行しない
-- **PR 本文で自分が主張したことを列挙し、「間違っていたら指摘して」と明示する**
+**レビューが走っている間、本体の作業ツリーのブランチを切り替えない。** agent 定義や skill は作業ツリーのファイルから読まれるので、定義が無いブランチに切り替えると agent type が選べなくなる（切り替えた直後にレビューが停止したことがある。因果は断定できていない）。別のブランチを触る必要があれば、別の worktree で作業する。
 
-角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）。
+```bash
+W=$(mktemp -d)/wt
+git worktree add "$W" <branch>
+(cd "$W" && npm ci)   # husky のフックに要る。--no-verify で飛ばさない
+# ... "$W" で編集・コミット・プッシュ
+git worktree remove --force "$W"
+```
+
+本体の `node_modules` をリンクして `npm ci` を省く手もあるが、**lock ファイルが同じでも本体の `node_modules` が古いことがある**（別ブランチで `npm ci` したまま切り替えていた。lock は prisma 7.10.0 なのに 7.9.1 が入っていた）。リンクするなら先に本体で `npm ci` を流す。
 
 エージェントが走っている間、**同じファイルを触らない**。別 issue を進めるか、衝突しない調査をする。
 
@@ -167,11 +156,64 @@ Agent(subagent_type: <reviewer>, isolation: "worktree", prompt: ...)
 
 `develop` に溜まった分をまとめて `main` へ。ここで初めて `Deploy` ワークフローが走る。
 
+### 1. 対象の issue を機械的に列挙する
+
+目で追うと落とす。コミット件名の末尾の番号から拾う（マージコミットは PR 番号が混ざるので除く）。
+
 ```bash
-git log --oneline origin/main..origin/develop   # 未リリース分の確認
+git fetch origin
+for n in $(git log --no-merges --format=%s origin/main..origin/develop | grep -oE '#[0-9]+$' | tr -d '#' | sort -n -u); do
+  gh api "repos/{owner}/{repo}/issues/$n" \
+    --jq '"#\(.number)  \(if .pull_request then "PR" else "issue" end)  \(.state)  \(.title)"'
+done
 ```
 
-昇格 PR の本文に `Closes #A #B #C` を並べる。デプロイ後に本番で実際に確認する（`/healthz`、変更した機能の画面）。
+### 2. 閉じるものと閉じないものを分ける
+
+列挙した issue ごとに、その issue を扱った develop 向け PR の本文を読む。
+
+- PR 本文に「この PR では閉じない」「残りのタスク」「第1弾」と書いてある issue → **`Refs #N`**
+- それ以外 → **`Closes #N`**
+
+### 3. PR 本文の先頭をこの形で書く
+
+```
+Closes #129
+Closes #133
+
+Refs #110（残り: メジャー8件。完了条件が「メジャーは個別 PR」のため開けておく）
+```
+
+**番号ごとにキーワードを付ける。** GitHub の公式ドキュメントは「Use full syntax for each issue」（例: `Resolves #10, resolves #123`）としている。`Closes #129 #133` のように1つのキーワードに番号を並べる書き方は規則から外れ、閉じる対象に入らない可能性がある。上のように1行1件で書くのが一番確実。どう認識されたかは次の手順4で確かめる。
+
+```bash
+gh pr create --base main --head develop --title "<まとめ> (#129 #133)" --body-file <本文>
+```
+
+### 4. マージ前に GitHub の認識を確かめる
+
+```bash
+gh pr view <N> --json closingIssuesReferences --jq '[.closingIssuesReferences[].number] | sort'
+```
+
+出力が手順2で `Closes` にしたものと一致すること。`Refs` にした番号が入っていたら本文を直す。
+
+### 5. デプロイを見守り、本番で確かめる
+
+```bash
+gh run list --workflow=deploy.yml --limit 1
+gh run watch <run-id>
+```
+
+**デプロイは途中で止めない。** マイグレーション中に中断すると `_prisma_migrations` に failed レコードが残り、以後の `migrate deploy` がすべて止まる。
+
+本番で確かめるもの:
+
+- `/healthz` が `{"status":"ok"}`、`/readyz` が `database` / `cache` ともに `ok`
+- 未認証の `/api/ports` が 401
+- この昇格に含まれる変更それぞれについて、変わったことが外から見える点（画面、ヘッダ、デプロイログの `configured` / `created` 行など）
+
+最後に手順2で `Closes` にした issue が CLOSED、`Refs` にした issue が OPEN のままであることを確かめる。
 
 ## commitlint の落とし穴（github-push-pr に加えて）
 
