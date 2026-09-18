@@ -33,7 +33,13 @@ KEY_SUFFIXES = (".key", ".pem", ".p12", ".pfx", ".agekey")
 SSH_PRIVATE_KEY = re.compile(r"^id_(rsa|dsa|ecdsa|ed25519)(_sk)?$|_rsa$")
 # sops で暗号化する前の平文。.sops.yaml の path_regex と .gitignore の k8s/**/*secret*.y*ml に合わせる
 PLAIN_K8S_SECRET = re.compile(r"secret[^/]*\.ya?ml$", re.IGNORECASE)
-SECRET_PATH_SUFFIXES = ("rancher/k3s/k3s.yaml", "sops/age/keys.txt", "gh/hosts.yml")
+SECRET_PATH_SUFFIXES = (
+    "rancher/k3s/k3s.yaml", "sops/age/keys.txt", "gh/hosts.yml",
+    ".docker/config.json", ".aws/credentials", ".aws/config",
+)
+SECRET_BASENAMES = (".npmrc", ".netrc", "_netrc", ".pgpass", "credentials")
+# 中に鍵やトークンが入るディレクトリ。Read や Grep はディレクトリごと読める
+SECRET_DIRECTORIES = (".ssh", ".kube", ".gnupg", "age")
 # ~/.kube/ の下は config 以外の名前の接続ファイルもある（fishing-ci.yaml など）。cache は API の一覧だけ
 KUBE_DIR = re.compile(r"(^|/)\.kube/(?!cache/|http-cache/)")
 KUBECONFIG_EXTENSIONS = ("", ".yaml", ".yml", ".conf", ".json")
@@ -48,7 +54,7 @@ def is_secret_file(path: str) -> bool:
     base = p.rsplit("/", 1)[-1]
     if base == ".env" or (base.startswith(".env.") and not SAFE_ENV_SUFFIX.search(base)):
         return True
-    if base.endswith(KEY_SUFFIXES) or SSH_PRIVATE_KEY.search(base):
+    if base.endswith(KEY_SUFFIXES) or SSH_PRIVATE_KEY.search(base) or base in SECRET_BASENAMES:
         return True
     stem, extension = os.path.splitext(base.lower())
     if "kubeconfig" in stem and extension in KUBECONFIG_EXTENSIONS:
@@ -58,6 +64,11 @@ def is_secret_file(path: str) -> bool:
     if PLAIN_K8S_SECRET.search(base) and ".enc." not in base:
         return True
     return p.endswith(SECRET_PATH_SUFFIXES)
+
+
+def is_secret_directory(path: str) -> bool:
+    p = path.strip().rstrip("/")
+    return bool(p) and (p.rsplit("/", 1)[-1] in SECRET_DIRECTORIES or p.endswith("sops/age"))
 
 
 def secret_files_in(tokens: List[str], cwd: Optional[str]) -> List[str]:
@@ -78,6 +89,26 @@ def secret_files_in(tokens: List[str], cwd: Optional[str]) -> List[str]:
             candidates = [token]
         found.extend(c for c in candidates if is_secret_file(c))
     return found
+
+
+SECRET_GLOB_SAMPLES = (
+    ".env", ".env.local", ".env.production.local", "id_rsa", "id_ed25519",
+    "server.key", "tls.pem", "kubeconfig", "secret.yaml",
+)
+
+
+def glob_hits_secret(pattern: str, samples=SECRET_GLOB_SAMPLES) -> bool:
+    """グロブが秘密のファイル名に当たりうるか。展開せずに名前だけで見る。"""
+    base = pattern.rsplit("/", 1)[-1]
+    if not base:
+        return False
+    if is_secret_file(base):
+        return True
+    try:
+        return any(fnmatch.fnmatchcase(sample, base) for sample in samples)
+    except re.error:
+        # `[g-c]` のような範囲は Python 3.9 の fnmatch が正規表現にできない
+        return False
 
 
 def secret_expansion(token: str) -> Optional[str]:
@@ -103,6 +134,7 @@ class SimpleCommand:
         self.args: List[str] = []
         self.inputs: List[str] = []  # `<` で読ませるファイル
         self.stdout_discarded = False  # `>/dev/null` / `&>/dev/null`
+        self.here_strings: List[str] = []  # `<<<` の右辺（ファイルではなく文字列）
 
 
 HEREDOC = re.compile(r"(?<!<)<<(-?)[ \t]*(?:'([^'\n]+)'|\"([^\"\n]+)\"|(\\?)([A-Za-z_][\w.-]*))")
@@ -233,6 +265,8 @@ def split_commands(tokens: List[str]) -> List[SimpleCommand]:
                 # `2>` は shlex では `2` と `>` に分かれる。直前の引数が 2 なら標準エラーとみなす（数値の引数だった場合も安全側）
                 if token in ("<", "<>"):
                     redirect = "input"
+                elif token == "<<<":
+                    redirect = "here-string"
                 elif token in (">", ">>", "&>", "&>>", ">|") and current.args[-1:] != ["2"]:
                     redirect = "stdout"
                 else:
@@ -245,6 +279,8 @@ def split_commands(tokens: List[str]) -> List[SimpleCommand]:
             continue
         if redirect == "input":
             current.inputs.append(token)
+        elif redirect == "here-string":
+            current.here_strings.append(token)
         elif redirect == "stdout":
             current.stdout_discarded = current.stdout_discarded or token == "/dev/null"
         elif redirect is None:
@@ -337,7 +373,7 @@ def command_positions(args: List[str]) -> Tuple[Set[int], Optional[int]]:
 DUMPERS = {
     "cat", "tac", "less", "more", "most", "head", "tail", "bat", "batcat", "nl", "xxd", "od", "hexdump",
     "strings", "sed", "awk", "gawk", "mawk", "cut", "sort", "uniq", "paste", "column", "fold", "base64",
-    "base32", "jq", "yq", "diff", "sdiff", "zcat",
+    "base32", "jq", "yq", "diff", "sdiff", "zcat", "perl", "ruby", "rev", "expand", "unexpand", "pr",
 }  # fmt: skip
 # 最初の引数がファイルではなくパターンやプログラムのもの: {名前: (値を取る短いオプション, パターンを別に渡す短いオプション)}
 # パターンを -e / -f で渡したときは、最初の引数もファイルになる
@@ -426,6 +462,20 @@ def rule_secret_files(cmd: SimpleCommand, positions: Set[int], main: Optional[in
     return None
 
 
+FIND_NAME_FLAGS = ("-name", "-iname", "-path", "-ipath", "-wholename")
+
+
+def rule_find(cmd: SimpleCommand) -> Optional[str]:
+    args = cmd.args
+    if not any(program(a) == "find" for a in args):
+        return None
+    patterns = [args[i + 1] for i, a in enumerate(args) if a in FIND_NAME_FLAGS and i + 1 < len(args)]
+    dumpers = [program(a) for a in args if program(a) in DUMPERS or program(a) in GREP_QUIET_FLAGS]
+    if dumpers and any(glob_hits_secret(p) for p in patterns):
+        return f"`find ... -exec {dumpers[0]}` で秘密のファイルの中身を出そうとしている"
+    return None
+
+
 def rule_sops(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
     if any(program(cmd.args[k]) == "sops" for k in positions):
         return "`sops` を実行しようとしている（TTY が無くエディタが異常終了し、復号した内容が会話ログに出る）"
@@ -451,6 +501,10 @@ def rule_environment(cmd: SimpleCommand, positions: Set[int], main: Optional[int
                 var = secret_expansion(a)
                 if var:
                     return f"`{name}` で {var} の値を出そうとしている"
+        for a in cmd.here_strings:
+            var = secret_expansion(a)
+            if var:
+                return f"`<<<` で {var} の値を `{name}` に渡して出そうとしている"
         if name == "dotenv" and "-p" in (rest[: rest.index("--")] if "--" in rest else rest):
             return "`dotenv -p` で変数の値を出そうとしている"
         if k == main and name in ("export", "declare", "typeset"):
@@ -518,6 +572,8 @@ def rule_inline_code(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
 
 
 SHELLS = {"sh", "bash", "zsh", "dash", "ksh"}
+# 値を取る ssh のオプション（この後ろに続く最初の語が接続先、その後ろがリモートのコマンド）
+SSH_VALUE_FLAGS = {"-p", "-i", "-o", "-l", "-F", "-J", "-L", "-R", "-D", "-b", "-c", "-E", "-I", "-m", "-S", "-W", "-w"}
 
 
 def rule_nested_shell(cmd: SimpleCommand, positions: Set[int], cwd: Optional[str], depth: int) -> Optional[str]:
@@ -532,6 +588,16 @@ def rule_nested_shell(cmd: SimpleCommand, positions: Set[int], cwd: Optional[str
                     if reason:
                         return reason
                     break
+        if name in ("ssh", "doas") and rest:
+            # 別のホストで出しても、出力は会話ログに残る
+            remote = list(rest)
+            if name == "ssh":
+                while remote and remote[0].startswith("-"):
+                    remote = remote[2:] if remote[0] in SSH_VALUE_FLAGS else remote[1:]
+                remote = remote[1:]  # 接続先
+            reason = check_bash(" ".join(remote), cwd, depth + 1) if remote else None
+            if reason:
+                return reason
         if name == "eval" and rest:
             reason = check_bash(" ".join(rest), cwd, depth + 1)
             if reason:
@@ -567,10 +633,10 @@ def output_formats(rest: List[str]) -> List[str]:
 KUBECTL_VALUE_FLAGS = {"-n", "--namespace", "--context", "--kubeconfig", "--cluster", "--user", "-l", "--selector", "-o", "--output"}
 
 
-def rule_kubectl(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
+def rule_kubectl(cmd: SimpleCommand, positions: Set[int], cwd: Optional[str]) -> Optional[str]:
     args = cmd.args
     for k in sorted(positions):
-        if program(args[k]) != "kubectl":
+        if program(args[k]) not in ("kubectl", "k"):
             continue
         rest = args[k + 1 :]
         words = non_flag_words(rest, KUBECTL_VALUE_FLAGS)
@@ -584,6 +650,8 @@ def rule_kubectl(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
             return "`kubectl get secret` で Secret の値を出そうとしている（件数や名前だけなら -o を付けない）"
         if words[:2] == ["config", "view"] and any(a.split("=", 1)[0] in ("--raw", "--flatten") for a in rest):
             return "`kubectl config view --raw` で接続用の証明書やトークンを出そうとしている"
+        if prints_values and secret_files_in(rest, cwd):
+            return "`kubectl -o` で平文の Secret マニフェストの中身を出そうとしている"
         if words[:2] == ["create", "secret"]:
             if any(a.startswith("--from-literal") for a in rest):
                 return "`--from-literal` で秘密の値をコマンドラインに渡している"
@@ -594,7 +662,7 @@ def rule_kubectl(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
 
 DOCKER_VALUE_FLAGS = {"--context", "-c", "--config", "-H", "--host", "-l", "--log-level"}
 COMPOSE_VALUE_FLAGS = {"-f", "--file", "-p", "--project-name", "--profile", "--env-file", "--project-directory", "--ansi", "--progress", "--parallel"}
-COMPOSE_CONFIG_QUIET = {"-q", "--quiet", "--services", "--volumes", "--profiles", "--images", "--networks", "--hash"}
+COMPOSE_CONFIG_QUIET = {"-q", "--quiet", "--services", "--volumes", "--profiles", "--images", "--networks", "--hash", "-h", "--help"}
 
 
 def rule_docker(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
@@ -635,7 +703,7 @@ def rule_gh(cmd: SimpleCommand, positions: Set[int]) -> Optional[str]:
         words = [a for a in rest if not a.startswith("-")]
         if words[:2] == ["auth", "token"]:
             return "`gh auth token` で GitHub のトークンを出そうとしている"
-        if words[:2] == ["auth", "status"] and any(a in ("-t", "--show-token") for a in rest):
+        if words[:2] == ["auth", "status"] and any(a.split("=", 1)[0] in ("-t", "--show-token") for a in rest):
             return "`gh auth status --show-token` で GitHub のトークンを出そうとしている"
     return None
 
@@ -664,11 +732,12 @@ def check_bash(command: str, cwd: Optional[str] = None, _depth: int = 0) -> Opti
             continue
         reason = (
             rule_sops(cmd, positions)
+            or rule_find(cmd)
             or rule_secret_files(cmd, positions, main, cwd)
             or rule_environment(cmd, positions, main)
             or rule_inline_code(cmd, positions)
             or rule_nested_shell(cmd, positions, cwd, _depth)
-            or rule_kubectl(cmd, positions)
+            or rule_kubectl(cmd, positions, cwd)
             or rule_docker(cmd, positions)
             or rule_gh(cmd, positions)
         )
@@ -679,7 +748,7 @@ def check_bash(command: str, cwd: Optional[str] = None, _depth: int = 0) -> Opti
 
 def check_read(tool_input: dict) -> Optional[str]:
     path = tool_input.get("file_path") or ""
-    if is_secret_file(path):
+    if is_secret_file(path) or is_secret_directory(path):
         return f"Read で {path} を読もうとしている"
     return None
 
@@ -689,13 +758,11 @@ def check_grep(tool_input: dict) -> Optional[str]:
     if tool_input.get("output_mode") != "content":
         return None
     path = tool_input.get("path") or ""
-    if is_secret_file(path):
+    if is_secret_file(path) or is_secret_directory(path):
         return f"Grep で {path} の行を出そうとしている"
-    pattern = (tool_input.get("glob") or "").rsplit("/", 1)[-1]
-    if pattern and (
-        is_secret_file(pattern) or any(fnmatch.fnmatchcase(s, pattern) for s in (".env", ".env.local", ".env.production.local"))
-    ):
-        return f"Grep で glob {tool_input.get('glob')} に当たる秘密のファイルの行を出そうとしている"
+    glob_pattern = tool_input.get("glob") or ""
+    if glob_pattern and glob_hits_secret(glob_pattern, (".env", ".env.local", ".env.production.local")):
+        return f"Grep で glob {glob_pattern} に当たる秘密のファイルの行を出そうとしている"
     return None
 
 

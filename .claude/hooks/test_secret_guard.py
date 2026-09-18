@@ -76,6 +76,20 @@ BLOCK = [
     "cat k8s/secret.yaml",
     "cat k8s/db-secret.yaml",
     "cat ~/.config/gh/hosts.yml",
+    "cat ~/.docker/config.json",
+    "cat ~/.npmrc",
+    "cat ~/.netrc",
+    "cat ~/.aws/credentials",
+    "cat ~/.pgpass",
+    # 別のホストで出しても会話ログに出るのは同じ
+    "ssh pi@raspberrypi.local cat /home/pi/.kube/config",
+    "ssh -p 2222 pi 'cat /etc/rancher/k3s/k3s.yaml'",
+    "env -u NODE_OPTIONS cat .env.local",
+    "perl -ne 'print' .env.local",
+    "find . -name '.env*' -exec head -5 {} +",
+    'cat <<< "$AUTH_SECRET"',
+    "k get secret x -o yaml",
+    "kubectl apply -f k8s/secret.yaml --dry-run=client -o yaml",
     "base64 .env.local",
     "xxd .env.local",
     "diff .env.example .env.local",
@@ -140,6 +154,7 @@ BLOCK = [
     "gh auth token",
     "gh auth status --show-token",
     "gh auth status -t",
+    "gh auth status --show-token=true",
     # 閉じていないクォートでも素通りさせない
     'cat .env.local "oops',
 ]
@@ -181,6 +196,10 @@ ALLOW = [
     "cat k8s/config.env",
     "cat src/lib/env.ts",
     "cat ~/.ssh/id_ed25519.pub",
+    "cat ~/.ssh/known_hosts",
+    "ssh pi uptime",
+    "ssh -i ~/.ssh/id_ed25519 pi 'systemctl status k3s'",
+    "find . -name '*.ts' -exec head -5 {} +",
     "cat scripts/make-kubeconfig.sh",
     "cat ~/.kube/cache/discovery/x.json",
     "openssl genrsa -out server.key 2048",
@@ -201,6 +220,7 @@ ALLOW = [
     "grep -rn AUTH_SECRET src",
     # 値を出さない kubectl / docker / gh
     "kubectl get secrets",
+    "k get pods -o wide",
     "kubectl get secret fishing-app-secret -o name",
     "kubectl describe secret fishing-app-secret",
     "kubectl -n fishing get pods -o wide",
@@ -209,6 +229,7 @@ ALLOW = [
     "kubectl logs job/db-migrate --tail=50",
     "docker compose config --services",
     "docker compose config -q",
+    "docker compose config --help",
     "docker inspect -f '{{.State.Health.Status}}' fishing-postgres",
     "docker image inspect fishing-app:latest",
     "gh auth status",
@@ -286,6 +307,12 @@ class ReadTest(unittest.TestCase):
             with self.subTest(path=path):
                 self.assertIsNotNone(secret_guard.check_read({"file_path": path}))
 
+    # ディレクトリを指すと、その下の鍵やトークンの中身を読める
+    def test_秘密のファイルが入るディレクトリも止める(self):
+        for path in ["/Users/someone/.kube", "/Users/someone/.ssh/", "/Users/someone/.config/sops/age"]:
+            with self.subTest(path=path):
+                self.assertIsNotNone(secret_guard.check_read({"file_path": path}))
+
     def test_allow(self):
         for path in [".env.example", "/Users/someone/proj/src/lib/env.ts", "k8s/secret.enc.yaml"]:
             with self.subTest(path=path):
@@ -303,6 +330,15 @@ class GrepTest(unittest.TestCase):
         self.assertIsNotNone(
             secret_guard.check_grep({"pattern": "AUTH", "glob": "**/.env.local", "output_mode": "content"})
         )
+
+    def test_秘密のファイルが入るディレクトリも止める(self):
+        self.assertIsNotNone(
+            secret_guard.check_grep({"pattern": "server", "path": "/Users/someone/.kube", "output_mode": "content"})
+        )
+
+    # Python 3.9 の fnmatch は逆順の範囲で re.error を投げる。例外で素通りさせない
+    def test_glob_that_cannot_compile_does_not_crash(self):
+        self.assertIsNone(secret_guard.check_grep({"pattern": "A", "glob": "[g-c]", "output_mode": "content"}))
 
     def test_counts_and_file_names_are_allowed(self):
         for mode in ["count", "files_with_matches", None]:
