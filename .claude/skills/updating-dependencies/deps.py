@@ -15,6 +15,7 @@
 from __future__ import annotations
 
 import json
+import platform
 import re
 import subprocess
 import sys
@@ -92,6 +93,63 @@ def print_list(title: str, items: List[str]) -> None:
 
 # ---------------------------------------------------------------- check-install
 
+def node_platform() -> str:
+    """Node の process.platform と同じ綴り。"""
+    return {"darwin": "darwin", "linux": "linux", "win32": "win32"}.get(sys.platform, sys.platform)
+
+
+def node_arch(machine: Optional[str] = None) -> str:
+    """Node の process.arch と同じ綴り（Python の platform.machine() とは違う）。"""
+    machine = (machine or platform.machine()).lower()
+    return {"x86_64": "x64", "amd64": "x64", "aarch64": "arm64", "arm64": "arm64",
+            "i386": "ia32", "i686": "ia32"}.get(machine, machine)
+
+
+def runs_here(meta: dict) -> bool:
+    """この環境に入るはずのパッケージか。
+
+    libc の指定（glibc / musl）はここからは判定できないので、入らない扱いにする。
+    今の npm（11.19.0 の arborist）は lock に libc を書かないので、この分岐は保険。
+    """
+    if meta.get("libc"):
+        return False
+
+    def matches(values: Optional[List[str]], current: str) -> bool:
+        if not values:
+            return True
+        excluded = [v[1:] for v in values if v.startswith("!")]
+        included = [v for v in values if not v.startswith("!")]
+        if current in excluded:
+            return False
+        return not included or current in included
+
+    return matches(meta.get("os"), node_platform()) and matches(meta.get("cpu"), node_arch())
+
+
+def installed_paths(root: Path, prefix: str = "node_modules") -> List[str]:
+    """node_modules を辿って、入っているパッケージを lock のキーと同じ形で返す。"""
+    directory = root / prefix
+    if not directory.is_dir():
+        return []
+    found = []
+    for child in sorted(directory.iterdir()):
+        # .bin / .package-lock.json / .cache / pnpm の .pnpm など、パッケージの置き場ではないもの
+        if child.name.startswith("."):
+            continue
+        if child.name.startswith("@") and child.is_dir():
+            paths = [f"{prefix}/{child.name}/{scoped.name}" for scoped in sorted(child.iterdir())]
+        else:
+            paths = [f"{prefix}/{child.name}"]
+        for path in paths:
+            if (root / path / "package.json").is_file():
+                found.append(path)
+            # workspace の link は node_modules/<name> が packages/<name> への symlink。
+            # その先は lock では packages/... のキーになるので、symlink を抜けて辿らない
+            if not (root / path).is_symlink():
+                found.extend(installed_paths(root, f"{path}/node_modules"))
+    return found
+
+
 def install_drift(root: Path) -> List[str]:
     lock = load_lock((root / "package-lock.json").read_text())
     drift = []
@@ -100,14 +158,25 @@ def install_drift(root: Path) -> List[str]:
             continue
         manifest = root / path / "package.json"
         if not manifest.is_file():
-            # 別プラットフォーム向けの optional（sharp の linux 用など）は入らないのが普通
-            if meta.get("optional"):
+            # 別プラットフォーム向けの optional（sharp の linux 用など）は入らないのが普通。
+            # os / cpu を持つものがこの環境に一致するのに欠けていれば、npm ci が途中で失敗している。
+            # os も cpu も持たない optional は、プラットフォーム固定の親の依存（子は親の os/cpu を
+            # 継承しない）であることが多く、親ごと入らないのが正しい。npm 11.19.0 は
+            # @img/sharp-wasm32 と @emnapi/runtime を入れない（11.7.0 は入れる）
+            if meta.get("optional") and not ((meta.get("os") or meta.get("cpu")) and runs_here(meta)):
                 continue
             drift.append(f"{package_name(path)}: 入っていない（lock は {meta.get('version')}）  [{path}]")
             continue
-        installed = json.loads(manifest.read_text()).get("version")
+        try:
+            installed = json.loads(manifest.read_text()).get("version")
+        except json.JSONDecodeError as error:
+            drift.append(f"{package_name(path)}: package.json を読めない（{error}）  [{path}]")
+            continue
         if installed != meta.get("version"):
             drift.append(f"{package_name(path)}: 入っているのは {installed}、lock は {meta.get('version')}  [{path}]")
+    for path in installed_paths(root):
+        if path not in lock["packages"]:
+            drift.append(f"{package_name(path)}: lock に無いのに入っている  [{path}]")
     return drift
 
 

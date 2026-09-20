@@ -63,6 +63,21 @@ class VersionTest(unittest.TestCase):
         self.assertFalse(deps.breaking("0.553.0", "0.553.1"))
 
 
+class PlatformTest(unittest.TestCase):
+    """Node と Python で綴りが違う（x86_64 → x64 など）。lock の cpu は Node の綴り。"""
+
+    def test_アーキテクチャの綴りを_Node_に合わせる(self):
+        self.assertEqual(deps.node_arch("x86_64"), "x64")
+        self.assertEqual(deps.node_arch("AMD64"), "x64")
+        self.assertEqual(deps.node_arch("aarch64"), "arm64")
+        self.assertEqual(deps.node_arch("arm64"), "arm64")
+        self.assertEqual(deps.node_arch("i686"), "ia32")
+
+    def test_除外指定を読む(self):
+        self.assertFalse(deps.runs_here({"os": ["!" + deps.node_platform()]}))
+        self.assertTrue(deps.runs_here({"os": ["!plan9"]}))
+
+
 class CheckInstallTest(unittest.TestCase):
     def setUp(self):
         self._tmp = tempfile.TemporaryDirectory()
@@ -115,12 +130,113 @@ class CheckInstallTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     # sharp の linux 用バイナリなど、別プラットフォーム向けの optional は入らないのが普通
-    def test_入っていない_optional_は無視する(self):
+    def test_別プラットフォーム向けの_optional_は無視する(self):
         (self.root / "package-lock.json").write_text(json.dumps(lock({
-            "node_modules/@img/sharp-linux-arm64": entry("0.35.4", "@img/sharp-linux-arm64", optional=True),
+            "node_modules/@img/sharp-linux-arm64": entry(
+                "0.35.4", "@img/sharp-linux-arm64", optional=True, os=["linux"], cpu=["arm64"],
+            ),
         })))
         result = run("check-install", cwd=self.root)
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    # この環境向けの optional が欠けていれば、npm ci が途中で失敗している
+    def test_この環境向けの_optional_が欠けていれば落ちる(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/@tailwindcss/oxide-here": entry(
+                "4.3.3", "@tailwindcss/oxide-here", optional=True,
+                os=[deps.node_platform()], cpu=[deps.node_arch()],
+            ),
+        })))
+        result = run("check-install", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("oxide-here", result.stdout)
+
+    # os も cpu も無い optional は、プラットフォーム固定の親の依存であることが多く
+    # （子は親の os/cpu を継承しない）、親ごと入らないのが正しい。npm 11.19.0 は
+    # @img/sharp-wasm32 と @emnapi/runtime を入れないので、必須にすると誤検知になる
+    def test_os_も_cpu_も無い_optional_は無視する(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/@img/sharp-wasm32": entry("0.35.4", "@img/sharp-wasm32", optional=True),
+        })))
+        self.assertEqual(run("check-install", cwd=self.root).returncode, 0)
+
+    # libc の指定は判定できないことがあるので、欠けていても言わない
+    def test_この環境と違う_cpu_向けの_optional_は無視する(self):
+        other = "ia32" if deps.node_arch() != "ia32" else "arm64"
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/other-cpu": entry(
+                "1.0.0", "other-cpu", optional=True, os=[deps.node_platform()], cpu=[other],
+            ),
+        })))
+        self.assertEqual(run("check-install", cwd=self.root).returncode, 0)
+
+    def test_libc_の指定がある_optional_は無視する(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/musl-only": entry(
+                "1.0.0", "musl-only", optional=True,
+                os=[deps.node_platform()], cpu=[deps.node_arch()], libc=["musl"],
+            ),
+        })))
+        self.assertEqual(run("check-install", cwd=self.root).returncode, 0)
+
+    def test_lock_に無いパッケージが入っていれば落ちる(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/zod": entry("4.6.5", "zod"),
+        })))
+        self.install("node_modules/zod", "4.6.5")
+        self.install("node_modules/not-in-lock", "1.0.0")
+        self.install("node_modules/@scope/also-extra", "2.0.0")
+        self.install("node_modules/zod/node_modules/nested-extra", "3.0.0")
+        result = run("check-install", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        for name in ("not-in-lock", "@scope/also-extra", "nested-extra"):
+            self.assertIn(name, result.stdout)
+
+    def test_bin_や_package_lock_の隠しファイルは余分としない(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/zod": entry("4.6.5", "zod"),
+        })))
+        self.install("node_modules/zod", "4.6.5")
+        (self.root / "node_modules" / ".bin").mkdir(parents=True)
+        (self.root / "node_modules" / ".package-lock.json").write_text("{}")
+        (self.root / "node_modules" / ".cache").mkdir()
+        # pnpm の store のような、隠しディレクトリの下にパッケージがある形
+        self.install("node_modules/.pnpm/node_modules/ghost", "1.0.0")
+        result = run("check-install", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    # npm は node_modules/<name> を packages/<name> への symlink にする。その先の
+    # node_modules は lock では packages/... のキーになるので、辿ると名前が合わない
+    def test_workspace_の_symlink_の先は辿らない(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/ws-a": {"resolved": "packages/ws-a", "link": True},
+            "packages/ws-a": {"name": "ws-a", "version": "1.0.0"},
+            "packages/ws-a/node_modules/dep": entry("1.0.0", "dep"),
+        })))
+        self.install("packages/ws-a", "1.0.0")
+        self.install("packages/ws-a/node_modules/dep", "1.0.0")
+        (self.root / "node_modules").mkdir(exist_ok=True)
+        (self.root / "node_modules" / "ws-a").symlink_to(self.root / "packages" / "ws-a")
+        result = run("check-install", cwd=self.root)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+    # 抽出が途中で止まった残骸や .vite のような作業用ディレクトリを拾わないため、
+    # package.json が無いディレクトリは数えない
+    def test_package_json_が無いディレクトリは余分としない(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({})))
+        (self.root / "node_modules" / "half-extracted" / "lib").mkdir(parents=True)
+        self.assertEqual(run("check-install", cwd=self.root).returncode, 0)
+
+    def test_壊れた_package_json_は_traceback_にせず出す(self):
+        (self.root / "package-lock.json").write_text(json.dumps(lock({
+            "node_modules/zod": entry("4.6.5", "zod"),
+        })))
+        (self.root / "node_modules" / "zod").mkdir(parents=True)
+        (self.root / "node_modules" / "zod" / "package.json").write_text('{"version": ')
+        result = run("check-install", cwd=self.root)
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("package.json を読めない", result.stdout)
+        self.assertNotIn("Traceback", result.stderr)
 
 
 class LockRepoCase(unittest.TestCase):
