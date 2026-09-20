@@ -18,7 +18,7 @@ python3 $D lockdiff "$(git merge-base origin/develop HEAD)"   # この PR で変
 
 ## 手順
 
-1. **`check-install` を通す。** 落ちたら `npm ci`。lock ファイル同士を比べても分からない（別ブランチで `npm ci` したまま切り替えると、lock は prisma 7.10.0 なのに 7.9.1 が入っている）。ずれたまま `npm outdated` を読むと件数も版も狂う
+1. **`check-install` を通す。** 落ちたら `npm ci`。lock ファイル同士を比べても分からない（別ブランチで `npm ci` したまま切り替えると、lock は prisma 7.10.0 なのに 7.9.1 が入っている）。ずれたまま `npm outdated` を読むと件数も版も狂う。版の違いのほか、**この環境向け（`os` / `cpu` が一致する）の optional が欠けていないか**と、**lock に無いパッケージが `node_modules` に残っていないか**も見る
 2. **`outdated` で調べる。** 「Latest 列を信じてはいけない」に出たものは、Latest に合わせない
 3. **PR を分ける。**
    - レンジ内の更新 → `npm update` をまとめて1本
