@@ -109,6 +109,7 @@ def runs_here(meta: dict) -> bool:
     """この環境に入るはずのパッケージか。
 
     libc の指定（glibc / musl）はここからは判定できないので、入らない扱いにする。
+    今の npm（11.19.0 の arborist）は lock に libc を書かないので、この分岐は保険。
     """
     if meta.get("libc"):
         return False
@@ -142,7 +143,10 @@ def installed_paths(root: Path, prefix: str = "node_modules") -> List[str]:
         for path in paths:
             if (root / path / "package.json").is_file():
                 found.append(path)
-            found.extend(installed_paths(root, f"{path}/node_modules"))
+            # workspace の link は node_modules/<name> が packages/<name> への symlink。
+            # その先は lock では packages/... のキーになるので、symlink を抜けて辿らない
+            if not (root / path).is_symlink():
+                found.extend(installed_paths(root, f"{path}/node_modules"))
     return found
 
 
@@ -155,12 +159,19 @@ def install_drift(root: Path) -> List[str]:
         manifest = root / path / "package.json"
         if not manifest.is_file():
             # 別プラットフォーム向けの optional（sharp の linux 用など）は入らないのが普通。
-            # この環境向けのものが欠けていれば、npm ci が途中で失敗している
-            if meta.get("optional") and not runs_here(meta):
+            # os / cpu を持つものがこの環境に一致するのに欠けていれば、npm ci が途中で失敗している。
+            # os も cpu も持たない optional は、プラットフォーム固定の親の依存（子は親の os/cpu を
+            # 継承しない）であることが多く、親ごと入らないのが正しい。npm 11.19.0 は
+            # @img/sharp-wasm32 と @emnapi/runtime を入れない（11.7.0 は入れる）
+            if meta.get("optional") and not ((meta.get("os") or meta.get("cpu")) and runs_here(meta)):
                 continue
             drift.append(f"{package_name(path)}: 入っていない（lock は {meta.get('version')}）  [{path}]")
             continue
-        installed = json.loads(manifest.read_text()).get("version")
+        try:
+            installed = json.loads(manifest.read_text()).get("version")
+        except json.JSONDecodeError as error:
+            drift.append(f"{package_name(path)}: package.json を読めない（{error}）  [{path}]")
+            continue
         if installed != meta.get("version"):
             drift.append(f"{package_name(path)}: 入っているのは {installed}、lock は {meta.get('version')}  [{path}]")
     for path in installed_paths(root):
