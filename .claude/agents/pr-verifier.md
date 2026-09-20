@@ -56,7 +56,7 @@ git diff --stat origin/<baseRefName>...HEAD
 ## 3. 守ること
 
 - **コミットもプッシュもしない。** GitHub への書き込み（PR コメント、issue 操作）もしない。報告は呼び出し側が確かめてから投稿する
-- `.env.local` / `k8s/secret.enc.yaml` の**中身を出力しない。** `cat` しない。`sops` を実行しない
+- `.env.local` / `k8s/secret.enc.yaml` の**中身を出力しない。** `cat` しない。`sops` を実行しない。`secret_guard` の hook に止められたら書き方を変えて通そうとせず、止められたことを報告に書く
 - DB にテスト用のレコードを作ったら終了前に消す。消したことを報告に書く
 - 本番クラスタに `kubectl` を向けない。本番 URL へは読み取りの HTTP リクエストだけ
 
