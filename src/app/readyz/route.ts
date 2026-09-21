@@ -4,20 +4,17 @@ import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 
 /**
- * Readiness 用のヘルスチェック。
+ * 依存の到達性を確かめる診断用エンドポイント。人が状態を知りたいときに叩く。
  *
- * liveness の `/healthz` とは役割が異なる。`/healthz` は依存ゼロで
- * 「プロセスが生きているか」だけを見る（依存を足すと外部要因での再起動
- * ループを招く）。こちらは「このPodにトラフィックを流してよいか」を見る。
+ * **k8s の probe や監視など、定期ポーリングを向けないこと。** 向けた時点で
+ * Neon の autosuspend が効かなくなり、無料枠を使い切って本番が落ちる
+ * （#187、経緯は k8s/README.md）。probe は `/healthz` を使う。
  *
  * 判定に含めるもの:
- * - **DB**: 含める。ダッシュボードもお気に入りも Prisma を通るため、
- *   繋がっていないPodに流すと全ページが 500 になる。
+ * - **DB**: 含める。このエンドポイントの主目的が DB 到達性の確認のため。
  * - **Redis**: 含めない。キャッシュが落ちても `isAvailable()` が false を
  *   返して呼び出し側が素通しするだけで、アプリは（遅くなるが）動く。
- *   ここに含めると、クラスタ全体の Redis 障害で全Podが NotReady になり、
- *   本来まだ提供できたはずのサービスまで落ちる。状態は body に出して
- *   観測できるようにするに留める。
+ *   状態は body に出して観測できるようにするに留める。
  *
  * `/api/` 配下に置かないのは `/healthz` と同じ理由（Stage 5 で `/api/v1/*`
  * を Go に振る際のパス空間を汚さないため）。
@@ -25,8 +22,8 @@ import prisma from '@/lib/prisma';
 export const dynamic = 'force-dynamic';
 
 /**
- * probe の timeoutSeconds より短くする。probe 側で打ち切られると
- * 「なぜ落ちたか」がログに残らないため、こちらから先に見切って 503 を返す。
+ * 応答が返らないまま待ち続けないための打ち切り。probe から外れた今も、
+ * 人が叩いたときに固まらないよう残す。
  */
 const DB_CHECK_TIMEOUT_MS = 3000;
 
