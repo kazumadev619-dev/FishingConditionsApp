@@ -114,19 +114,13 @@ GitHub が自動クローズするのは**デフォルトブランチ（main）�
 
 ### レビューは `pr-verifier` agent に worktree 隔離で投げる
 
-守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.codex/agents/pr-verifier.toml` に書いてある。呼ぶ側が渡すのは次の3つだけ。
+守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.codex/agents/pr-verifier.toml` に書いてある。Codex の subagent は親の cwd を共有するため、呼び出し側が先に `mcp__codex_app__create_worktree` でレビュー専用の worktree を作る。返された workspace の**絶対パス**、PR 番号、本文の主張、重点観点の4つを `collaboration.spawn_agent` の `agent_type: "pr-verifier"` に渡す。
 
-```
-Agent(
-  subagent_type: "pr-verifier",
-  isolation: "worktree",
-  prompt: "PR #<N>。本文で主張していること: 1) ... 2) ...。重点的に見てほしい観点: ...",
-)
-```
+依頼には「各コマンドの実行ディレクトリを専用検証 worktree の絶対パスに明示する。開始時に `pwd -P` がそのパスと一致し、`git rev-parse --path-format=absolute --git-dir --git-common-dir` の2行が異なることを確認する。どちらかを確認できなければ `git checkout`・`npm ci`・変異の注入をせず読み取りレビューへ切り替える」と明記する。worktree の作成だけでは subagent の cwd は変わらない。
 
 - **主張は番号付きで列挙する。** agent は報告の「PR 本文の主張の検証」で1つずつ判定を返す。自分の PR 本文の誤りや過少な記述はここで見つかる
-- **`isolation: "worktree"` を付ける。** レビュアーは変異の注入や依存の入れ替えでファイルを書き換える
-- 角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）
+- レビュアーは変異の注入や依存の入れ替えでファイルを書き換えるため、親が作業中の worktree を検証先に渡さない
+- 角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）。並行レビューでは reviewer ごとに専用 worktree を作る
 
 `pr-verifier` が選べないとき（agent 定義を足したばかりのセッション、定義がまだ develop に無いブランチにいるときなど）は、`default` に「最初に `.codex/agents/pr-verifier.toml` を Read し、`developer_instructions` に従う」と指示して投げる。**Bash を持たない agent には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
 
