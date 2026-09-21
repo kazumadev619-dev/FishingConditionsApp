@@ -51,7 +51,7 @@ docker images
 docker images | grep fishing-app
 
 # イメージの詳細情報
-docker inspect fishing-app:latest
+docker image inspect fishing-app:latest
 
 # イメージの削除
 docker rmi fishing-app:latest
@@ -100,9 +100,13 @@ docker restart fishing-app
 # コンテナのリソース使用状況
 docker stats fishing-app
 
-# コンテナの詳細情報
-docker inspect fishing-app
+# コンテナの詳細情報（State だけ。全体は環境変数まで出る。下の注意を参照）
+docker inspect -f '{{json .State}}' fishing-app | jq
 ```
+
+> **`docker inspect <コンテナ>` を引数なしで実行しない。** 出力の `Config.Env` に、`env_file: ../.env.local` で渡した `AUTH_SECRET` や `AUTH_GOOGLE_SECRET` がそのまま入る。必要な項目だけ `-f '{{json .State}}'` のように **docker 側で**絞る。`| jq '.[0].State'` で絞ると画面に出るのは絞ったあとだけだが、`docker` 自体は全体を出しているので、Claude Code から実行すると `secret_guard` hook が止める（パイプの先までは見分けられない）。
+>
+> イメージの情報は `docker image inspect` を使う。
 
 ---
 
@@ -340,10 +344,10 @@ docker build --progress=plain -t fishing-app:latest -f docker/Dockerfile .
 docker logs fishing-app
 
 # コンテナの状態を確認
-docker inspect fishing-app
+docker inspect -f '{{json .State}}' fishing-app | jq
 
 # ヘルスチェックの状態確認
-docker inspect fishing-app | jq '.[0].State.Health'
+docker inspect -f '{{json .State.Health}}' fishing-app | jq
 ```
 
 #### ポートが既に使用されている
