@@ -74,6 +74,19 @@ startup / liveness / readiness の3つとも、依存ゼロの `/healthz` を叩
 監視や probe など、定期ポーリングは向けないこと。CI の
 `Ensure probes only hit /healthz` が、probe が `/healthz` 以外を向いたら落とす。
 
+**代わりに失ったもの: ロールアウトで壊れた DB 設定を止める網。** 以前は新しい Pod が
+DB に繋がらないと Ready にならず、`rollout status` が落ちて止まっていた。いまは
+`/healthz` が通るので、Secret の `DATABASE_URL`（アプリが使う pooled 側）を壊しても
+ロールアウトは完了する。migrate は `DATABASE_URL_DIRECT` しか読まないので、pooled 側
+だけ壊れた場合は migrate も通る。そのため `deploy.yml` のブロッキングスモークで
+`/readyz` を**デプロイごとに1回だけ**叩いて落とす（直前の migrate で compute は起きて
+おり、1回きりなので autosuspend も妨げない）。
+
+**ただし `Rollback on failure` の `rollout undo` では Secret 起因の障害は直らない。**
+Pod テンプレートは戻るが、作り直された Pod も壊れた Secret を読むため。デプロイが
+赤くなったら Secret を直して再デプロイする。なお以前の構成でも、壊れた Secret が
+適用されたまま残るので、次に Pod が再起動した時点で全面停止していた。
+
 ## ローカル検証
 
 k8s のローカル環境（Minikube など）は用意していない。ローカル開発は

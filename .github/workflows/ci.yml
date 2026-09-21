@@ -217,10 +217,15 @@ jobs:
       # 永久にリセットし、無料枠を使い切って本番を落とす（#187、経緯は k8s/README.md）。
       - name: Ensure probes only hit /healthz
         run: |
-          # 各 probe の直後3行だけを見る。ファイル全体だと Ingress の path にも一致する。
+          # 各 probe のブロックの中だけを見る。ファイル全体だと Ingress の path にも一致する。
+          # 行数でなくインデントで切る。kustomize はキーを辞書順に並べるので、httpHeaders や
+          # host があると path が後ろにずれ、固定の行数では取りこぼす。
           # 1行にまとめる。::error:: は改行で切れるので、複数行だと犯人の path が表示されない
-          paths=$(grep -A3 -E '^ +(startup|liveness|readiness)Probe:$' /tmp/rendered.yaml \
-            | grep -oE 'path: [^ ]+' | awk '{print $2}' | sort -u | paste -sd, -)
+          paths=$(awk '
+            /^ +(startup|liveness|readiness)Probe:$/ { ind = match($0, /[^ ]/); inp = 1; next }
+            inp && match($0, /[^ ]/) <= ind { inp = 0 }
+            inp && /^ +path: / { print $2 }
+          ' /tmp/rendered.yaml | sort -u | paste -sd, -)
 
           # 禁止リストではなく許可リスト。DB を叩く新しいエンドポイントを足しても自動で落ちる
           if [ "$paths" != "/healthz" ]; then

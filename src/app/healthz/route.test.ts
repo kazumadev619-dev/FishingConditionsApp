@@ -8,6 +8,8 @@ const forbid = vi.hoisted(() => () => {
 vi.mock('@/lib/prisma', forbid);
 vi.mock('@/lib/cache/client', forbid);
 vi.mock('pg', forbid);
+// adapter-pg の中の import pg は Vite を通らないので、pg のモックが効かない
+vi.mock('@prisma/adapter-pg', forbid);
 vi.mock('ioredis', forbid);
 
 describe('/healthz', () => {
