@@ -1,0 +1,2 @@
+#:schema https://developers.openai.com/codex/config-schema.json
+# Project-level Codex settings. Lifecycle hooks live in .codex/hooks/hooks.json.
