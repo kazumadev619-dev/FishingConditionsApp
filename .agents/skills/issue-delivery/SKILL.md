@@ -268,7 +268,7 @@ GitHub Actions のアノテーション記法をコミット本文に貼った�
 
 ## 秘密情報
 
-`.env` などを git add しない話は `github-push-pr` と CLAUDE.md にあるので、ここでは重複させない。加えて:
+`.env` などを git add しない話は `github-push-pr` と AGENTS.md にあるので、ここでは重複させない。加えて:
 
 - `sops` を Claude Code の `!` から実行しない（TTY が無くエディタが異常終了し、復号内容が会話ログへ出る。2026-09-12 に実際に事故った）
 - 秘密の値をコマンドラインに渡さない。`npx dotenv -e .env.local -- <cmd>` の形を使う

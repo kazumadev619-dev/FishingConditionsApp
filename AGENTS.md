@@ -1,4 +1,4 @@
-# CLAUDE.md
+# AGENTS.md
 
 基本的な会話は日本語で。
 
