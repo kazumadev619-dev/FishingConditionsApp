@@ -11,7 +11,7 @@ spec:
   # timeout まで待つ。backoffLimit 0 + activeDeadlineSeconds で早期に確定させる
   backoffLimit: 0
   # activeDeadlineSeconds は status.startTime 起点なので、スケジューリングと
-  # イメージ pull の時間も食う。migrator は非圧縮 1.64GB（転送 338MB）あり、
+  # イメージ pull の時間も食う。migrator は非圧縮 1.43GB（転送 約310MB）あり、
   # Pi で初回に落とすと 240s では足りない可能性が高い。backoffLimit: 0 で
   # リトライも無いため、足りなければそのままデプロイ失敗になる。
   activeDeadlineSeconds: 600
