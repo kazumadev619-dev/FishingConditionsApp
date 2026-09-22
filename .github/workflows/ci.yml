@@ -64,6 +64,18 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      # 8. ワークフローの静的検査（actionlint）
+      # 消した step id や書き間違えた式はエラーにならず空文字に評価され、
+      # deploy.yml は main に上がるまで走らないので本番で初めて表に出る（#199）。
+      # ランナーに shellcheck が入っていれば run: の中身も検査される。
+      - name: Lint workflows (actionlint)
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+        run: |
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
+            | tar xz -C /tmp actionlint
+          /tmp/actionlint
+
   # ============================================
   # ビルド検証
   # ============================================
@@ -252,6 +264,8 @@ jobs:
           plain=$(awk '/^stringData:/{f=1;next} /^[a-z]/{f=0} f && /: / && !/ENC\[AES256_GCM/' k8s/secret.enc.yaml)
           if [ -n "$plain" ]; then
             echo "::error::k8s/secret.enc.yaml の stringData に暗号化されていない値がある"
+            # 行ごとに伏せる。${plain//:*/} だと * が改行をまたいで2行目以降のキー名まで消える
+            # shellcheck disable=SC2001
             echo "$plain" | sed 's/:.*/: <伏せ字>/'
             exit 1
           fi
@@ -268,20 +282,22 @@ jobs:
     steps:
       - name: Check CI results
         run: |
-          echo "## CI Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## CI Results"
+            echo ""
 
-          if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ]; then
-            echo "🟢 All checks passed!" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- 🟢 Code Quality Check" >> $GITHUB_STEP_SUMMARY
-            echo "- 🟢 Build Verification" >> $GITHUB_STEP_SUMMARY
-            echo "- 🟢 Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Some checks failed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check" >> $GITHUB_STEP_SUMMARY
-            echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification" >> $GITHUB_STEP_SUMMARY
-            echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
+            if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ]; then
+              echo "🟢 All checks passed!"
+              echo ""
+              echo "- 🟢 Code Quality Check"
+              echo "- 🟢 Build Verification"
+              echo "- 🟢 Kubernetes Manifests"
+            else
+              echo "❌ Some checks failed"
+              echo ""
+              echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check"
+              echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification"
+              echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests"
+              exit 1
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
