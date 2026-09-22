@@ -67,11 +67,14 @@ jobs:
       # 8. ワークフローの静的検査（actionlint）
       # 消した step id や書き間違えた式はエラーにならず空文字に評価され、
       # deploy.yml は main に上がるまで走らないので本番で初めて表に出る（#199）。
-      # ランナーに shellcheck が入っていれば run: の中身も検査される。
+      # ランナーの shellcheck で run: の中身も検査される。ただし shellcheck が
+      # 無いと actionlint はその規則を黙って外して exit 0 になり、検知が半分に
+      # 落ちる。版をログに出すついでに、消えたらここで落とす。
       - name: Lint workflows (actionlint)
         env:
           ACTIONLINT_VERSION: 1.7.12
         run: |
+          shellcheck --version
           curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
             | tar xz -C /tmp actionlint
           /tmp/actionlint
