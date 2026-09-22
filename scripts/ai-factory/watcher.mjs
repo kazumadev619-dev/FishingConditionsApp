@@ -601,8 +601,7 @@ function runnerArguments(issue, worktree, schemaPath, resultPath) {
     worktree,
     '--sandbox',
     'workspace-write',
-    '--ask-for-approval',
-    'never',
+    '--approve-for-me',
     '--json',
     '--output-schema',
     schemaPath,
@@ -793,6 +792,7 @@ export async function executeIssue(
     mode: 0o600,
   });
   let attempt = 1;
+  let infrastructureRetries = 0;
   let commentId;
   let runner;
   let threadId;
@@ -840,13 +840,35 @@ export async function executeIssue(
         });
       }
     };
-    runner = await runRunner({
-      args,
-      runDir,
-      env,
-      cwd: prepared.worktree,
-      onHeartbeat: heartbeatRecord,
-    });
+    try {
+      runner = await runRunner({
+        args,
+        runDir,
+        env,
+        cwd: prepared.worktree,
+        onHeartbeat: heartbeatRecord,
+      });
+    } catch (error) {
+      await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+        level: 'error',
+        event: 'runner-infrastructure-failed',
+        issue: number,
+        runId: prepared.worktreeId,
+        reason: error.message,
+      });
+      if (infrastructureRetries === 0) {
+        await transitionIssue(number, STATES.RUNNING, STATES.RECOVERY, {
+          command: commandAdapter,
+        });
+        await transitionIssue(number, STATES.RECOVERY, STATES.RUNNING, {
+          command: commandAdapter,
+        });
+        infrastructureRetries += 1;
+        continue;
+      }
+      await transitionIssue(number, STATES.RUNNING, STATES.FAILED, { command: commandAdapter });
+      throw error;
+    }
     threadId = runner.threadId;
     await heartbeatRecord({
       runnerPid: runner.runnerPid,

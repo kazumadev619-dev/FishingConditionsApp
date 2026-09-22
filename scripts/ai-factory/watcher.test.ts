@@ -354,6 +354,9 @@ describe('single Terra runner', () => {
       expect(calls.findIndex(({ file }) => file === 'codex')).toBeGreaterThan(
         calls.findIndex(({ args }) => args.includes('agent:running')),
       );
+      const codexArgs = calls.find(({ file }) => file === 'codex')?.args ?? [];
+      expect(codexArgs).toContain('--approve-for-me');
+      expect(codexArgs).not.toContain('--ask-for-approval');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -452,6 +455,47 @@ describe('single Terra runner', () => {
         '-m',
       ]);
       expect(runs[1].cwd).toBe(join(root, 'worktrees', 'issue-42'));
+      expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'push')).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('retries an infrastructure runner failure once and then marks the Issue failed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-infra-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      [
+        'agent:ready',
+        'agent:running',
+        'agent:running',
+        'agent:recovery',
+        'agent:recovery',
+        'agent:running',
+        'agent:running',
+        'agent:failed',
+      ],
+      calls,
+    );
+    const runRunner = vi.fn(async () => {
+      throw new Error('runner exited without result');
+    });
+    try {
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Retry infra', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner,
+          },
+        ),
+      ).rejects.toThrow('runner exited without result');
+      expect(runRunner).toHaveBeenCalledTimes(2);
+      expect(calls.some(({ args }) => args.includes('agent:recovery'))).toBe(true);
+      expect(calls.some(({ args }) => args.includes('agent:failed'))).toBe(true);
       expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'push')).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
