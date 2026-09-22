@@ -179,6 +179,8 @@ npm run test:watch    # 変更を監視して再実行
 npm run check-code    # lint + format + 型チェック + テスト
 ```
 
+変更を push する前に、必ず `npm run check-code` を実行する。
+
 ### テストファイルの置き場所
 
 **実装の隣にコロケートする。** `tests/` にまとめない。
