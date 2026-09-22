@@ -16,7 +16,11 @@ describe('DashboardError', () => {
     expect(html).toContain('1234567890');
   });
 
-  it('digest が無ければエラーIDの行を出さない', () => {
-    expect(render(new Error('x'))).not.toContain('エラーID');
+  // digest が無いのはクライアント側で投げられたエラー。本番でも message は伏せられずに届く
+  it('digest が無ければエラーIDの行も error.message も出さない', () => {
+    const html = render(new Error('CLIENT-SIDE-DETAIL'));
+
+    expect(html).not.toContain('エラーID');
+    expect(html).not.toContain('CLIENT-SIDE-DETAIL');
   });
 });
