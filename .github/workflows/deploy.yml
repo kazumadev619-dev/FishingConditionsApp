@@ -214,6 +214,7 @@ jobs:
           exit 1
 
       - name: Apply manifests
+        id: apply
         run: |
           set -euo pipefail
           kubectl apply -f "$RUNNER_TEMP/rendered.yaml"
@@ -243,11 +244,17 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       # ログを先に吸い出す。undo すると手がかりが消える
-      - name: Rollback on failure
+      - name: Collect logs on failure
         if: failure()
         run: |
           kubectl -n "$NAMESPACE" logs job/db-migrate --tail=100 || true
           kubectl -n "$NAMESPACE" describe deploy/fishing-app || true
           kubectl -n "$NAMESPACE" logs deploy/fishing-app --tail=100 || true
+
+      # undo は Apply が走ったときだけ。migrate の失敗などで Apply が skip されたまま
+      # undo すると、動いているリビジョンを1つ前へ巻き戻してしまう（#190）
+      - name: Rollback on failure
+        if: failure() && steps.apply.outcome != 'skipped'
+        run: |
           kubectl -n "$NAMESPACE" rollout undo deploy/fishing-app || true
           kubectl -n "$NAMESPACE" rollout status deploy/fishing-app --timeout=180s || true
