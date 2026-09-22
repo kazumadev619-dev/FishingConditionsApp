@@ -1,7 +1,10 @@
 import { EventEmitter } from 'node:events';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { readCodexAccount } from './watcher.mjs';
+import { acquireLock, readCodexAccount, runOnce, transitionIssue } from './watcher.mjs';
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();
@@ -133,5 +136,109 @@ describe('readCodexAccount', () => {
     await expect(readCodexAccount({ spawn: () => child, timeoutMs: 5 })).rejects.toThrow(
       'app-server usage request timed out',
     );
+  });
+});
+
+describe('watcher dry-run', () => {
+  it('reads GitHub and usage without writing or starting Codex', async () => {
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = vi.fn(async (file: string, args: string[]) => {
+      calls.push({ file, args });
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify([
+            {
+              number: 3,
+              title: 'Update docs',
+              body: 'Small documentation change',
+              labels: [{ name: 'agent:ready' }],
+              url: 'https://example.test/issues/3',
+            },
+          ]),
+        };
+      }
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+
+    await expect(
+      runOnce({
+        dryRun: true,
+        command,
+        readAccount: async () => ({
+          account: { type: 'chatgpt' },
+          ordinaryUsageAllowed: true,
+          rateLimits: { primary: { usedPercent: 79, resetsAt: 1_800_000_000 } },
+        }),
+      }),
+    ).resolves.toMatchObject({
+      mode: 'dry-run',
+      issue: 3,
+      usage: { allowed: true, remainingPercent: 21 },
+      branch: 'codex/issue-3',
+      worktreeId: 'issue-3',
+      nextState: 'agent:running',
+      model: 'gpt-5.6-terra',
+    });
+    expect(calls.some(({ args }) => args.includes('edit'))).toBe(false);
+    expect(calls.some(({ args }) => args.includes('--method'))).toBe(false);
+    expect(calls.some(({ file, args }) => file === 'codex' && args[0] === 'exec')).toBe(false);
+  });
+});
+
+describe('watcher lock', () => {
+  it('rejects a duplicate live lock and replaces a stale lock', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-lock-'));
+    try {
+      const first = await acquireLock(root, { pid: 123, isPidAlive: () => true });
+      await expect(acquireLock(root, { pid: 456, isPidAlive: () => true })).resolves.toMatchObject({
+        acquired: false,
+        reason: 'already-running',
+      });
+      await first.release();
+
+      await writeFile(join(root, 'watcher.lock'), '123\n');
+      await expect(acquireLock(root, { pid: 456, isPidAlive: () => false })).resolves.toMatchObject(
+        { acquired: true },
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails closed for an invalid lock PID', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-lock-'));
+    try {
+      await writeFile(join(root, 'watcher.lock'), 'not-a-pid\n');
+      await expect(acquireLock(root)).resolves.toMatchObject({
+        acquired: false,
+        reason: 'invalid-lock',
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('GitHub state transitions', () => {
+  it('re-reads the state before and after the label edit', async () => {
+    const states = ['agent:ready', 'agent:running'];
+    const calls: string[][] = [];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '' };
+      throw new Error('unexpected command');
+    });
+
+    await expect(
+      transitionIssue(3, 'agent:ready', 'agent:running', { command }),
+    ).resolves.toBeUndefined();
+    expect(calls).toEqual([
+      ['issue', 'view', '3', '--json', 'labels'],
+      ['issue', 'edit', '3', '--remove-label', 'agent:ready', '--add-label', 'agent:running'],
+      ['issue', 'view', '3', '--json', 'labels'],
+    ]);
   });
 });
