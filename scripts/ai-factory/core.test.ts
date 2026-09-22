@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildPrBody,
+  evaluateUsage,
   RUNNER_RESULT_SCHEMA,
   readState,
   runnerPrompt,
@@ -35,6 +36,74 @@ describe('state machine', () => {
 
   it('rejects a non-integer issue number', () => {
     expect(() => validateIssueNumber('1; rm -rf x')).toThrow('invalid issue number');
+  });
+});
+
+describe('usage gate', () => {
+  const snapshot = (usedPercent: number, secondary: number | null = null) => ({
+    account: { type: 'chatgpt' },
+    ordinaryUsageAllowed: true,
+    rateLimits: null,
+    rateLimitsByLimitId: {
+      codex: {
+        limitId: 'codex',
+        primary: { usedPercent, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+        secondary:
+          secondary === null
+            ? null
+            : { usedPercent: secondary, windowDurationMins: 10_080, resetsAt: 1_800_100_000 },
+        rateLimitReachedType: null,
+      },
+    },
+  });
+
+  it('allows a run only when every quota window has more than 20 percent left', () => {
+    expect(evaluateUsage(snapshot(79, 70))).toEqual({
+      allowed: true,
+      remainingPercent: 21,
+      resetsAt: 1_800_100_000,
+      reason: 'ok',
+    });
+  });
+
+  it('stops at exactly 20 percent remaining', () => {
+    expect(evaluateUsage(snapshot(80))).toMatchObject({
+      allowed: false,
+      remainingPercent: 20,
+      reason: 'reserve-floor',
+    });
+  });
+
+  it('uses the most depleted quota window', () => {
+    expect(evaluateUsage(snapshot(10, 90))).toMatchObject({
+      allowed: false,
+      remainingPercent: 10,
+    });
+  });
+
+  it('fails closed when ordinary usage is unavailable', () => {
+    expect(evaluateUsage({ ...snapshot(10), ordinaryUsageAllowed: null })).toEqual({
+      allowed: false,
+      reason: 'ordinary-usage-unavailable',
+    });
+  });
+
+  it('rejects API key authentication', () => {
+    expect(evaluateUsage({ ...snapshot(10), account: { type: 'apiKey' } })).toEqual({
+      allowed: false,
+      reason: 'chatgpt-auth-required',
+    });
+  });
+
+  it('fails closed when no quota window is available', () => {
+    expect(
+      evaluateUsage({
+        account: { type: 'chatgpt' },
+        ordinaryUsageAllowed: true,
+        rateLimits: null,
+        rateLimitsByLimitId: null,
+      }),
+    ).toEqual({ allowed: false, reason: 'usage-unavailable' });
   });
 });
 
