@@ -63,6 +63,15 @@ const FACTORY_ROOT = join(
   'ai-factory',
 );
 
+/** @typedef {{ stdout: string, stderr?: string }} CommandResult */
+/** @typedef {(file: string, args: string[], options?: { cwd?: string, env?: Record<string, string | undefined>, timeout?: number }) => Promise<CommandResult>} CommandAdapter */
+
+/**
+ * @param {string} file
+ * @param {string[]} args
+ * @param {{ cwd?: string, env?: Record<string, string | undefined>, timeout?: number }} [options]
+ * @returns {Promise<CommandResult>}
+ */
 export function command(file, args, options = {}) {
   return execFileAsync(file, args, {
     cwd: options.cwd,
@@ -211,6 +220,10 @@ export async function writeFactoryLog(
   );
 }
 
+/**
+ * @param {{ issue: number, record: any, repo: string, runDir: string, commentId?: number }} input
+ * @param {{ command?: CommandAdapter }} [dependencies]
+ */
 export async function syncRunComment(
   { issue, record, repo, runDir, commentId },
   { command: commandAdapter = command } = {},
@@ -288,6 +301,9 @@ async function blockRecoveredIssue(issue, state, reason, runDir, commandAdapter)
   return { issue: issue.number, action: 'blocked' };
 }
 
+/**
+ * @param {{ command?: CommandAdapter, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean }} [options]
+ */
 export async function reconcileStartup({
   command: commandAdapter = command,
   runRunner = startRunner,
@@ -596,6 +612,7 @@ function runnerArguments(issue, worktree, schemaPath, resultPath) {
   ];
 }
 
+/** @param {{ args: string[], runDir: string, env: Record<string, string | undefined>, cwd?: string, onHeartbeat?: (value: any) => Promise<void>, heartbeatMs?: number, spawn?: (...args: any[]) => any }} options */
 export async function startRunner({
   args,
   runDir,
@@ -738,6 +755,10 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
   return { state: STATES.REVIEW, pullRequest: pulls[0].url, worktree: prepared.worktree };
 }
 
+/**
+ * @param {any} issue
+ * @param {{ command?: CommandAdapter, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined> }} [options]
+ */
 export async function executeIssue(
   issue,
   {
@@ -943,6 +964,7 @@ export async function watch({ pollMs = 30_000, ...options } = {}) {
   }
 }
 
+/** @param {{ spawn?: (...args: any[]) => any, timeoutMs?: number }} [options] */
 export function readCodexAccount({ spawn = spawnProcess, timeoutMs = 5_000 } = {}) {
   return new Promise((resolve, reject) => {
     const child = spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });

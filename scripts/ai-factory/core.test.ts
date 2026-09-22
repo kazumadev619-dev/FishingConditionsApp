@@ -173,7 +173,7 @@ describe('runner boundary', () => {
   it('builds a bounded single-line commit message', () => {
     const message = buildCommitMessage({ commitType: 'feat', summary: 'あ'.repeat(60) }, 42);
 
-    expect([...message].length).toBeLessThanOrEqual(100);
+    expect(Array.from(message).length).toBeLessThanOrEqual(100);
     expect(message).toMatch(/^✨ feat: .+ #42$/);
     expect(() => buildCommitMessage({ commitType: 'fix', summary: 'bad\nmessage' }, 42)).toThrow(
       'invalid commit summary',
@@ -242,8 +242,8 @@ describe('run recovery record', () => {
   });
 
   it('becomes stale at exactly 30 minutes and retries at most three attempts', () => {
-    expect(isRunStale(record, '2026-09-22T00:29:59.000Z')).toBe(false);
-    expect(isRunStale(record, '2026-09-22T00:30:00.000Z')).toBe(true);
+    expect(isRunStale(record, new Date('2026-09-22T00:29:59.000Z'))).toBe(false);
+    expect(isRunStale(record, new Date('2026-09-22T00:30:00.000Z'))).toBe(true);
     expect(canRetryRunner({ outcome: 'retryable' }, 2)).toBe(true);
     expect(canRetryRunner({ outcome: 'retryable' }, 3)).toBe(false);
     expect(canRetryRunner({ outcome: 'blocked' }, 1)).toBe(false);

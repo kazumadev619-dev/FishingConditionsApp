@@ -205,11 +205,15 @@ describe('watcher lock', () => {
         acquired: false,
         reason: 'already-running',
       });
+      if (!first.acquired || !first.release) throw new Error('first lock was not acquired');
       await first.release();
 
       await writeFile(join(root, 'watcher.lock'), '123\n');
       const replacement = await acquireLock(root, { pid: 456, isPidAlive: () => false });
       expect(replacement).toMatchObject({ acquired: true });
+      if (!replacement.acquired || !replacement.release) {
+        throw new Error('replacement lock was not acquired');
+      }
       await replacement.release();
     } finally {
       await rm(root, { recursive: true, force: true });
