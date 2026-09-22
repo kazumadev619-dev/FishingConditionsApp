@@ -13,7 +13,6 @@ for v in DATABASE_URL REDIS_URL AUTH_SECRET AUTH_URL; do printf '%s %s\n' "$v" "
 npx dotenv -e .env.local -- prisma migrate status    # "Database schema is up to date!"
 ```
 
-- **`npm run prisma:seed` を既存のデータに流し直さない。** 港の ID が振り直され、地点との紐づけが切れる（#146）。DB が空のときだけ
 - `docker compose down -v` をしない。ボリュームごとローカル DB が消える
 
 ## 2. 起動する

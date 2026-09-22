@@ -57,16 +57,10 @@ async function seedPorts() {
     // Prisma クライアントが正常に初期化されているか確認
     console.log('🔍 Prisma client:', typeof prisma, Object.keys(prisma).slice(0, 5));
 
-    // 既存データをクリア（再実行時のため）
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const deleteResult = await (prisma as any).$executeRaw`DELETE FROM "ports"`;
-      console.log(`🗑️  Cleared existing ports (${deleteResult} rows)`);
-    } catch {
-      console.log('⚠️  No existing ports to clear (table might not exist yet)');
-    }
-
-    // ports テーブルに一括挿入（SQL INSERT を使用）
+    // ports テーブルに一括 upsert（SQL INSERT を使用）
+    // 既存の港は消さずに id と座標を保つ。消して作り直すと locations.port_id の
+    // FK（ON DELETE SET NULL）で地点との紐づけが静かに切れる（#146）。
+    // CSV から消えた港は残る。消すと同じ理由で紐づけが切れるため。
     // SQL injection 対策：シングルクォートをエスケープ
     const escapeSql = (str: string): string => str.replace(/'/g, "''");
 
@@ -80,13 +74,14 @@ async function seedPorts() {
     const insertQuery = `
       INSERT INTO "ports" (id, prefecture_code, prefecture_name, port_code, name, latitude, longitude, created_at)
       VALUES ${valuesList}
-      ON CONFLICT (prefecture_code, port_code) DO NOTHING
+      ON CONFLICT (prefecture_code, port_code)
+        DO UPDATE SET name = EXCLUDED.name, prefecture_name = EXCLUDED.prefecture_name
     `;
 
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const result = await (prisma as any).$executeRawUnsafe(insertQuery);
-      console.log(`✅ Inserted ${ports.length} ports (affected: ${result} rows)`);
+      console.log(`✅ Upserted ${ports.length} ports (affected: ${result} rows)`);
     } catch (error) {
       console.error('❌ Error inserting ports:', error);
       throw error;
