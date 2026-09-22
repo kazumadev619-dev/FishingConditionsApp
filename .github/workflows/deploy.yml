@@ -217,6 +217,10 @@ jobs:
         id: apply
         run: |
           set -euo pipefail
+          # 失敗したときの戻り先。初回デプロイで Deployment が無ければ空になり、Rollback は走らない
+          rev=$(kubectl -n "$NAMESPACE" get deploy/fishing-app --ignore-not-found \
+            -o jsonpath='{.metadata.annotations.deployment\.kubernetes\.io/revision}')
+          echo "revision=$rev" >> "$GITHUB_OUTPUT"
           kubectl apply -f "$RUNNER_TEMP/rendered.yaml"
           kubectl -n "$NAMESPACE" rollout status deploy/fishing-app --timeout=300s
 
@@ -251,10 +255,14 @@ jobs:
           kubectl -n "$NAMESPACE" describe deploy/fishing-app || true
           kubectl -n "$NAMESPACE" logs deploy/fishing-app --tail=100 || true
 
-      # undo は Apply が走ったときだけ。migrate の失敗などで Apply が skip されたまま
-      # undo すると、動いているリビジョンを1つ前へ巻き戻してしまう（#190）
+      # 引数なしの undo は「この run で新しいリビジョンができたか」を見ずに1つ前へ戻す。
+      # migrate の失敗で Apply が skip されたときや Deployment が apply で拒否されたときも、
+      # 動いているリビジョンを巻き戻してしまう（#190）。Apply の前に記録したリビジョンを
+      # 指定すれば、新しいリビジョンが無いときは skipped rollback で何もしない
       - name: Rollback on failure
-        if: failure() && steps.apply.outcome != 'skipped'
+        if: failure() && steps.apply.outputs.revision != ''
+        env:
+          REVISION: ${{ steps.apply.outputs.revision }}
         run: |
-          kubectl -n "$NAMESPACE" rollout undo deploy/fishing-app || true
+          kubectl -n "$NAMESPACE" rollout undo deploy/fishing-app --to-revision="$REVISION" || true
           kubectl -n "$NAMESPACE" rollout status deploy/fishing-app --timeout=180s || true
