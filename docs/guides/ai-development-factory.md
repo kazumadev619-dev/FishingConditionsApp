@@ -9,7 +9,7 @@ node --version
 codex --version
 codex login status
 gh auth status
-env | rg '^(OPENAI_API_KEY|CODEX_API_KEY)=' || true
+node -e "const names=['OPENAI_API_KEY','CODEX_API_KEY'].filter((name)=>Object.hasOwn(process.env,name)); console.log(names.length ? 'set: '+names.join(',') : 'API key env: unset')"
 ```
 
 - Node.js 24を使う。

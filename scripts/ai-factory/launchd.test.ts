@@ -7,12 +7,16 @@ describe('launchd plist', () => {
       nodePath: '/opt/homebrew/bin/node',
       watcherPath: '/repo/scripts/ai-factory/watcher.mjs',
       workingDirectory: '/repo',
+      path: '/opt/homebrew/bin:/usr/bin:/bin',
     });
 
     expect(xml).toContain('<key>RunAtLoad</key><true/>');
     expect(xml).toContain('<key>KeepAlive</key><true/>');
     expect(xml).toContain('<string>/opt/homebrew/bin/node</string>');
     expect(xml).toContain('<string>/repo/scripts/ai-factory/watcher.mjs</string>');
+    expect(xml).toContain(
+      '<key>EnvironmentVariables</key><dict><key>PATH</key><string>/opt/homebrew/bin:/usr/bin:/bin</string></dict>',
+    );
     expect(xml).not.toContain('$HOME');
   });
 
@@ -21,16 +25,19 @@ describe('launchd plist', () => {
       nodePath: '/opt/node&bin',
       watcherPath: '/repo/<watcher>.mjs',
       workingDirectory: '/repo/"factory"',
+      path: '/opt/homebrew&bin:/usr/bin',
     });
 
     expect(xml).toContain('/opt/node&amp;bin');
     expect(xml).toContain('/repo/&lt;watcher&gt;.mjs');
     expect(xml).toContain('/repo/&quot;factory&quot;');
+    expect(xml).toContain('/opt/homebrew&amp;bin:/usr/bin');
     expect(() =>
       renderPlist({
         nodePath: 'node',
         watcherPath: '/repo/watcher.mjs',
         workingDirectory: '/repo',
+        path: '/usr/bin:/bin',
       }),
     ).toThrow('launchd paths must be absolute');
   });

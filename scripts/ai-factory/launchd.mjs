@@ -24,17 +24,23 @@ function escapeXml(value) {
     .replaceAll("'", '&apos;');
 }
 
-export function renderPlist({ nodePath, watcherPath, workingDirectory }) {
-  if (![nodePath, watcherPath, workingDirectory].every(isAbsolute)) {
+export function renderPlist({ nodePath, watcherPath, workingDirectory, path }) {
+  if (![nodePath, watcherPath, workingDirectory].every(isAbsolute) || !path) {
     throw new Error('launchd paths must be absolute');
   }
-  const [node, watcher, cwd] = [nodePath, watcherPath, workingDirectory].map(escapeXml);
+  const [node, watcher, cwd, executablePath] = [
+    nodePath,
+    watcherPath,
+    workingDirectory,
+    path,
+  ].map(escapeXml);
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
 <key>Label</key><string>${LABEL}</string>
 <key>ProgramArguments</key><array><string>${node}</string><string>${watcher}</string></array>
 <key>WorkingDirectory</key><string>${cwd}</string>
+<key>EnvironmentVariables</key><dict><key>PATH</key><string>${executablePath}</string></dict>
 <key>RunAtLoad</key><true/>
 <key>KeepAlive</key><true/>
 <key>ThrottleInterval</key><integer>30</integer>
@@ -48,6 +54,7 @@ function defaults() {
     nodePath: process.execPath,
     watcherPath: join(repoRoot, 'scripts', 'ai-factory', 'watcher.mjs'),
     workingDirectory: repoRoot,
+    path: process.env.PATH,
     plistPath,
     uid: process.getuid(),
   };
@@ -70,6 +77,7 @@ export async function install(options = {}) {
       nodePath: values.nodePath,
       watcherPath: values.watcherPath,
       workingDirectory: values.workingDirectory,
+      path: values.path,
     }),
     { mode: 0o600 },
   );
@@ -80,7 +88,11 @@ export async function install(options = {}) {
     await commandAdapter('launchctl', ['bootstrap', `gui/${values.uid}`, values.plistPath]);
     await commandAdapter('launchctl', ['kickstart', '-k', `gui/${values.uid}/${LABEL}`]);
   } catch (error) {
-    await unlink(temporaryPath).catch(() => {});
+    await unlink(temporaryPath).catch((cleanupError) => {
+      if (cleanupError?.code !== 'ENOENT') {
+        throw new AggregateError([error, cleanupError], 'launchd install cleanup failed');
+      }
+    });
     throw error;
   }
   return values.plistPath;

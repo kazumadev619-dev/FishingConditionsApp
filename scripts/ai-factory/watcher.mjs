@@ -1,6 +1,8 @@
 import { execFile, spawn as spawnProcess } from 'node:child_process';
+import { randomUUID } from 'node:crypto';
 import {
   appendFile,
+  link,
   mkdir,
   open,
   readFile,
@@ -21,6 +23,7 @@ import {
   buildPrBody,
   canRetryRunner,
   evaluateUsage,
+  isRunStale,
   parseChangedPaths,
   parseRunComment,
   RUNNER_RESULT_SCHEMA,
@@ -94,30 +97,66 @@ function pidIsAlive(pid) {
 export async function acquireLock(stateRoot, { pid = process.pid, isPidAlive = pidIsAlive } = {}) {
   await mkdir(stateRoot, { recursive: true });
   const lockPath = `${stateRoot}/watcher.lock`;
-  let handle;
+  const guardPath = `${lockPath}.guard`;
+  const guardCandidate = `${guardPath}.${pid}.${randomUUID()}`;
+  await writeFile(guardCandidate, `${pid}\n`, { flag: 'wx', mode: 0o600 });
   try {
-    handle = await open(lockPath, 'wx', 0o600);
-  } catch (error) {
-    if (error?.code !== 'EEXIST') throw error;
-    const existingText = await readFile(lockPath, 'utf8');
-    const existingPid = Number(existingText.trim());
-    if (!Number.isSafeInteger(existingPid) || existingPid <= 0) {
-      return { acquired: false, reason: 'invalid-lock' };
+    try {
+      await link(guardCandidate, guardPath);
+    } catch (error) {
+      if (error?.code !== 'EEXIST') throw error;
+      let guardText;
+      try {
+        guardText = await readFile(guardPath, 'utf8');
+      } catch (readError) {
+        if (readError?.code === 'ENOENT') return acquireLock(stateRoot, { pid, isPidAlive });
+        throw readError;
+      }
+      const guardPid = Number(guardText.trim());
+      if (Number.isSafeInteger(guardPid) && guardPid > 0 && isPidAlive(guardPid)) {
+        return { acquired: false, reason: 'lock-busy' };
+      }
+      try {
+        await unlink(guardPath);
+      } catch (unlinkError) {
+        if (unlinkError?.code === 'ENOENT') return { acquired: false, reason: 'lock-busy' };
+        throw unlinkError;
+      }
+      return acquireLock(stateRoot, { pid, isPidAlive });
     }
-    if (isPidAlive(existingPid)) return { acquired: false, reason: 'already-running' };
-    await unlink(lockPath);
-    return acquireLock(stateRoot, { pid, isPidAlive });
+    let handle;
+    try {
+      try {
+        handle = await open(lockPath, 'wx', 0o600);
+      } catch (error) {
+        if (error?.code !== 'EEXIST') throw error;
+        const existingText = await readFile(lockPath, 'utf8');
+        const existingPid = Number(existingText.trim());
+        if (!Number.isSafeInteger(existingPid) || existingPid <= 0) {
+          return { acquired: false, reason: 'invalid-lock' };
+        }
+        if (isPidAlive(existingPid)) return { acquired: false, reason: 'already-running' };
+        await unlink(lockPath);
+        handle = await open(lockPath, 'wx', 0o600);
+      }
+      await handle.writeFile(`${pid}\n`);
+    } finally {
+      await unlink(guardPath);
+    }
+    return {
+      acquired: true,
+      async release() {
+        await handle.close();
+        await unlink(lockPath).catch((error) => {
+          if (error?.code !== 'ENOENT') throw error;
+        });
+      },
+    };
+  } finally {
+    await unlink(guardCandidate).catch((error) => {
+      if (error?.code !== 'ENOENT') throw error;
+    });
   }
-  await handle.writeFile(`${pid}\n`);
-  return {
-    acquired: true,
-    async release() {
-      await handle.close();
-      await unlink(lockPath).catch((error) => {
-        if (error?.code !== 'ENOENT') throw error;
-      });
-    },
-  };
 }
 
 function parseJson(stdout, context) {
@@ -250,35 +289,6 @@ export async function syncRunComment(
   return created.id;
 }
 
-export async function reconcileRun(snapshot, actions) {
-  if (snapshot.hasOpenPr) {
-    await actions.review();
-    return 'review';
-  }
-  if (snapshot.pidAlive) {
-    await actions.heartbeat();
-    return 'monitor';
-  }
-  if (snapshot.result?.outcome === 'ready') {
-    await actions.finalize();
-    return 'finalize';
-  }
-  if (snapshot.record.threadId && snapshot.record.attempt < 3) {
-    await actions.resume();
-    return 'resume';
-  }
-  if (snapshot.dirty) {
-    await actions.block();
-    return 'blocked';
-  }
-  if (!snapshot.infraRetried) {
-    await actions.recover();
-    return 'recovery';
-  }
-  await actions.fail();
-  return 'failed';
-}
-
 async function listIssuesForState(state, commandAdapter) {
   const { stdout } = await commandAdapter('gh', [
     'issue',
@@ -301,8 +311,36 @@ async function blockRecoveredIssue(issue, state, reason, runDir, commandAdapter)
   return { issue: issue.number, action: 'blocked' };
 }
 
+async function hasRunMarker(runDir, name) {
+  return readFile(join(runDir, name), 'utf8')
+    .then(() => true)
+    .catch((error) => {
+      if (error?.code === 'ENOENT') return false;
+      throw error;
+    });
+}
+
+async function recoverInfrastructureFailure(
+  issue,
+  runDir,
+  commandAdapter,
+  marker = 'infra-retried',
+) {
+  try {
+    await writeFile(join(runDir, marker), '1\n', { flag: 'wx', mode: 0o600 });
+    await transitionIssue(issue, STATES.RUNNING, STATES.RECOVERY, {
+      command: commandAdapter,
+    });
+    return STATES.RECOVERY;
+  } catch (error) {
+    if (error?.code !== 'EEXIST') throw error;
+  }
+  await transitionIssue(issue, STATES.RUNNING, STATES.FAILED, { command: commandAdapter });
+  return STATES.FAILED;
+}
+
 /**
- * @param {{ command?: CommandAdapter, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean }} [options]
+ * @param {{ command?: CommandAdapter, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean, now?: Date }} [options]
  */
 export async function reconcileStartup({
   command: commandAdapter = command,
@@ -311,7 +349,9 @@ export async function reconcileStartup({
   workRoot = join(FACTORY_ROOT, 'worktrees'),
   env = process.env,
   isPidAlive = pidIsAlive,
+  now = new Date(),
 } = {}) {
+  safeRunnerEnv(env);
   const issues = [
     ...(await listIssuesForState(STATES.RUNNING, commandAdapter)),
     ...(await listIssuesForState(STATES.RECOVERY, commandAdapter)),
@@ -334,20 +374,66 @@ export async function reconcileStartup({
 
   for (const issue of issues.sort((left, right) => left.number - right.number)) {
     const number = validateIssueNumber(issue.number);
-    const state = readState(issue.labels);
+    let state = readState(issue.labels);
     const identity = runIdentity(number);
     const worktree = join(workRoot, identity.worktreeId);
     const runDir = join(stateRoot, 'runs', identity.worktreeId);
     await mkdir(runDir, { recursive: true });
-    const comments = parseJson(
-      (await commandAdapter('gh', ['api', `repos/${repo}/issues/${number}/comments`, '--paginate']))
-        .stdout,
+    const prepareRetry = await hasRunMarker(runDir, 'prepare-retried');
+    const infraRetry = await hasRunMarker(runDir, 'infra-retried');
+    if (state === STATES.RUNNING && (prepareRetry || infraRetry)) {
+      await transitionIssue(number, STATES.RUNNING, STATES.RECOVERY, {
+        command: commandAdapter,
+      });
+      state = STATES.RECOVERY;
+    }
+    if (prepareRetry) {
+      results.push(
+        await executeIssue(issue, {
+          command: commandAdapter,
+          runRunner,
+          stateRoot,
+          workRoot,
+          env,
+          fromState: STATES.RECOVERY,
+        }),
+      );
+      continue;
+    }
+    const commentPages = parseJson(
+      (
+        await commandAdapter('gh', [
+          'api',
+          `repos/${repo}/issues/${number}/comments`,
+          '--paginate',
+          '--slurp',
+        ])
+      ).stdout,
       'issue comments',
     );
+    if (!Array.isArray(commentPages) || commentPages.some((page) => !Array.isArray(page))) {
+      throw new Error('invalid issue comments JSON');
+    }
+    const comments = commentPages.flat();
     const ownRunComments = comments.filter(
       (comment) =>
         comment.user?.login === viewer && comment.body?.startsWith('<!-- ai-factory-run:v1 -->'),
     );
+    if (state === STATES.RECOVERY && ownRunComments.length === 0) {
+      if (infraRetry) {
+        results.push(
+          await executeIssue(issue, {
+            command: commandAdapter,
+            runRunner,
+            stateRoot,
+            workRoot,
+            env,
+            fromState: STATES.RECOVERY,
+          }),
+        );
+        continue;
+      }
+    }
     let record;
     try {
       record = parseRunComment(ownRunComments.at(-1), { issue: number, viewer });
@@ -366,8 +452,8 @@ export async function reconcileStartup({
       '--json',
       'number,url,state',
     ];
-    const pulls = existingPullRequests((await commandAdapter('gh', pullArgs)).stdout);
-    if (pulls.some((pull) => pull.state === 'OPEN')) {
+    const pulls = openPullRequests((await commandAdapter('gh', pullArgs)).stdout);
+    if (pulls.length > 0) {
       await transitionIssue(number, state, STATES.REVIEW, { command: commandAdapter });
       results.push({ issue: number, action: 'review' });
       continue;
@@ -389,7 +475,27 @@ export async function reconcileStartup({
       );
       continue;
     }
-    if (isPidAlive(record.runnerPid)) {
+    const runnerAlive = isPidAlive(record.runnerPid);
+    if (runnerAlive && isRunStale(record, now)) {
+      if (state === STATES.RUNNING) {
+        await transitionIssue(number, STATES.RUNNING, STATES.RECOVERY, {
+          command: commandAdapter,
+        });
+        results.push({ issue: number, action: 'recovery' });
+      } else {
+        results.push(
+          await blockRecoveredIssue(
+            issue,
+            STATES.RECOVERY,
+            'stale live runner requires human review',
+            runDir,
+            commandAdapter,
+          ),
+        );
+      }
+      continue;
+    }
+    if (runnerAlive) {
       record.heartbeatAt = new Date().toISOString();
       await syncRunComment(
         { issue: number, record, repo, runDir, commentId: record.commentId },
@@ -409,18 +515,31 @@ export async function reconcileStartup({
       if (error?.code !== 'ENOENT') throw error;
     }
     if (recoveredResult?.outcome === 'ready') {
-      await commandAdapter('npm', ['run', 'check-code'], { cwd: worktree });
-      results.push(
-        await publishReady(
-          issue,
-          { ...identity, worktree },
-          recoveredResult,
-          runDir,
-          state,
-          commandAdapter,
-        ),
-      );
-      continue;
+      let checkError;
+      try {
+        await commandAdapter('npm', ['run', 'check-code'], { cwd: worktree });
+      } catch (error) {
+        checkError = error;
+      }
+      if (!checkError) {
+        results.push(
+          await publishReady(
+            issue,
+            { ...identity, worktree },
+            recoveredResult,
+            runDir,
+            state,
+            commandAdapter,
+          ),
+        );
+        continue;
+      }
+      if (!record.threadId || record.attempt >= 3) {
+        results.push(
+          await blockRecoveredIssue(issue, state, checkError.message, runDir, commandAdapter),
+        );
+        continue;
+      }
     }
 
     if (record.threadId && record.attempt < 3) {
@@ -428,24 +547,45 @@ export async function reconcileStartup({
         await transitionIssue(number, STATES.RECOVERY, STATES.RUNNING, { command: commandAdapter });
       }
       const nextAttempt = record.attempt + 1;
-      const resumed = await runRunner({
-        args: [
-          'exec',
-          'resume',
-          record.threadId,
-          '-m',
-          'gpt-5.6-terra',
-          '--json',
-          '--output-schema',
-          join(runDir, 'runner-result.schema.json'),
-          '--output-last-message',
-          join(runDir, 'result.json'),
-          '固定検証 npm run check-code が失敗した。再実行して根本原因だけを直し、成功するまで確認する。push、PR、Issue、labelは操作しない。',
-        ],
-        cwd: worktree,
-        runDir,
-        env,
-      });
+      let resumed;
+      try {
+        resumed = await runAttempt(runRunner, {
+          args: [
+            'exec',
+            'resume',
+            record.threadId,
+            '-m',
+            'gpt-5.6-terra',
+            '--json',
+            '--output-schema',
+            join(runDir, 'runner-result.schema.json'),
+            '--output-last-message',
+            join(runDir, 'result.json'),
+            '固定検証 npm run check-code が失敗した。再実行して根本原因だけを直し、成功するまで確認する。push、PR、Issue、labelは操作しない。',
+          ],
+          cwd: worktree,
+          runDir,
+          env,
+        });
+      } catch (error) {
+        await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+          level: 'error',
+          event: 'runner-infrastructure-failed',
+          issue: number,
+          runId: identity.worktreeId,
+          reason: error.message,
+        });
+        const recoveredState = await recoverInfrastructureFailure(
+          number,
+          runDir,
+          commandAdapter,
+        );
+        results.push({
+          issue: number,
+          action: recoveredState === STATES.RECOVERY ? 'recovery' : 'failed',
+        });
+        continue;
+      }
       const nextRecord = {
         ...record,
         status: 'running',
@@ -460,17 +600,38 @@ export async function reconcileStartup({
         { command: commandAdapter },
       );
       if (resumed.result.outcome === 'ready') {
-        await commandAdapter('npm', ['run', 'check-code'], { cwd: worktree });
-        results.push(
-          await publishReady(
-            issue,
-            { ...identity, worktree },
-            resumed.result,
-            runDir,
-            STATES.RUNNING,
-            commandAdapter,
-          ),
-        );
+        let checkError;
+        try {
+          await commandAdapter('npm', ['run', 'check-code'], { cwd: worktree });
+        } catch (error) {
+          checkError = error;
+        }
+        if (!checkError) {
+          results.push(
+            await publishReady(
+              issue,
+              { ...identity, worktree },
+              resumed.result,
+              runDir,
+              STATES.RUNNING,
+              commandAdapter,
+            ),
+          );
+        } else {
+          if (nextAttempt === 3) {
+            results.push(
+              await blockRecoveredIssue(
+                issue,
+                STATES.RUNNING,
+                checkError.message,
+                runDir,
+                commandAdapter,
+              ),
+            );
+          } else {
+            results.push({ issue: number, action: 'resume' });
+          }
+        }
       } else if (resumed.result.outcome === 'blocked' || nextAttempt === 3) {
         results.push(
           await blockRecoveredIssue(
@@ -609,6 +770,13 @@ function runnerArguments(issue, worktree, schemaPath, resultPath) {
   ];
 }
 
+async function runAttempt(runRunner, options) {
+  await unlink(join(options.runDir, 'result.json')).catch((error) => {
+    if (error?.code !== 'ENOENT') throw error;
+  });
+  return runRunner(options);
+}
+
 /** @param {{ args: string[], runDir: string, env: Record<string, string | undefined>, cwd?: string, onHeartbeat?: (value: any) => Promise<void>, heartbeatMs?: number, spawn?: (...args: any[]) => any }} options */
 export async function startRunner({
   args,
@@ -654,8 +822,12 @@ export async function startRunner({
               lastHeartbeat = Date.now();
               await onHeartbeat({ runnerPid, threadId, heartbeatAt: new Date().toISOString() });
             }
-          } catch {
-            // A partial JSONL write is retried on the next interval.
+          } catch (error) {
+            await writeFactoryLog(join(runDir, 'runner.jsonl'), {
+              level: 'error',
+              event: 'heartbeat-failed',
+              reason: error.message,
+            });
           } finally {
             heartbeatPending = false;
           }
@@ -687,10 +859,10 @@ export async function startRunner({
   return { result: parseJson(resultText, 'runner result'), threadId, runnerPid };
 }
 
-function existingPullRequests(stdout) {
+function openPullRequests(stdout) {
   const pulls = parseJson(stdout, 'pull request list');
   if (!Array.isArray(pulls)) throw new Error('invalid pull request list JSON');
-  return pulls;
+  return pulls.filter((pull) => pull.state === 'OPEN');
 }
 
 async function commentIssue(issue, body, runDir, commandAdapter) {
@@ -704,17 +876,30 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
   const status = await commandAdapter('git', ['status', '--porcelain=v1', '-z'], {
     cwd: prepared.worktree,
   });
-  const changedPaths = validateChangedPaths(parseChangedPaths(status.stdout));
-  await commandAdapter('git', ['add', '--', ...changedPaths], { cwd: prepared.worktree });
-  const staged = await commandAdapter('git', ['diff', '--cached', '--name-only'], {
-    cwd: prepared.worktree,
-  });
-  const stagedPaths = staged.stdout.split('\n').filter(Boolean);
-  if ([...stagedPaths].sort().join('\0') !== [...changedPaths].sort().join('\0')) {
-    throw new Error('staged paths do not match validated changes');
+  let changedPaths;
+  if (status.stdout) {
+    changedPaths = validateChangedPaths(parseChangedPaths(status.stdout));
+    await commandAdapter('git', ['add', '--', ...changedPaths], { cwd: prepared.worktree });
+    const staged = await commandAdapter(
+      'git',
+      ['diff', '--cached', '--name-only', '--no-renames', '-z'],
+      { cwd: prepared.worktree },
+    );
+    const stagedPaths = staged.stdout.split('\0').filter(Boolean);
+    if ([...stagedPaths].sort().join('\0') !== [...changedPaths].sort().join('\0')) {
+      throw new Error('staged paths do not match validated changes');
+    }
+    const message = buildCommitMessage(result, number);
+    await commandAdapter('git', ['commit', '-m', message], { cwd: prepared.worktree });
+  } else {
+    const committed = await commandAdapter(
+      'git',
+      ['diff', '--name-only', '--no-renames', '-z', 'origin/develop...HEAD'],
+      { cwd: prepared.worktree },
+    );
+    changedPaths = validateChangedPaths(committed.stdout.split('\0').filter(Boolean));
   }
   const message = buildCommitMessage(result, number);
-  await commandAdapter('git', ['commit', '-m', message], { cwd: prepared.worktree });
 
   const listArgs = [
     'pr',
@@ -726,7 +911,7 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
     '--json',
     'number,url,state',
   ];
-  let pulls = existingPullRequests((await commandAdapter('gh', listArgs)).stdout);
+  let pulls = openPullRequests((await commandAdapter('gh', listArgs)).stdout);
   if (pulls.length === 0) {
     await commandAdapter('git', ['push', '-u', 'origin', prepared.branch], {
       cwd: prepared.worktree,
@@ -745,7 +930,7 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
       '--body-file',
       bodyPath,
     ]);
-    pulls = existingPullRequests((await commandAdapter('gh', listArgs)).stdout);
+    pulls = openPullRequests((await commandAdapter('gh', listArgs)).stdout);
   }
   if (pulls.length !== 1 || !pulls[0].url) throw new Error('pull request read-back failed');
   await transitionIssue(number, fromState, STATES.REVIEW, { command: commandAdapter });
@@ -754,7 +939,7 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
 
 /**
  * @param {any} issue
- * @param {{ command?: CommandAdapter, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined> }} [options]
+ * @param {{ command?: CommandAdapter, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, fromState?: string }} [options]
  */
 export async function executeIssue(
   issue,
@@ -764,10 +949,23 @@ export async function executeIssue(
     stateRoot = FACTORY_ROOT,
     workRoot = join(FACTORY_ROOT, 'worktrees'),
     env = process.env,
+    fromState = STATES.READY,
   } = {},
 ) {
   const number = validateIssueNumber(issue.number);
   safeRunnerEnv(env);
+  const identity = runIdentity(number);
+  const runDir = join(stateRoot, 'runs', identity.worktreeId);
+  await mkdir(runDir, { recursive: true });
+  if (fromState === STATES.READY) {
+    await Promise.all(
+      ['infra-retried', 'prepare-retried', 'result.json'].map((name) =>
+        unlink(join(runDir, name)).catch((error) => {
+          if (error?.code !== 'ENOENT') throw error;
+        }),
+      ),
+    );
+  }
   const repo = (
     await commandAdapter('gh', [
       'repo',
@@ -780,17 +978,38 @@ export async function executeIssue(
   ).stdout.trim();
   if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error('invalid repository name');
   await commandAdapter('gh', ['api', 'user', '--jq', '.login']);
-  await transitionIssue(number, STATES.READY, STATES.RUNNING, { command: commandAdapter });
-  const prepared = await prepareWorktree(number, { command: commandAdapter, workRoot });
-  const runDir = join(stateRoot, 'runs', prepared.worktreeId);
-  await mkdir(runDir, { recursive: true });
+  await transitionIssue(number, fromState, STATES.RUNNING, { command: commandAdapter });
+  let prepared;
+  try {
+    prepared = await prepareWorktree(number, { command: commandAdapter, workRoot });
+  } catch (error) {
+    await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+      level: 'error',
+      event: 'prepare-worktree-failed',
+      issue: number,
+      runId: identity.worktreeId,
+      reason: error.message,
+    });
+    const recoveredState = await recoverInfrastructureFailure(
+      number,
+      runDir,
+      commandAdapter,
+      'prepare-retried',
+    );
+    return {
+      state: recoveredState,
+      worktree: join(workRoot, identity.worktreeId),
+    };
+  }
+  await unlink(join(runDir, 'prepare-retried')).catch((error) => {
+    if (error?.code !== 'ENOENT') throw error;
+  });
   const schemaPath = join(runDir, 'runner-result.schema.json');
   const resultPath = join(runDir, 'result.json');
   await writeFile(schemaPath, `${JSON.stringify(RUNNER_RESULT_SCHEMA, null, 2)}\n`, {
     mode: 0o600,
   });
   let attempt = 1;
-  let infrastructureRetries = 0;
   let commentId;
   let runner;
   let threadId;
@@ -839,7 +1058,7 @@ export async function executeIssue(
       }
     };
     try {
-      runner = await runRunner({
+      runner = await runAttempt(runRunner, {
         args,
         runDir,
         env,
@@ -854,18 +1073,8 @@ export async function executeIssue(
         runId: prepared.worktreeId,
         reason: error.message,
       });
-      if (infrastructureRetries === 0) {
-        await transitionIssue(number, STATES.RUNNING, STATES.RECOVERY, {
-          command: commandAdapter,
-        });
-        await transitionIssue(number, STATES.RECOVERY, STATES.RUNNING, {
-          command: commandAdapter,
-        });
-        infrastructureRetries += 1;
-        continue;
-      }
-      await transitionIssue(number, STATES.RUNNING, STATES.FAILED, { command: commandAdapter });
-      throw error;
+      const recoveredState = await recoverInfrastructureFailure(number, runDir, commandAdapter);
+      return { state: recoveredState, worktree: prepared.worktree };
     }
     threadId = runner.threadId;
     await heartbeatRecord({
@@ -904,6 +1113,7 @@ export async function executeIssue(
   return publishReady(issue, prepared, runner.result, runDir, STATES.RUNNING, commandAdapter);
 }
 
+/** @param {{ dryRun?: boolean, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, useLock?: boolean }} [options] */
 export async function runOnce({
   dryRun = false,
   command: commandAdapter = command,
@@ -914,10 +1124,11 @@ export async function runOnce({
   env = process.env,
   useLock = true,
 } = {}) {
+  safeRunnerEnv(env);
   const issue = selectReadyIssue(await listIssues(commandAdapter));
   if (!issue) return { mode: dryRun ? 'dry-run' : 'once', reason: 'no-ready-issue' };
 
-  const usage = evaluateUsage(await readAccount());
+  const usage = evaluateUsage(await readAccount({ env }));
   if (!usage.allowed) {
     return { mode: dryRun ? 'dry-run' : 'once', issue: issue.number, usage };
   }
@@ -957,6 +1168,7 @@ export async function runOnce({
 }
 
 export async function runCycle(options = {}) {
+  safeRunnerEnv(options.env ?? process.env);
   const stateRoot = options.stateRoot ?? FACTORY_ROOT;
   const cycleLock = await acquireLock(stateRoot);
   if (!cycleLock.acquired) return { reason: cycleLock.reason };
@@ -984,10 +1196,17 @@ export async function watch({ pollMs = 30_000, ...options } = {}) {
   }
 }
 
-/** @param {{ spawn?: (...args: any[]) => any, timeoutMs?: number }} [options] */
-export function readCodexAccount({ spawn = spawnProcess, timeoutMs = 5_000 } = {}) {
+/** @param {{ spawn?: (...args: any[]) => any, timeoutMs?: number, env?: Record<string, string | undefined> }} [options] */
+export function readCodexAccount({
+  spawn = spawnProcess,
+  timeoutMs = 5_000,
+  env = process.env,
+} = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn('codex', ['app-server'], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const child = spawn('codex', ['app-server'], {
+      env: safeRunnerEnv(env),
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
     const lines = createInterface({ input: child.stdout });
     let account;
     let limits;
@@ -1055,6 +1274,7 @@ export function readCodexAccount({ spawn = spawnProcess, timeoutMs = 5_000 } = {
 }
 
 async function main() {
+  safeRunnerEnv(process.env);
   const args = new Set(process.argv.slice(2));
   if (args.has('--ensure-labels')) {
     await ensureLabels();

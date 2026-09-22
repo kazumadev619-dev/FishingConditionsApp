@@ -1,5 +1,5 @@
 import { EventEmitter } from 'node:events';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
@@ -9,7 +9,6 @@ import {
   acquireLock,
   executeIssue,
   readCodexAccount,
-  reconcileRun,
   reconcileStartup,
   runOnce,
   syncRunComment,
@@ -90,6 +89,7 @@ describe('readCodexAccount', () => {
       },
     });
     expect(spawn).toHaveBeenCalledWith('codex', ['app-server'], {
+      env: expect.objectContaining({ PATH: expect.any(String) }),
       stdio: ['pipe', 'pipe', 'pipe'],
     });
     expect(messages).toEqual([
@@ -148,9 +148,50 @@ describe('readCodexAccount', () => {
       'app-server usage request timed out',
     );
   });
+
+  it('rejects API key variables before spawning app-server', async () => {
+    const spawn = vi.fn();
+
+    await expect(
+      readCodexAccount({
+        spawn,
+        timeoutMs: 100,
+        env: { PATH: '/usr/bin', HOME: '/tmp', OPENAI_API_KEY: '' },
+      }),
+    ).rejects.toThrow('API key environment is forbidden');
+    expect(spawn).not.toHaveBeenCalled();
+  });
 });
 
 describe('watcher dry-run', () => {
+  it('rejects API key variables before GitHub or Codex access', async () => {
+    const command = vi.fn();
+    const readAccount = vi.fn();
+
+    await expect(
+      runOnce({
+        dryRun: true,
+        command,
+        readAccount,
+        env: { PATH: '/usr/bin', HOME: '/tmp', CODEX_API_KEY: '' },
+      }),
+    ).rejects.toThrow('API key environment is forbidden');
+    expect(command).not.toHaveBeenCalled();
+    expect(readAccount).not.toHaveBeenCalled();
+  });
+
+  it('rejects API key variables before recovery GitHub access', async () => {
+    const command = vi.fn();
+
+    await expect(
+      reconcileStartup({
+        command,
+        env: { PATH: '/usr/bin', HOME: '/tmp', OPENAI_API_KEY: '' },
+      }),
+    ).rejects.toThrow('API key environment is forbidden');
+    expect(command).not.toHaveBeenCalled();
+  });
+
   it('reads GitHub and usage without writing or starting Codex', async () => {
     const calls: Array<{ file: string; args: string[] }> = [];
     const command = vi.fn(async (file: string, args: string[]) => {
@@ -232,6 +273,38 @@ describe('watcher lock', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('allows only one concurrent stale-lock replacement', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-lock-'));
+    try {
+      await writeFile(join(root, 'watcher.lock'), '123\n');
+      const results = await Promise.all([
+        acquireLock(root, { pid: 456, isPidAlive: (value) => value !== 123 }),
+        acquireLock(root, { pid: 789, isPidAlive: (value) => value !== 123 }),
+      ]);
+
+      expect(results.filter((result) => result.acquired)).toHaveLength(1);
+      for (const result of results) {
+        if (result.acquired && result.release) await result.release();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('replaces a guard abandoned by a dead watcher', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-lock-'));
+    try {
+      await writeFile(join(root, 'watcher.lock'), '123\n');
+      await writeFile(join(root, 'watcher.lock.guard'), '999\n');
+
+      const lock = await acquireLock(root, { pid: 456, isPidAlive: () => false });
+      expect(lock.acquired).toBe(true);
+      if (lock.acquired && lock.release) await lock.release();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('GitHub state transitions', () => {
@@ -259,7 +332,21 @@ describe('GitHub state transitions', () => {
 });
 
 describe('single Terra runner', () => {
-  function pipelineCommand(states: string[], runnerCalls: Array<{ file: string; args: string[] }>) {
+  function pipelineCommand(
+    states: string[],
+    runnerCalls: Array<{ file: string; args: string[] }>,
+    {
+      status = ' M docs/README.md\0',
+      staged = 'docs/README.md\0',
+      initialPulls = [],
+      prepareError = false,
+    }: {
+      status?: string;
+      staged?: string;
+      initialPulls?: unknown[];
+      prepareError?: boolean;
+    } = {},
+  ) {
     let prReads = 0;
     return vi.fn(async (file: string, args: string[]) => {
       runnerCalls.push({ file, args });
@@ -276,15 +363,18 @@ describe('single Terra runner', () => {
         throw Object.assign(new Error('missing branch'), { code: 1 });
       }
       if (file === 'git' && args[0] === 'status') {
-        return { stdout: ' M docs/README.md\0' };
+        return { stdout: status };
       }
-      if (file === 'git' && args[0] === 'diff') return { stdout: 'docs/README.md\n' };
+      if (file === 'git' && args[0] === 'diff') return { stdout: staged };
+      if (file === 'npm' && args[0] === 'ci' && prepareError) {
+        throw new Error('npm ci failed');
+      }
       if (file === 'gh' && args[0] === 'pr' && args[1] === 'list') {
         prReads += 1;
         return {
           stdout: JSON.stringify(
             prReads === 1
-              ? []
+              ? initialPulls
               : [{ number: 99, url: 'https://example.test/pull/99', state: 'OPEN' }],
           ),
         };
@@ -299,6 +389,11 @@ describe('single Terra runner', () => {
     const command = pipelineCommand(
       ['agent:ready', 'agent:running', 'agent:running', 'agent:review'],
       calls,
+      {
+        initialPulls: [
+          { number: 98, url: 'https://example.test/pull/98', state: 'MERGED' },
+        ],
+      },
     );
     try {
       await expect(
@@ -358,6 +453,54 @@ describe('single Terra runner', () => {
       expect(codexArgs).toContain('--approve-for-me');
       expect(codexArgs).not.toContain('--ask-for-approval');
       expect(codexArgs).not.toContain('--sandbox');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('stages both sides of a rename with lossless path comparison', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-run-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:review'],
+      calls,
+      {
+        status: 'R  docs/new.md\0docs/old.md\0',
+        staged: 'docs/new.md\0docs/old.md\0',
+      },
+    );
+    try {
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Rename docs', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async () => ({
+              result: {
+                outcome: 'ready',
+                commitType: 'docs',
+                summary: 'Rename docs',
+                reason: 'Checks passed',
+              },
+              threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+              runnerPid: 1234,
+            }),
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:review' });
+      const stagedDiff = calls.find(
+        ({ file, args }) => file === 'git' && args[0] === 'diff' && args.includes('--cached'),
+      );
+      expect(stagedDiff?.args).toEqual([
+        'diff',
+        '--cached',
+        '--name-only',
+        '--no-renames',
+        '-z',
+      ]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -433,6 +576,10 @@ describe('single Terra runner', () => {
             stateRoot: root,
             env: { PATH: '/usr/bin', HOME: root },
             runRunner: async ({ args, cwd }: { args: string[]; cwd: string }) => {
+              await expect(
+                readFile(join(root, 'runs', 'issue-42', 'result.json'), 'utf8'),
+              ).rejects.toMatchObject({ code: 'ENOENT' });
+              await writeFile(join(root, 'runs', 'issue-42', 'result.json'), '{}\n');
               runs.push({ args, cwd });
               return {
                 result: {
@@ -462,7 +609,7 @@ describe('single Terra runner', () => {
     }
   });
 
-  it('retries an infrastructure runner failure once and then marks the Issue failed', async () => {
+  it('persists an infrastructure retry for the next cycle and then marks the Issue failed', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-infra-'));
     const calls: Array<{ file: string; args: string[] }> = [];
     const command = pipelineCommand(
@@ -482,6 +629,11 @@ describe('single Terra runner', () => {
       throw new Error('runner exited without result');
     });
     try {
+      const runDir = join(root, 'runs', 'issue-42');
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, 'infra-retried'), 'stale\n');
+      await writeFile(join(runDir, 'result.json'), '{"outcome":"ready"}\n');
+
       await expect(
         executeIssue(
           { number: 42, title: 'Retry infra', body: '', labels: [{ name: 'agent:ready' }] },
@@ -493,11 +645,65 @@ describe('single Terra runner', () => {
             runRunner,
           },
         ),
-      ).rejects.toThrow('runner exited without result');
+      ).resolves.toMatchObject({ state: 'agent:recovery' });
+      expect(runRunner).toHaveBeenCalledTimes(1);
+      await expect(readFile(join(runDir, 'result.json'), 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
+
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Retry infra', body: '', labels: [{ name: 'agent:recovery' }] },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner,
+            fromState: 'agent:recovery',
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:failed' });
       expect(runRunner).toHaveBeenCalledTimes(2);
       expect(calls.some(({ args }) => args.includes('agent:recovery'))).toBe(true);
       expect(calls.some(({ args }) => args.includes('agent:failed'))).toBe(true);
       expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'push')).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('clears stale run state before prepare and records prepare failure as recovery', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-prepare-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:recovery'],
+      calls,
+      { prepareError: true },
+    );
+    const runRunner = vi.fn();
+    const runDir = join(root, 'runs', 'issue-42');
+    try {
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, 'infra-retried'), 'stale\n');
+      await writeFile(join(runDir, 'result.json'), '{"outcome":"ready"}\n');
+
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Prepare retry', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner,
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:recovery' });
+      expect(runRunner).not.toHaveBeenCalled();
+      await expect(readFile(join(runDir, 'result.json'), 'utf8')).rejects.toMatchObject({
+        code: 'ENOENT',
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -549,52 +755,6 @@ describe('heartbeat and recovery', () => {
     }
   });
 
-  it('prefers an existing PR, monitors a live PID, and limits infra retry to one', async () => {
-    const actions: string[] = [];
-    const deps = {
-      review: async () => actions.push('review'),
-      heartbeat: async () => actions.push('heartbeat'),
-      finalize: async () => actions.push('finalize'),
-      resume: async () => actions.push('resume'),
-      block: async () => actions.push('block'),
-      recover: async () => actions.push('recover'),
-      fail: async () => actions.push('fail'),
-    };
-
-    await expect(reconcileRun({ record, hasOpenPr: true, pidAlive: true }, deps)).resolves.toBe(
-      'review',
-    );
-    await expect(reconcileRun({ record, hasOpenPr: false, pidAlive: true }, deps)).resolves.toBe(
-      'monitor',
-    );
-    await expect(
-      reconcileRun({ record, hasOpenPr: false, pidAlive: false, infraRetried: false }, deps),
-    ).resolves.toBe('resume');
-    await expect(
-      reconcileRun(
-        {
-          record: { ...record, attempt: 3 },
-          hasOpenPr: false,
-          pidAlive: false,
-          infraRetried: false,
-        },
-        deps,
-      ),
-    ).resolves.toBe('recovery');
-    await expect(
-      reconcileRun(
-        {
-          record: { ...record, attempt: 3 },
-          hasOpenPr: false,
-          pidAlive: false,
-          infraRetried: true,
-        },
-        deps,
-      ),
-    ).resolves.toBe('failed');
-    expect(actions).toEqual(['review', 'heartbeat', 'resume', 'recover', 'fail']);
-  });
-
   it('rotates structured logs to one previous generation', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-log-'));
     const logPath = join(root, 'watcher.jsonl');
@@ -639,7 +799,8 @@ describe('heartbeat and recovery', () => {
       if (args[0] === 'api' && args.includes('--paginate')) {
         return {
           stdout: JSON.stringify([
-            { id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) },
+            [],
+            [{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) }],
           ]),
         };
       }
@@ -669,6 +830,504 @@ describe('heartbeat and recovery', () => {
       expect(
         command.mock.calls.filter(([, args]) => args[0] === 'pr' && args[1] === 'create'),
       ).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('recovers a persisted infrastructure retry before its label transition completed', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const worktree = join(root, 'worktrees', 'issue-42');
+    const runDir = join(root, 'runs', 'issue-42');
+    const states = [
+      'agent:running',
+      'agent:recovery',
+      'agent:recovery',
+      'agent:running',
+      'agent:running',
+      'agent:failed',
+    ];
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:running')
+              ? [
+                  {
+                    number: 42,
+                    title: 'Retry infrastructure',
+                    body: '',
+                    labels: [{ name: 'agent:running' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return { stdout: '[[]]' };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree') {
+        return {
+          stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      }
+      return { stdout: '' };
+    });
+    const runRunner = vi.fn(async () => {
+      throw new Error('runner exited without result');
+    });
+    try {
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, 'infra-retried'), '1\n');
+
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+        }),
+      ).resolves.toEqual([{ state: 'agent:failed', worktree }]);
+      expect(runRunner).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('fails a resumed runner after its persisted infrastructure retry is spent', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const worktree = join(root, 'worktrees', 'issue-42');
+    const runDir = join(root, 'runs', 'issue-42');
+    const states = ['agent:recovery', 'agent:running', 'agent:running', 'agent:failed'];
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:recovery')
+              ? [
+                  {
+                    number: 42,
+                    title: 'Resume infrastructure',
+                    body: '',
+                    labels: [{ name: 'agent:recovery' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) }],
+          ]),
+        };
+      }
+      if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree') {
+        return {
+          stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      }
+      return { stdout: '' };
+    });
+    const runRunner = vi.fn(async () => {
+      throw new Error('runner exited without result');
+    });
+    try {
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, 'infra-retried'), '1\n');
+
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => false,
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'failed' }]);
+      expect(runRunner).toHaveBeenCalledTimes(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prioritizes a prepare retry over a stale run comment', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const worktree = join(root, 'worktrees', 'issue-42');
+    const runDir = join(root, 'runs', 'issue-42');
+    const states = ['agent:recovery', 'agent:running', 'agent:running', 'agent:blocked'];
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:recovery')
+              ? [
+                  {
+                    number: 42,
+                    title: 'Retry prepare',
+                    body: '',
+                    labels: [{ name: 'agent:recovery' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) }],
+          ]),
+        };
+      }
+      if (file === 'gh' && args[0] === 'api') return { stdout: '{}' };
+      if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree') {
+        return {
+          stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      }
+      return { stdout: '' };
+    });
+    const runRunner = vi.fn(async ({ args }: { args: string[] }) => ({
+      result: {
+        outcome: 'blocked',
+        commitType: 'chore',
+        summary: 'Prepare retry blocked',
+        reason: 'Needs review',
+      },
+      threadId: record.threadId,
+      runnerPid: 4321,
+      args,
+    }));
+    try {
+      await mkdir(runDir, { recursive: true });
+      await writeFile(join(runDir, 'prepare-retried'), '1\n');
+
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => false,
+        }),
+      ).resolves.toEqual([{ state: 'agent:blocked', worktree }]);
+      const args = runRunner.mock.calls[0][0].args;
+      expect(args.slice(0, 2)).toEqual(['exec', '-m']);
+      expect(args).toContain('-C');
+      expect(args).not.toContain('resume');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('resumes after commit without creating a second commit', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const worktree = join(root, 'worktrees', 'issue-42');
+    const runDir = join(root, 'runs', 'issue-42');
+    const states = ['agent:running', 'agent:review'];
+    const calls: Array<{ file: string; args: string[] }> = [];
+    let prReads = 0;
+    const command = vi.fn(async (file: string, args: string[]) => {
+      calls.push({ file, args });
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:running')
+              ? [
+                  {
+                    number: 42,
+                    title: 'Recovered commit',
+                    body: '',
+                    labels: [{ name: 'agent:running' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) }],
+          ]),
+        };
+      }
+      if (file === 'gh' && args[0] === 'pr' && args[1] === 'list') {
+        prReads += 1;
+        return {
+          stdout: JSON.stringify(
+            prReads <= 2
+              ? []
+              : [{ number: 99, url: 'https://example.test/pull/99', state: 'OPEN' }],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree') {
+        return {
+          stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      }
+      if (file === 'git' && args[0] === 'status') return { stdout: '' };
+      if (file === 'git' && args[0] === 'diff') {
+        return { stdout: 'docs/README.md\0' };
+      }
+      return { stdout: '' };
+    });
+    try {
+      await mkdir(runDir, { recursive: true });
+      await writeFile(
+        join(runDir, 'result.json'),
+        JSON.stringify({
+          outcome: 'ready',
+          commitType: 'docs',
+          summary: 'Recover committed work',
+          reason: 'Checks passed',
+        }),
+      );
+
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner: vi.fn(),
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => false,
+        }),
+      ).resolves.toEqual([
+        {
+          state: 'agent:review',
+          pullRequest: 'https://example.test/pull/99',
+          worktree,
+        },
+      ]);
+      expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'commit')).toBe(false);
+      expect(calls.filter(({ file, args }) => file === 'git' && args[0] === 'push')).toHaveLength(1);
+      expect(
+        calls.filter(({ file, args }) => file === 'gh' && args[0] === 'pr' && args[1] === 'create'),
+      ).toHaveLength(1);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('resumes a failed recovered check once and blocks at attempt three', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const worktree = join(root, 'worktrees', 'issue-42');
+    const runDir = join(root, 'runs', 'issue-42');
+    const states = ['agent:running', 'agent:blocked'];
+    const attemptTwo = { ...record, attempt: 2 };
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:running')
+              ? [
+                  {
+                    number: 42,
+                    title: 'Recovered check',
+                    body: '',
+                    labels: [{ name: 'agent:running' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment(attemptTwo) }],
+          ]),
+        };
+      }
+      if (file === 'gh' && args[0] === 'api') return { stdout: '{}' };
+      if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree') {
+        return {
+          stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      }
+      if (file === 'npm') throw new Error('fixed check failed');
+      return { stdout: '' };
+    });
+    const runRunner = vi.fn(async (options: { args: string[] }) => {
+      expect(options.args[0]).toBe('exec');
+      return {
+        result: {
+          outcome: 'ready',
+          commitType: 'fix',
+          summary: 'Retry recovered check',
+          reason: 'Implementation complete',
+        },
+        threadId: record.threadId,
+        runnerPid: 4321,
+      };
+    });
+    try {
+      await mkdir(runDir, { recursive: true });
+      await writeFile(
+        join(runDir, 'result.json'),
+        JSON.stringify({
+          outcome: 'ready',
+          commitType: 'fix',
+          summary: 'Recovered check',
+          reason: 'Implementation complete',
+        }),
+      );
+
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => false,
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      expect(runRunner).toHaveBeenCalledTimes(1);
+      expect(runRunner.mock.calls[0][0].args.slice(0, 4)).toEqual([
+        'exec',
+        'resume',
+        record.threadId,
+        '-m',
+      ]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('moves a stale live run to recovery without starting another runner', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const worktree = join(root, 'worktrees', 'issue-42');
+    const states = ['agent:running', 'agent:recovery', 'agent:recovery', 'agent:blocked'];
+    const calls: Array<{ file: string; args: string[] }> = [];
+    let cycle = 0;
+    const command = vi.fn(async (file: string, args: string[]) => {
+      calls.push({ file, args });
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        const running = args.includes('agent:running');
+        const include = cycle === 0 ? running : !running;
+        if (!running) cycle += 1;
+        return {
+          stdout: JSON.stringify(
+            include
+              ? [
+                  {
+                    number: 42,
+                    title: 'Stale run',
+                    body: '',
+                    labels: [{ name: running ? 'agent:running' : 'agent:recovery' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) }],
+          ]),
+        };
+      }
+      if (file === 'gh' && args[0] === 'api') return { stdout: '{}' };
+      if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree') {
+        return {
+          stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      }
+      return { stdout: '' };
+    });
+    const runRunner = vi.fn();
+    try {
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => true,
+          now: new Date('2026-09-22T00:30:00.000Z'),
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'recovery' }]);
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => true,
+          now: new Date('2026-09-22T00:30:00.000Z'),
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      expect(runRunner).not.toHaveBeenCalled();
+      expect(
+        calls.some(
+          ({ file, args }) =>
+            file === 'gh' && args[0] === 'issue' && args[1] === 'edit' && args.includes('agent:recovery'),
+        ),
+      ).toBe(true);
+      expect(
+        calls.some(
+          ({ file, args }) =>
+            file === 'gh' && args[0] === 'api' && args.includes('PATCH'),
+        ),
+      ).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
