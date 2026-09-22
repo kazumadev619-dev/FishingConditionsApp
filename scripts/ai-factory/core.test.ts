@@ -129,6 +129,7 @@ describe('runner boundary', () => {
     expect(prompt).toContain(
       'Do not commit, push, create a pull request, or change issues or labels.',
     );
+    expect(prompt).toContain('Do not ask for additional design approval');
     expect(prompt).toContain('Issue #42');
     expect(prompt).toContain(issue.body);
   });
