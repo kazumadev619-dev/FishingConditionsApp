@@ -226,6 +226,10 @@ jobs:
           set -euo pipefail
           curl -fsS "${BASE_URL}/healthz" | tee /dev/stderr | grep -q '"status":"ok"'
           curl -fsS -o /dev/null -w "login: %{http_code}\n" "${BASE_URL}/login"
+          # readiness は DB を見ない（#187）ので、壊れた DATABASE_URL でもロールアウトは
+          # 緑で終わる。ここで1回だけ DB 到達性を確かめる。直前の migrate で compute は
+          # 起きており、1回きりなので Neon の autosuspend も妨げない
+          curl -fsS "${BASE_URL}/readyz" | tee /dev/stderr | grep -q '"database":"ok"'
 
       - name: Smoke test (non-blocking)
         continue-on-error: true
