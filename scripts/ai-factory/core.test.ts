@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCommitMessage,
   buildPrBody,
+  canRetryRunner,
   evaluateUsage,
+  isRunStale,
   parseChangedPaths,
+  parseRunComment,
   RUNNER_RESULT_SCHEMA,
   readState,
+  renderRunComment,
   runIdentity,
   runnerPrompt,
   selectReadyIssue,
@@ -174,5 +178,74 @@ describe('runner boundary', () => {
     expect(() => buildCommitMessage({ commitType: 'fix', summary: 'bad\nmessage' }, 42)).toThrow(
       'invalid commit summary',
     );
+  });
+});
+
+describe('run recovery record', () => {
+  const record = {
+    issue: 42,
+    status: 'running',
+    branch: 'codex/issue-42',
+    worktreeId: 'issue-42',
+    model: 'gpt-5.6-terra',
+    attempt: 1,
+    runnerPid: 1234,
+    threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+    heartbeatAt: '2026-09-22T00:00:00.000Z',
+  };
+
+  it('accepts only the viewer-owned exact marker and deterministic identity', () => {
+    const comment = {
+      id: 9,
+      user: { login: 'factory-bot' },
+      body: renderRunComment(record),
+    };
+
+    expect(parseRunComment(comment, { issue: 42, viewer: 'factory-bot' })).toMatchObject({
+      ...record,
+      commentId: 9,
+    });
+    expect(() =>
+      parseRunComment(
+        { ...comment, user: { login: 'someone-else' } },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('run comment author mismatch');
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: comment.body.replace('ai-factory-run:v1', 'other') },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('invalid run comment marker');
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, branch: 'codex/issue-7' }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('run identity mismatch');
+  });
+
+  it('rejects invalid attempt and heartbeat values', () => {
+    const comment = { id: 9, user: { login: 'factory-bot' }, body: '' };
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, attempt: 4 }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('invalid run attempt');
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, heartbeatAt: 'yesterday' }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('invalid run heartbeat');
+  });
+
+  it('becomes stale at exactly 30 minutes and retries at most three attempts', () => {
+    expect(isRunStale(record, '2026-09-22T00:29:59.000Z')).toBe(false);
+    expect(isRunStale(record, '2026-09-22T00:30:00.000Z')).toBe(true);
+    expect(canRetryRunner({ outcome: 'retryable' }, 2)).toBe(true);
+    expect(canRetryRunner({ outcome: 'retryable' }, 3)).toBe(false);
+    expect(canRetryRunner({ outcome: 'blocked' }, 1)).toBe(false);
   });
 });

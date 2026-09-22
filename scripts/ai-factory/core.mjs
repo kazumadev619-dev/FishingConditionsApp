@@ -136,6 +136,61 @@ export function buildCommitMessage(result, issue) {
   return `${prefix}${[...result.summary].slice(0, budget).join('')}${suffix}`;
 }
 
+const RUN_COMMENT_MARKER = '<!-- ai-factory-run:v1 -->';
+
+export function renderRunComment(record) {
+  return `${RUN_COMMENT_MARKER}\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\`\n`;
+}
+
+export function parseRunComment(comment, { issue, viewer }) {
+  if (comment?.user?.login !== viewer) throw new Error('run comment author mismatch');
+  if (!comment.body?.startsWith(`${RUN_COMMENT_MARKER}\n`)) {
+    throw new Error('invalid run comment marker');
+  }
+  const match = comment.body.match(/^<!-- ai-factory-run:v1 -->\n```json\n([^\n]+)\n```\n?$/);
+  if (!match) throw new Error('invalid run comment body');
+  let record;
+  try {
+    record = JSON.parse(match[1]);
+  } catch {
+    throw new Error('invalid run comment JSON');
+  }
+  const identity = runIdentity(issue);
+  if (
+    record.issue !== issue ||
+    record.branch !== identity.branch ||
+    record.worktreeId !== identity.worktreeId ||
+    record.model !== 'gpt-5.6-terra'
+  ) {
+    throw new Error('run identity mismatch');
+  }
+  if (!Number.isInteger(record.attempt) || record.attempt < 1 || record.attempt > 3) {
+    throw new Error('invalid run attempt');
+  }
+  if (
+    typeof record.heartbeatAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(record.heartbeatAt) ||
+    Number.isNaN(Date.parse(record.heartbeatAt))
+  ) {
+    throw new Error('invalid run heartbeat');
+  }
+  if (!Number.isSafeInteger(record.runnerPid) || record.runnerPid <= 0) {
+    throw new Error('invalid runner PID');
+  }
+  if (typeof record.threadId !== 'string' || record.threadId.length === 0) {
+    throw new Error('invalid runner thread');
+  }
+  return { ...record, commentId: comment.id };
+}
+
+export function isRunStale(record, now = new Date()) {
+  return new Date(now).getTime() - Date.parse(record.heartbeatAt) >= 30 * 60 * 1000;
+}
+
+export function canRetryRunner(result, attempt, checkFailed = false) {
+  return attempt < 3 && (result?.outcome === 'retryable' || checkFailed);
+}
+
 export function selectReadyIssue(issues) {
   return [...issues]
     .filter((issue) => issue.labels.some((label) => label.name === STATES.READY))

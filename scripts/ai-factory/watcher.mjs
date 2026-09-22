@@ -1,19 +1,31 @@
 import { execFile, spawn as spawnProcess } from 'node:child_process';
-import { mkdir, open, readFile, unlink, writeFile } from 'node:fs/promises';
+import {
+  appendFile,
+  mkdir,
+  open,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from 'node:fs/promises';
 import { homedir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline';
-import { clearTimeout, setTimeout } from 'node:timers';
+import { clearInterval, clearTimeout, setInterval, setTimeout } from 'node:timers';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
   buildCommitMessage,
   buildPrBody,
+  canRetryRunner,
   evaluateUsage,
   parseChangedPaths,
+  parseRunComment,
   RUNNER_RESULT_SCHEMA,
   readState,
+  renderRunComment,
   runIdentity,
   runnerPrompt,
   STATES,
@@ -167,6 +179,333 @@ export async function ensureLabels(commandAdapter = command) {
   }
 }
 
+export async function writeFactoryLog(
+  logPath,
+  entry,
+  { maxBytes = 5 * 1024 * 1024, now = new Date() } = {},
+) {
+  await mkdir(dirname(logPath), { recursive: true });
+  const size = await stat(logPath)
+    .then((value) => value.size)
+    .catch((error) => {
+      if (error?.code === 'ENOENT') return 0;
+      throw error;
+    });
+  if (size >= maxBytes) {
+    await unlink(`${logPath}.1`).catch((error) => {
+      if (error?.code !== 'ENOENT') throw error;
+    });
+    await rename(logPath, `${logPath}.1`);
+  }
+  const record = Object.fromEntries(
+    ['level', 'event', 'issue', 'runId', 'reason']
+      .filter((key) => entry[key] !== undefined)
+      .map((key) => [key, entry[key]]),
+  );
+  await appendFile(
+    logPath,
+    `${JSON.stringify({ timestamp: new Date(now).toISOString(), ...record })}\n`,
+    {
+      mode: 0o600,
+    },
+  );
+}
+
+export async function syncRunComment(
+  { issue, record, repo, runDir, commentId },
+  { command: commandAdapter = command } = {},
+) {
+  validateIssueNumber(issue);
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error('invalid repository name');
+  const bodyPath = join(runDir, 'run-comment.md');
+  await writeFile(bodyPath, renderRunComment(record), { mode: 0o600 });
+  const endpoint = commentId
+    ? `repos/${repo}/issues/comments/${commentId}`
+    : `repos/${repo}/issues/${issue}/comments`;
+  const { stdout } = await commandAdapter('gh', [
+    'api',
+    endpoint,
+    '--method',
+    commentId ? 'PATCH' : 'POST',
+    '--field',
+    `body=@${bodyPath}`,
+  ]);
+  if (commentId) return commentId;
+  const created = parseJson(stdout, 'run comment');
+  if (!Number.isSafeInteger(created.id) || created.id <= 0)
+    throw new Error('run comment ID missing');
+  return created.id;
+}
+
+export async function reconcileRun(snapshot, actions) {
+  if (snapshot.hasOpenPr) {
+    await actions.review();
+    return 'review';
+  }
+  if (snapshot.pidAlive) {
+    await actions.heartbeat();
+    return 'monitor';
+  }
+  if (snapshot.result?.outcome === 'ready') {
+    await actions.finalize();
+    return 'finalize';
+  }
+  if (snapshot.record.threadId && snapshot.record.attempt < 3) {
+    await actions.resume();
+    return 'resume';
+  }
+  if (snapshot.dirty) {
+    await actions.block();
+    return 'blocked';
+  }
+  if (!snapshot.infraRetried) {
+    await actions.recover();
+    return 'recovery';
+  }
+  await actions.fail();
+  return 'failed';
+}
+
+async function listIssuesForState(state, commandAdapter) {
+  const { stdout } = await commandAdapter('gh', [
+    'issue',
+    'list',
+    '--state',
+    'open',
+    '--label',
+    state,
+    '--limit',
+    '100',
+    '--json',
+    'number,title,body,labels,url',
+  ]);
+  return parseJson(stdout, 'recovery issue list');
+}
+
+async function blockRecoveredIssue(issue, state, reason, runDir, commandAdapter) {
+  await commentIssue(issue.number, String(reason).slice(0, 500), runDir, commandAdapter);
+  await transitionIssue(issue.number, state, STATES.BLOCKED, { command: commandAdapter });
+  return { issue: issue.number, action: 'blocked' };
+}
+
+export async function reconcileStartup({
+  command: commandAdapter = command,
+  runRunner = startRunner,
+  stateRoot = FACTORY_ROOT,
+  workRoot = join(FACTORY_ROOT, 'worktrees'),
+  env = process.env,
+  isPidAlive = pidIsAlive,
+} = {}) {
+  const issues = [
+    ...(await listIssuesForState(STATES.RUNNING, commandAdapter)),
+    ...(await listIssuesForState(STATES.RECOVERY, commandAdapter)),
+  ];
+  if (issues.length === 0) return [];
+
+  const repo = (
+    await commandAdapter('gh', [
+      'repo',
+      'view',
+      '--json',
+      'nameWithOwner',
+      '--jq',
+      '.nameWithOwner',
+    ])
+  ).stdout.trim();
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error('invalid repository name');
+  const viewer = (await commandAdapter('gh', ['api', 'user', '--jq', '.login'])).stdout.trim();
+  const results = [];
+
+  for (const issue of issues.sort((left, right) => left.number - right.number)) {
+    const number = validateIssueNumber(issue.number);
+    const state = readState(issue.labels);
+    const identity = runIdentity(number);
+    const worktree = join(workRoot, identity.worktreeId);
+    const runDir = join(stateRoot, 'runs', identity.worktreeId);
+    await mkdir(runDir, { recursive: true });
+    const comments = parseJson(
+      (await commandAdapter('gh', ['api', `repos/${repo}/issues/${number}/comments`, '--paginate']))
+        .stdout,
+      'issue comments',
+    );
+    const ownRunComments = comments.filter(
+      (comment) =>
+        comment.user?.login === viewer && comment.body?.startsWith('<!-- ai-factory-run:v1 -->'),
+    );
+    let record;
+    try {
+      record = parseRunComment(ownRunComments.at(-1), { issue: number, viewer });
+    } catch (error) {
+      results.push(await blockRecoveredIssue(issue, state, error.message, runDir, commandAdapter));
+      continue;
+    }
+
+    const pullArgs = [
+      'pr',
+      'list',
+      '--state',
+      'all',
+      '--head',
+      identity.branch,
+      '--json',
+      'number,url,state',
+    ];
+    const pulls = existingPullRequests((await commandAdapter('gh', pullArgs)).stdout);
+    if (pulls.some((pull) => pull.state === 'OPEN')) {
+      await transitionIssue(number, state, STATES.REVIEW, { command: commandAdapter });
+      results.push({ issue: number, action: 'review' });
+      continue;
+    }
+
+    const listed = parseWorktrees(
+      (await commandAdapter('git', ['worktree', 'list', '--porcelain'])).stdout,
+    );
+    const attached = listed.find((entry) => entry.path === worktree);
+    if (!attached || attached.branch !== identity.branch) {
+      results.push(
+        await blockRecoveredIssue(
+          issue,
+          state,
+          'worktree evidence mismatch',
+          runDir,
+          commandAdapter,
+        ),
+      );
+      continue;
+    }
+    if (isPidAlive(record.runnerPid)) {
+      record.heartbeatAt = new Date().toISOString();
+      await syncRunComment(
+        { issue: number, record, repo, runDir, commentId: record.commentId },
+        { command: commandAdapter },
+      );
+      results.push({ issue: number, action: 'monitor' });
+      continue;
+    }
+
+    let recoveredResult = null;
+    try {
+      recoveredResult = parseJson(
+        await readFile(join(runDir, 'result.json'), 'utf8'),
+        'runner result',
+      );
+    } catch (error) {
+      if (error?.code !== 'ENOENT') throw error;
+    }
+    if (recoveredResult?.outcome === 'ready') {
+      await commandAdapter('npm', ['run', 'check-code'], { cwd: worktree });
+      results.push(
+        await publishReady(
+          issue,
+          { ...identity, worktree },
+          recoveredResult,
+          runDir,
+          state,
+          commandAdapter,
+        ),
+      );
+      continue;
+    }
+
+    if (record.threadId && record.attempt < 3) {
+      if (state === STATES.RECOVERY) {
+        await transitionIssue(number, STATES.RECOVERY, STATES.RUNNING, { command: commandAdapter });
+      }
+      const nextAttempt = record.attempt + 1;
+      const resumed = await runRunner({
+        args: [
+          'exec',
+          'resume',
+          record.threadId,
+          '-m',
+          'gpt-5.6-terra',
+          '--json',
+          '--output-schema',
+          join(runDir, 'runner-result.schema.json'),
+          '--output-last-message',
+          join(runDir, 'result.json'),
+          '固定検証 npm run check-code が失敗した。再実行して根本原因だけを直し、成功するまで確認する。push、PR、Issue、labelは操作しない。',
+        ],
+        cwd: worktree,
+        runDir,
+        env,
+      });
+      const nextRecord = {
+        ...record,
+        status: 'running',
+        attempt: nextAttempt,
+        runnerPid: resumed.runnerPid,
+        threadId: resumed.threadId,
+        heartbeatAt: new Date().toISOString(),
+      };
+      delete nextRecord.commentId;
+      await syncRunComment(
+        { issue: number, record: nextRecord, repo, runDir, commentId: record.commentId },
+        { command: commandAdapter },
+      );
+      if (resumed.result.outcome === 'ready') {
+        await commandAdapter('npm', ['run', 'check-code'], { cwd: worktree });
+        results.push(
+          await publishReady(
+            issue,
+            { ...identity, worktree },
+            resumed.result,
+            runDir,
+            STATES.RUNNING,
+            commandAdapter,
+          ),
+        );
+      } else if (resumed.result.outcome === 'blocked' || nextAttempt === 3) {
+        results.push(
+          await blockRecoveredIssue(
+            issue,
+            STATES.RUNNING,
+            resumed.result.reason,
+            runDir,
+            commandAdapter,
+          ),
+        );
+      } else {
+        results.push({ issue: number, action: 'resume' });
+      }
+      continue;
+    }
+
+    const dirty = (await commandAdapter('git', ['status', '--porcelain=v1'], { cwd: worktree }))
+      .stdout;
+    if (dirty) {
+      results.push(
+        await blockRecoveredIssue(
+          issue,
+          state,
+          'dirty worktree needs human review',
+          runDir,
+          commandAdapter,
+        ),
+      );
+      continue;
+    }
+    const retryPath = join(runDir, 'infra-retried');
+    const infraRetried = await readFile(retryPath, 'utf8')
+      .then(() => true)
+      .catch((error) => {
+        if (error?.code === 'ENOENT') return false;
+        throw error;
+      });
+    if (!infraRetried) {
+      await writeFile(retryPath, '1\n', { mode: 0o600 });
+      if (state === STATES.RUNNING) {
+        await transitionIssue(number, STATES.RUNNING, STATES.RECOVERY, { command: commandAdapter });
+      }
+      results.push({ issue: number, action: 'recovery' });
+    } else {
+      await transitionIssue(number, state, STATES.FAILED, { command: commandAdapter });
+      results.push({ issue: number, action: 'failed' });
+    }
+  }
+  return results;
+}
+
 function parseWorktrees(output) {
   return output
     .trim()
@@ -257,22 +596,64 @@ function runnerArguments(issue, worktree, schemaPath, resultPath) {
   ];
 }
 
-export async function startRunner({ args, runDir, env, spawn = spawnProcess }) {
+export async function startRunner({
+  args,
+  runDir,
+  env,
+  cwd,
+  onHeartbeat,
+  heartbeatMs = 5 * 60 * 1000,
+  spawn = spawnProcess,
+}) {
   const stdoutPath = join(runDir, 'codex.jsonl');
   const stderrPath = join(runDir, 'codex.stderr.log');
   const resultPath = join(runDir, 'result.json');
   const stdout = await open(stdoutPath, 'w', 0o600);
   const stderr = await open(stderrPath, 'w', 0o600);
   const child = spawn('codex', args, {
+    cwd,
     detached: true,
     env: safeRunnerEnv(env),
     stdio: ['ignore', stdout.fd, stderr.fd],
   });
   const runnerPid = child.pid;
+  let lastHeartbeat = 0;
+  let heartbeatPending = false;
+  const heartbeat = onHeartbeat
+    ? setInterval(
+        async () => {
+          if (heartbeatPending) return;
+          heartbeatPending = true;
+          try {
+            const lines = (await readFile(stdoutPath, 'utf8')).split('\n').filter(Boolean);
+            const started = lines
+              .map((line) => {
+                try {
+                  return JSON.parse(line);
+                } catch {
+                  return null;
+                }
+              })
+              .find((event) => event?.type === 'thread.started' || event?.thread?.started);
+            const threadId = started?.thread_id ?? started?.thread?.started?.thread_id;
+            if (threadId && Date.now() - lastHeartbeat >= heartbeatMs) {
+              lastHeartbeat = Date.now();
+              await onHeartbeat({ runnerPid, threadId, heartbeatAt: new Date().toISOString() });
+            }
+          } catch {
+            // A partial JSONL write is retried on the next interval.
+          } finally {
+            heartbeatPending = false;
+          }
+        },
+        Math.min(1_000, heartbeatMs),
+      )
+    : null;
   const exitCode = await new Promise((resolve, reject) => {
     child.once('error', reject);
     child.once('exit', resolve);
   }).finally(async () => {
+    if (heartbeat) clearInterval(heartbeat);
     await Promise.all([stdout.close(), stderr.close()]);
   });
   let resultText;
@@ -304,54 +685,8 @@ async function commentIssue(issue, body, runDir, commandAdapter) {
   await commandAdapter('gh', ['issue', 'comment', String(issue), '--body-file', path]);
 }
 
-export async function executeIssue(
-  issue,
-  {
-    command: commandAdapter = command,
-    runRunner = startRunner,
-    stateRoot = FACTORY_ROOT,
-    workRoot = join(FACTORY_ROOT, 'worktrees'),
-    env = process.env,
-  } = {},
-) {
+async function publishReady(issue, prepared, result, runDir, fromState, commandAdapter) {
   const number = validateIssueNumber(issue.number);
-  safeRunnerEnv(env);
-  await transitionIssue(number, STATES.READY, STATES.RUNNING, { command: commandAdapter });
-  const prepared = await prepareWorktree(number, { command: commandAdapter, workRoot });
-  const runDir = join(stateRoot, 'runs', prepared.worktreeId);
-  await mkdir(runDir, { recursive: true });
-  const schemaPath = join(runDir, 'runner-result.schema.json');
-  const resultPath = join(runDir, 'result.json');
-  await writeFile(schemaPath, `${JSON.stringify(RUNNER_RESULT_SCHEMA, null, 2)}\n`, {
-    mode: 0o600,
-  });
-  const args = runnerArguments(issue, prepared.worktree, schemaPath, resultPath);
-  const runner = await runRunner({ args, runDir, env });
-  const runRecord = {
-    issue: number,
-    status: 'running',
-    branch: prepared.branch,
-    worktreeId: prepared.worktreeId,
-    model: 'gpt-5.6-terra',
-    attempt: 1,
-    runnerPid: runner.runnerPid,
-    threadId: runner.threadId,
-    heartbeatAt: new Date().toISOString(),
-  };
-  await commentIssue(
-    number,
-    `<!-- ai-factory-run:v1 -->\n\`\`\`json\n${JSON.stringify(runRecord)}\n\`\`\`\n`,
-    runDir,
-    commandAdapter,
-  );
-
-  if (runner.result.outcome !== 'ready') {
-    await commentIssue(number, String(runner.result.reason).slice(0, 500), runDir, commandAdapter);
-    await transitionIssue(number, STATES.RUNNING, STATES.BLOCKED, { command: commandAdapter });
-    return { state: STATES.BLOCKED, worktree: prepared.worktree };
-  }
-
-  await commandAdapter('npm', ['run', 'check-code'], { cwd: prepared.worktree });
   const status = await commandAdapter('git', ['status', '--porcelain=v1', '-z'], {
     cwd: prepared.worktree,
   });
@@ -364,7 +699,7 @@ export async function executeIssue(
   if ([...stagedPaths].sort().join('\0') !== [...changedPaths].sort().join('\0')) {
     throw new Error('staged paths do not match validated changes');
   }
-  const message = buildCommitMessage(runner.result, number);
+  const message = buildCommitMessage(result, number);
   await commandAdapter('git', ['commit', '-m', message], { cwd: prepared.worktree });
 
   const listArgs = [
@@ -399,8 +734,133 @@ export async function executeIssue(
     pulls = existingPullRequests((await commandAdapter('gh', listArgs)).stdout);
   }
   if (pulls.length !== 1 || !pulls[0].url) throw new Error('pull request read-back failed');
-  await transitionIssue(number, STATES.RUNNING, STATES.REVIEW, { command: commandAdapter });
+  await transitionIssue(number, fromState, STATES.REVIEW, { command: commandAdapter });
   return { state: STATES.REVIEW, pullRequest: pulls[0].url, worktree: prepared.worktree };
+}
+
+export async function executeIssue(
+  issue,
+  {
+    command: commandAdapter = command,
+    runRunner = startRunner,
+    stateRoot = FACTORY_ROOT,
+    workRoot = join(FACTORY_ROOT, 'worktrees'),
+    env = process.env,
+  } = {},
+) {
+  const number = validateIssueNumber(issue.number);
+  safeRunnerEnv(env);
+  const repo = (
+    await commandAdapter('gh', [
+      'repo',
+      'view',
+      '--json',
+      'nameWithOwner',
+      '--jq',
+      '.nameWithOwner',
+    ])
+  ).stdout.trim();
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) throw new Error('invalid repository name');
+  await commandAdapter('gh', ['api', 'user', '--jq', '.login']);
+  await transitionIssue(number, STATES.READY, STATES.RUNNING, { command: commandAdapter });
+  const prepared = await prepareWorktree(number, { command: commandAdapter, workRoot });
+  const runDir = join(stateRoot, 'runs', prepared.worktreeId);
+  await mkdir(runDir, { recursive: true });
+  const schemaPath = join(runDir, 'runner-result.schema.json');
+  const resultPath = join(runDir, 'result.json');
+  await writeFile(schemaPath, `${JSON.stringify(RUNNER_RESULT_SCHEMA, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  let attempt = 1;
+  let commentId;
+  let runner;
+  let threadId;
+  while (attempt <= 3) {
+    const args =
+      attempt === 1
+        ? runnerArguments(issue, prepared.worktree, schemaPath, resultPath)
+        : [
+            'exec',
+            'resume',
+            threadId,
+            '-m',
+            'gpt-5.6-terra',
+            '--json',
+            '--output-schema',
+            schemaPath,
+            '--output-last-message',
+            resultPath,
+            '固定検証 npm run check-code が失敗した。再実行して根本原因だけを直し、成功するまで確認する。push、PR、Issue、labelは操作しない。',
+          ];
+    const heartbeatRecord = async ({ runnerPid, threadId: activeThread, heartbeatAt }) => {
+      const record = {
+        issue: number,
+        status: 'running',
+        branch: prepared.branch,
+        worktreeId: prepared.worktreeId,
+        model: 'gpt-5.6-terra',
+        attempt,
+        runnerPid,
+        threadId: activeThread,
+        heartbeatAt,
+      };
+      try {
+        commentId = await syncRunComment(
+          { issue: number, record, repo, runDir, commentId },
+          { command: commandAdapter },
+        );
+      } catch (error) {
+        await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+          level: 'error',
+          event: 'heartbeat-write-failed',
+          issue: number,
+          runId: prepared.worktreeId,
+          reason: error.message,
+        });
+      }
+    };
+    runner = await runRunner({
+      args,
+      runDir,
+      env,
+      cwd: prepared.worktree,
+      onHeartbeat: heartbeatRecord,
+    });
+    threadId = runner.threadId;
+    await heartbeatRecord({
+      runnerPid: runner.runnerPid,
+      threadId,
+      heartbeatAt: new Date().toISOString(),
+    });
+
+    if (runner.result.outcome === 'blocked') break;
+    if (canRetryRunner(runner.result, attempt)) {
+      attempt += 1;
+      continue;
+    }
+    if (runner.result.outcome !== 'ready') break;
+    try {
+      await commandAdapter('npm', ['run', 'check-code'], { cwd: prepared.worktree });
+      break;
+    } catch (error) {
+      if (!canRetryRunner(runner.result, attempt, true)) {
+        runner = {
+          ...runner,
+          result: { ...runner.result, outcome: 'blocked', reason: error.message },
+        };
+        break;
+      }
+      attempt += 1;
+    }
+  }
+
+  if (runner.result.outcome !== 'ready') {
+    await commentIssue(number, String(runner.result.reason).slice(0, 500), runDir, commandAdapter);
+    await transitionIssue(number, STATES.RUNNING, STATES.BLOCKED, { command: commandAdapter });
+    return { state: STATES.BLOCKED, worktree: prepared.worktree };
+  }
+
+  return publishReady(issue, prepared, runner.result, runDir, STATES.RUNNING, commandAdapter);
 }
 
 export async function runOnce({
@@ -411,6 +871,7 @@ export async function runOnce({
   stateRoot = FACTORY_ROOT,
   workRoot = join(FACTORY_ROOT, 'worktrees'),
   env = process.env,
+  useLock = true,
 } = {}) {
   const issue = selectReadyIssue(await listIssues(commandAdapter));
   if (!issue) return { mode: dryRun ? 'dry-run' : 'once', reason: 'no-ready-issue' };
@@ -430,6 +891,15 @@ export async function runOnce({
     model: 'gpt-5.6-terra',
   };
   if (dryRun) return plan;
+  if (!useLock) {
+    return executeIssue(issue, {
+      command: commandAdapter,
+      runRunner,
+      stateRoot,
+      workRoot,
+      env,
+    });
+  }
   const lock = await acquireLock(stateRoot);
   if (!lock.acquired) return { ...plan, reason: lock.reason };
   try {
@@ -442,6 +912,34 @@ export async function runOnce({
     });
   } finally {
     await lock.release();
+  }
+}
+
+export async function runCycle(options = {}) {
+  const stateRoot = options.stateRoot ?? FACTORY_ROOT;
+  const cycleLock = await acquireLock(stateRoot);
+  if (!cycleLock.acquired) return { reason: cycleLock.reason };
+  try {
+    const recovered = await reconcileStartup({ ...options, stateRoot });
+    if (recovered.length > 0) return { recovered };
+    return runOnce({ ...options, stateRoot, useLock: false });
+  } finally {
+    await cycleLock.release();
+  }
+}
+
+export async function watch({ pollMs = 30_000, ...options } = {}) {
+  for (;;) {
+    try {
+      await runCycle(options);
+    } catch (error) {
+      await writeFactoryLog(join(options.stateRoot ?? FACTORY_ROOT, 'watcher.jsonl'), {
+        level: 'error',
+        event: 'watch-cycle-failed',
+        reason: error.message,
+      });
+    }
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
   }
 }
 
@@ -524,7 +1022,7 @@ async function main() {
     process.stdout.write(`${JSON.stringify(await runOnce({ dryRun: args.has('--dry-run') }))}\n`);
     return;
   }
-  throw new Error('use --once [--dry-run] or --ensure-labels');
+  await watch();
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {

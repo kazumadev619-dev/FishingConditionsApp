@@ -1,15 +1,20 @@
 import { EventEmitter } from 'node:events';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
+import { renderRunComment } from './core.mjs';
 import {
   acquireLock,
   executeIssue,
   readCodexAccount,
+  reconcileRun,
+  reconcileStartup,
   runOnce,
+  syncRunComment,
   transitionIssue,
+  writeFactoryLog,
 } from './watcher.mjs';
 
 class FakeChild extends EventEmitter {
@@ -254,6 +259,11 @@ describe('single Terra runner', () => {
     let prReads = 0;
     return vi.fn(async (file: string, args: string[]) => {
       runnerCalls.push({ file, args });
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api') return { stdout: JSON.stringify({ id: 77 }) };
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
         return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
       }
@@ -395,5 +405,223 @@ describe('single Terra runner', () => {
       ),
     ).rejects.toThrow('API key environment is forbidden');
     expect(command).not.toHaveBeenCalled();
+  });
+
+  it('resumes the same thread in the worktree and stops after three attempts', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-retry-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const runs: Array<{ args: string[]; cwd: string }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'],
+      calls,
+    );
+    try {
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Retry safely', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async ({ args, cwd }: { args: string[]; cwd: string }) => {
+              runs.push({ args, cwd });
+              return {
+                result: {
+                  outcome: 'retryable',
+                  commitType: 'fix',
+                  summary: 'Retry implementation',
+                  reason: 'Fixed check still fails',
+                },
+                threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                runnerPid: 1234,
+              };
+            },
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:blocked' });
+      expect(runs).toHaveLength(3);
+      expect(runs[1].args.slice(0, 4)).toEqual([
+        'exec',
+        'resume',
+        '0199a213-81c0-7800-8aa1-bbab2a035a53',
+        '-m',
+      ]);
+      expect(runs[1].cwd).toBe(join(root, 'worktrees', 'issue-42'));
+      expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'push')).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('heartbeat and recovery', () => {
+  const record = {
+    issue: 42,
+    status: 'running',
+    branch: 'codex/issue-42',
+    worktreeId: 'issue-42',
+    model: 'gpt-5.6-terra',
+    attempt: 1,
+    runnerPid: 1234,
+    threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+    heartbeatAt: '2026-09-22T00:00:00.000Z',
+  };
+
+  it('creates once and PATCHes the same run comment for heartbeat updates', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-heartbeat-'));
+    const calls: string[][] = [];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      calls.push(args);
+      return { stdout: args.includes('POST') ? JSON.stringify({ id: 77 }) : '{}' };
+    });
+    try {
+      const commentId = await syncRunComment(
+        { issue: 42, record, repo: 'owner/repo', runDir: root },
+        { command },
+      );
+      await syncRunComment(
+        {
+          issue: 42,
+          record: { ...record, heartbeatAt: '2026-09-22T00:05:00.000Z' },
+          repo: 'owner/repo',
+          runDir: root,
+          commentId,
+        },
+        { command },
+      );
+
+      expect(commentId).toBe(77);
+      expect(calls[0]).toContain('POST');
+      expect(calls[1]).toContain('PATCH');
+      expect(calls[1]).toContain('repos/owner/repo/issues/comments/77');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('prefers an existing PR, monitors a live PID, and limits infra retry to one', async () => {
+    const actions: string[] = [];
+    const deps = {
+      review: async () => actions.push('review'),
+      heartbeat: async () => actions.push('heartbeat'),
+      finalize: async () => actions.push('finalize'),
+      resume: async () => actions.push('resume'),
+      block: async () => actions.push('block'),
+      recover: async () => actions.push('recover'),
+      fail: async () => actions.push('fail'),
+    };
+
+    await expect(reconcileRun({ record, hasOpenPr: true, pidAlive: true }, deps)).resolves.toBe(
+      'review',
+    );
+    await expect(reconcileRun({ record, hasOpenPr: false, pidAlive: true }, deps)).resolves.toBe(
+      'monitor',
+    );
+    await expect(
+      reconcileRun({ record, hasOpenPr: false, pidAlive: false, infraRetried: false }, deps),
+    ).resolves.toBe('resume');
+    await expect(
+      reconcileRun(
+        {
+          record: { ...record, attempt: 3 },
+          hasOpenPr: false,
+          pidAlive: false,
+          infraRetried: false,
+        },
+        deps,
+      ),
+    ).resolves.toBe('recovery');
+    await expect(
+      reconcileRun(
+        {
+          record: { ...record, attempt: 3 },
+          hasOpenPr: false,
+          pidAlive: false,
+          infraRetried: true,
+        },
+        deps,
+      ),
+    ).resolves.toBe('failed');
+    expect(actions).toEqual(['review', 'heartbeat', 'resume', 'recover', 'fail']);
+  });
+
+  it('rotates structured logs to one previous generation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-log-'));
+    const logPath = join(root, 'watcher.jsonl');
+    try {
+      await writeFactoryLog(logPath, { level: 'info', event: 'first', issue: 42 }, { maxBytes: 1 });
+      await writeFactoryLog(
+        logPath,
+        { level: 'info', event: 'second', issue: 42 },
+        { maxBytes: 1 },
+      );
+      await writeFactoryLog(logPath, { level: 'info', event: 'third', issue: 42 }, { maxBytes: 1 });
+
+      await expect(readFile(`${logPath}.1`, 'utf8')).resolves.toContain('second');
+      await expect(readFile(logPath, 'utf8')).resolves.toContain('third');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reconciles an existing PR to review without starting another runner', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const states = ['agent:running', 'agent:review'];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:running')
+              ? [
+                  {
+                    number: 42,
+                    title: 'Recovered work',
+                    body: '',
+                    labels: [{ name: 'agent:running' }],
+                  },
+                ]
+              : [],
+          ),
+        };
+      }
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            { id: 77, user: { login: 'factory-bot' }, body: renderRunComment(record) },
+          ]),
+        };
+      }
+      if (args[0] === 'pr') {
+        return {
+          stdout: JSON.stringify([
+            { number: 99, url: 'https://example.test/pull/99', state: 'OPEN' },
+          ]),
+        };
+      }
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      return { stdout: '' };
+    });
+    const runRunner = vi.fn();
+    try {
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'review' }]);
+      expect(runRunner).not.toHaveBeenCalled();
+      expect(
+        command.mock.calls.filter(([, args]) => args[0] === 'pr' && args[1] === 'create'),
+      ).toHaveLength(0);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
