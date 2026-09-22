@@ -54,6 +54,88 @@ export function validateIssueNumber(value) {
   return value;
 }
 
+export function runIdentity(issue) {
+  const number = validateIssueNumber(issue);
+  return { branch: `codex/issue-${number}`, worktreeId: `issue-${number}` };
+}
+
+export function parseChangedPaths(porcelain) {
+  const records = porcelain.split('\0').filter(Boolean);
+  const paths = [];
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    if (record.length < 4 || record[2] !== ' ') throw new Error('invalid git status output');
+    paths.push(record.slice(3));
+    if (record[0] === 'R' || record[0] === 'C' || record[1] === 'R' || record[1] === 'C') {
+      index += 1;
+      if (!records[index]) throw new Error('invalid git status output');
+      paths.push(records[index]);
+    }
+  }
+  return [...new Set(paths)];
+}
+
+export function validateChangedPaths(paths) {
+  if (paths.length === 0) throw new Error('no changed paths');
+  for (const file of paths) {
+    if (
+      typeof file !== 'string' ||
+      file.length === 0 ||
+      file.includes('\0') ||
+      file.startsWith('/') ||
+      /^[A-Za-z]:[\\/]/.test(file) ||
+      file.split(/[\\/]/).includes('..')
+    ) {
+      throw new Error('unsafe changed path');
+    }
+    const normalized = file.replaceAll('\\', '/');
+    const name = normalized.split('/').at(-1);
+    if (
+      name === '.env' ||
+      name === '.env.local' ||
+      name === 'kubeconfig' ||
+      name?.endsWith('.key') ||
+      name?.endsWith('.pem') ||
+      normalized === 'k8s/secret.enc.yaml' ||
+      normalized === '.codex/auth.json' ||
+      name === 'biome.json' ||
+      name === '.oxlintrc.json' ||
+      name?.startsWith('eslint.config.')
+    ) {
+      throw new Error('protected changed path');
+    }
+  }
+  return paths;
+}
+
+const COMMIT_EMOJI = Object.freeze({
+  feat: '✨',
+  fix: '🐛',
+  refactor: '♻️',
+  docs: '📝',
+  test: '✅',
+  chore: '🔧',
+  package: '⬆️',
+});
+
+export function buildCommitMessage(result, issue) {
+  const number = validateIssueNumber(issue);
+  const emoji = COMMIT_EMOJI[result.commitType];
+  if (!emoji) throw new Error('invalid commit type');
+  if (
+    typeof result.summary !== 'string' ||
+    result.summary.length === 0 ||
+    result.summary.length > 60 ||
+    /[\p{Cc}\p{Cf}]/u.test(result.summary)
+  ) {
+    throw new Error('invalid commit summary');
+  }
+  const prefix = `${emoji} ${result.commitType}: `;
+  const suffix = ` #${number}`;
+  const budget = 100 - [...prefix, ...suffix].length;
+  return `${prefix}${[...result.summary].slice(0, budget).join('')}${suffix}`;
+}
+
 export function selectReadyIssue(issues) {
   return [...issues]
     .filter((issue) => issue.labels.some((label) => label.name === STATES.READY))

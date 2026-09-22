@@ -1,12 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  buildCommitMessage,
   buildPrBody,
   evaluateUsage,
+  parseChangedPaths,
   RUNNER_RESULT_SCHEMA,
   readState,
+  runIdentity,
   runnerPrompt,
   selectReadyIssue,
   transitionAllowed,
+  validateChangedPaths,
   validateIssueNumber,
 } from './core.mjs';
 
@@ -143,5 +147,32 @@ describe('runner boundary', () => {
     expect(body).toContain('`npm run check-code`');
     expect(body).toContain('Human review is required');
     expect(body).not.toContain(issue.body);
+  });
+
+  it('derives branch and worktree identifiers only from the issue number', () => {
+    expect(runIdentity(42)).toEqual({
+      branch: 'codex/issue-42',
+      worktreeId: 'issue-42',
+    });
+  });
+
+  it('parses porcelain paths and rejects secrets and lint configuration', () => {
+    expect(parseChangedPaths(' M docs/README.md\0?? docs/new.md\0')).toEqual([
+      'docs/README.md',
+      'docs/new.md',
+    ]);
+    expect(() => validateChangedPaths(['../outside'])).toThrow('unsafe changed path');
+    expect(() => validateChangedPaths(['.env.local'])).toThrow('protected changed path');
+    expect(() => validateChangedPaths(['eslint.config.mjs'])).toThrow('protected changed path');
+  });
+
+  it('builds a bounded single-line commit message', () => {
+    const message = buildCommitMessage({ commitType: 'feat', summary: 'あ'.repeat(60) }, 42);
+
+    expect([...message].length).toBeLessThanOrEqual(100);
+    expect(message).toMatch(/^✨ feat: .+ #42$/);
+    expect(() => buildCommitMessage({ commitType: 'fix', summary: 'bad\nmessage' }, 42)).toThrow(
+      'invalid commit summary',
+    );
   });
 });

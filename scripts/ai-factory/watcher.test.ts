@@ -4,7 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { acquireLock, readCodexAccount, runOnce, transitionIssue } from './watcher.mjs';
+import {
+  acquireLock,
+  executeIssue,
+  readCodexAccount,
+  runOnce,
+  transitionIssue,
+} from './watcher.mjs';
 
 class FakeChild extends EventEmitter {
   stdin = new PassThrough();
@@ -197,9 +203,9 @@ describe('watcher lock', () => {
       await first.release();
 
       await writeFile(join(root, 'watcher.lock'), '123\n');
-      await expect(acquireLock(root, { pid: 456, isPidAlive: () => false })).resolves.toMatchObject(
-        { acquired: true },
-      );
+      const replacement = await acquireLock(root, { pid: 456, isPidAlive: () => false });
+      expect(replacement).toMatchObject({ acquired: true });
+      await replacement.release();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -240,5 +246,154 @@ describe('GitHub state transitions', () => {
       ['issue', 'edit', '3', '--remove-label', 'agent:ready', '--add-label', 'agent:running'],
       ['issue', 'view', '3', '--json', 'labels'],
     ]);
+  });
+});
+
+describe('single Terra runner', () => {
+  function pipelineCommand(states: string[], runnerCalls: Array<{ file: string; args: string[] }>) {
+    let prReads = 0;
+    return vi.fn(async (file: string, args: string[]) => {
+      runnerCalls.push({ file, args });
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (file === 'git' && args[0] === 'worktree' && args[1] === 'list') return { stdout: '' };
+      if (file === 'git' && args[0] === 'show-ref') {
+        throw Object.assign(new Error('missing branch'), { code: 1 });
+      }
+      if (file === 'git' && args[0] === 'status') {
+        return { stdout: ' M docs/README.md\0' };
+      }
+      if (file === 'git' && args[0] === 'diff') return { stdout: 'docs/README.md\n' };
+      if (file === 'gh' && args[0] === 'pr' && args[1] === 'list') {
+        prReads += 1;
+        return {
+          stdout: JSON.stringify(
+            prReads === 1
+              ? []
+              : [{ number: 99, url: 'https://example.test/pull/99', state: 'OPEN' }],
+          ),
+        };
+      }
+      return { stdout: '' };
+    });
+  }
+
+  it('runs fixed verification and creates one develop PR after the running transition', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-run-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:review'],
+      calls,
+    );
+    try {
+      await expect(
+        executeIssue(
+          {
+            number: 42,
+            title: 'Update docs',
+            body: 'Small documentation change',
+            labels: [{ name: 'agent:ready' }],
+          },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async ({ args }: { args: string[] }) => {
+              calls.push({ file: 'codex', args });
+              return {
+                result: {
+                  outcome: 'ready',
+                  commitType: 'docs',
+                  summary: 'Update fishing guide',
+                  reason: 'Implementation and checks complete',
+                },
+                threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                runnerPid: 1234,
+              };
+            },
+          },
+        ),
+      ).resolves.toMatchObject({
+        state: 'agent:review',
+        pullRequest: 'https://example.test/pull/99',
+      });
+
+      const compact = calls.map(({ file, args }) => `${file} ${args.slice(0, 3).join(' ')}`);
+      expect(compact).toContain('git fetch origin develop');
+      expect(compact).toContain('npm ci');
+      expect(compact).toContain('npm run check-code');
+      expect(compact).toContain('git status --porcelain=v1 -z');
+      expect(compact).toContain('git add -- docs/README.md');
+      expect(compact).toContain('git push -u origin');
+      expect(
+        calls.some(
+          ({ file, args }) =>
+            file === 'gh' &&
+            args[0] === 'pr' &&
+            args[1] === 'create' &&
+            args.includes('develop') &&
+            args.includes('codex/issue-42'),
+        ),
+      ).toBe(true);
+      expect(calls.findIndex(({ file }) => file === 'codex')).toBeGreaterThan(
+        calls.findIndex(({ args }) => args.includes('agent:running')),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the worktree and blocks without push or PR when Terra is blocked', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-run-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'],
+      calls,
+    );
+    try {
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Needs approval', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async ({ args }: { args: string[] }) => {
+              calls.push({ file: 'codex', args });
+              return {
+                result: {
+                  outcome: 'blocked',
+                  commitType: 'chore',
+                  summary: 'Need approval',
+                  reason: 'External approval is required',
+                },
+                threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                runnerPid: 1234,
+              };
+            },
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:blocked' });
+      expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'push')).toBe(false);
+      expect(calls.some(({ file, args }) => file === 'gh' && args[0] === 'pr')).toBe(false);
+      expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'worktree')).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects API key variables before changing the Issue', async () => {
+    const command = vi.fn();
+
+    await expect(
+      executeIssue(
+        { number: 42, title: 'No API keys', body: '', labels: [{ name: 'agent:ready' }] },
+        { command, env: { OPENAI_API_KEY: '' } },
+      ),
+    ).rejects.toThrow('API key environment is forbidden');
+    expect(command).not.toHaveBeenCalled();
   });
 });

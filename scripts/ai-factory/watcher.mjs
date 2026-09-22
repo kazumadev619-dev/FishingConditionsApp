@@ -1,16 +1,25 @@
 import { execFile, spawn as spawnProcess } from 'node:child_process';
-import { mkdir, open, readFile, unlink } from 'node:fs/promises';
+import { mkdir, open, readFile, unlink, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import process from 'node:process';
 import { createInterface } from 'node:readline';
 import { clearTimeout, setTimeout } from 'node:timers';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import {
+  buildCommitMessage,
+  buildPrBody,
   evaluateUsage,
+  parseChangedPaths,
+  RUNNER_RESULT_SCHEMA,
   readState,
+  runIdentity,
+  runnerPrompt,
   STATES,
   selectReadyIssue,
   transitionAllowed,
+  validateChangedPaths,
   validateIssueNumber,
 } from './core.mjs';
 
@@ -33,6 +42,14 @@ const CLIENT_INFO = Object.freeze({
   title: 'FishingConditions AI Factory',
   version: '1.0.0',
 });
+
+const FACTORY_ROOT = join(
+  homedir(),
+  'Library',
+  'Application Support',
+  'FishingConditionsApp',
+  'ai-factory',
+);
 
 export function command(file, args, options = {}) {
   return execFileAsync(file, args, {
@@ -150,10 +167,250 @@ export async function ensureLabels(commandAdapter = command) {
   }
 }
 
+function parseWorktrees(output) {
+  return output
+    .trim()
+    .split('\n\n')
+    .filter(Boolean)
+    .map((block) => {
+      const fields = new Map(block.split('\n').map((line) => line.split(/ (.*)/s, 2)));
+      return {
+        path: fields.get('worktree'),
+        branch: fields.get('branch')?.replace('refs/heads/', ''),
+      };
+    });
+}
+
+async function localBranchExists(branch, commandAdapter) {
+  try {
+    await commandAdapter('git', ['show-ref', '--verify', '--quiet', `refs/heads/${branch}`]);
+    return true;
+  } catch (error) {
+    if (error?.code === 1) return false;
+    throw error;
+  }
+}
+
+export async function prepareWorktree(
+  issue,
+  { command: commandAdapter = command, workRoot = join(FACTORY_ROOT, 'worktrees') } = {},
+) {
+  const identity = runIdentity(issue);
+  const worktree = join(workRoot, identity.worktreeId);
+  await mkdir(workRoot, { recursive: true });
+  const { stdout } = await commandAdapter('git', ['worktree', 'list', '--porcelain']);
+  const worktrees = parseWorktrees(stdout);
+  const atTarget = worktrees.find((entry) => entry.path === worktree);
+  if (atTarget && atTarget.branch !== identity.branch) throw new Error('worktree branch mismatch');
+  const branchElsewhere = worktrees.find(
+    (entry) => entry.branch === identity.branch && entry.path !== worktree,
+  );
+  if (branchElsewhere) throw new Error('branch is attached to another worktree');
+
+  if (!atTarget) {
+    if (await localBranchExists(identity.branch, commandAdapter)) {
+      await commandAdapter('git', ['worktree', 'add', worktree, identity.branch]);
+    } else {
+      await commandAdapter('git', ['fetch', 'origin', 'develop']);
+      await commandAdapter('git', [
+        'worktree',
+        'add',
+        '-b',
+        identity.branch,
+        worktree,
+        'origin/develop',
+      ]);
+    }
+  }
+  await commandAdapter('npm', ['ci'], { cwd: worktree });
+  return { ...identity, worktree };
+}
+
+function safeRunnerEnv(env) {
+  if ('OPENAI_API_KEY' in env || 'CODEX_API_KEY' in env) {
+    throw new Error('API key environment is forbidden');
+  }
+  return Object.fromEntries(
+    ['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL']
+      .filter((name) => env[name] !== undefined)
+      .map((name) => [name, env[name]]),
+  );
+}
+
+function runnerArguments(issue, worktree, schemaPath, resultPath) {
+  return [
+    'exec',
+    '-m',
+    'gpt-5.6-terra',
+    '-C',
+    worktree,
+    '--sandbox',
+    'workspace-write',
+    '--ask-for-approval',
+    'never',
+    '--json',
+    '--output-schema',
+    schemaPath,
+    '--output-last-message',
+    resultPath,
+    runnerPrompt(issue),
+  ];
+}
+
+export async function startRunner({ args, runDir, env, spawn = spawnProcess }) {
+  const stdoutPath = join(runDir, 'codex.jsonl');
+  const stderrPath = join(runDir, 'codex.stderr.log');
+  const resultPath = join(runDir, 'result.json');
+  const stdout = await open(stdoutPath, 'w', 0o600);
+  const stderr = await open(stderrPath, 'w', 0o600);
+  const child = spawn('codex', args, {
+    detached: true,
+    env: safeRunnerEnv(env),
+    stdio: ['ignore', stdout.fd, stderr.fd],
+  });
+  const runnerPid = child.pid;
+  const exitCode = await new Promise((resolve, reject) => {
+    child.once('error', reject);
+    child.once('exit', resolve);
+  }).finally(async () => {
+    await Promise.all([stdout.close(), stderr.close()]);
+  });
+  let resultText;
+  try {
+    resultText = await readFile(resultPath, 'utf8');
+  } catch (error) {
+    if (exitCode !== 0 && error?.code === 'ENOENT') throw new Error('runner exited without result');
+    throw error;
+  }
+  const events = (await readFile(stdoutPath, 'utf8'))
+    .split('\n')
+    .filter(Boolean)
+    .map((line) => parseJson(line, 'Codex JSONL'));
+  const started = events.find((event) => event.type === 'thread.started' || event.thread?.started);
+  const threadId = started?.thread_id ?? started?.thread?.started?.thread_id;
+  if (!threadId) throw new Error('runner thread ID missing');
+  return { result: parseJson(resultText, 'runner result'), threadId, runnerPid };
+}
+
+function existingPullRequests(stdout) {
+  const pulls = parseJson(stdout, 'pull request list');
+  if (!Array.isArray(pulls)) throw new Error('invalid pull request list JSON');
+  return pulls;
+}
+
+async function commentIssue(issue, body, runDir, commandAdapter) {
+  const path = join(runDir, 'issue-comment.md');
+  await writeFile(path, body, { mode: 0o600 });
+  await commandAdapter('gh', ['issue', 'comment', String(issue), '--body-file', path]);
+}
+
+export async function executeIssue(
+  issue,
+  {
+    command: commandAdapter = command,
+    runRunner = startRunner,
+    stateRoot = FACTORY_ROOT,
+    workRoot = join(FACTORY_ROOT, 'worktrees'),
+    env = process.env,
+  } = {},
+) {
+  const number = validateIssueNumber(issue.number);
+  safeRunnerEnv(env);
+  await transitionIssue(number, STATES.READY, STATES.RUNNING, { command: commandAdapter });
+  const prepared = await prepareWorktree(number, { command: commandAdapter, workRoot });
+  const runDir = join(stateRoot, 'runs', prepared.worktreeId);
+  await mkdir(runDir, { recursive: true });
+  const schemaPath = join(runDir, 'runner-result.schema.json');
+  const resultPath = join(runDir, 'result.json');
+  await writeFile(schemaPath, `${JSON.stringify(RUNNER_RESULT_SCHEMA, null, 2)}\n`, {
+    mode: 0o600,
+  });
+  const args = runnerArguments(issue, prepared.worktree, schemaPath, resultPath);
+  const runner = await runRunner({ args, runDir, env });
+  const runRecord = {
+    issue: number,
+    status: 'running',
+    branch: prepared.branch,
+    worktreeId: prepared.worktreeId,
+    model: 'gpt-5.6-terra',
+    attempt: 1,
+    runnerPid: runner.runnerPid,
+    threadId: runner.threadId,
+    heartbeatAt: new Date().toISOString(),
+  };
+  await commentIssue(
+    number,
+    `<!-- ai-factory-run:v1 -->\n\`\`\`json\n${JSON.stringify(runRecord)}\n\`\`\`\n`,
+    runDir,
+    commandAdapter,
+  );
+
+  if (runner.result.outcome !== 'ready') {
+    await commentIssue(number, String(runner.result.reason).slice(0, 500), runDir, commandAdapter);
+    await transitionIssue(number, STATES.RUNNING, STATES.BLOCKED, { command: commandAdapter });
+    return { state: STATES.BLOCKED, worktree: prepared.worktree };
+  }
+
+  await commandAdapter('npm', ['run', 'check-code'], { cwd: prepared.worktree });
+  const status = await commandAdapter('git', ['status', '--porcelain=v1', '-z'], {
+    cwd: prepared.worktree,
+  });
+  const changedPaths = validateChangedPaths(parseChangedPaths(status.stdout));
+  await commandAdapter('git', ['add', '--', ...changedPaths], { cwd: prepared.worktree });
+  const staged = await commandAdapter('git', ['diff', '--cached', '--name-only'], {
+    cwd: prepared.worktree,
+  });
+  const stagedPaths = staged.stdout.split('\n').filter(Boolean);
+  if ([...stagedPaths].sort().join('\0') !== [...changedPaths].sort().join('\0')) {
+    throw new Error('staged paths do not match validated changes');
+  }
+  const message = buildCommitMessage(runner.result, number);
+  await commandAdapter('git', ['commit', '-m', message], { cwd: prepared.worktree });
+
+  const listArgs = [
+    'pr',
+    'list',
+    '--state',
+    'all',
+    '--head',
+    prepared.branch,
+    '--json',
+    'number,url,state',
+  ];
+  let pulls = existingPullRequests((await commandAdapter('gh', listArgs)).stdout);
+  if (pulls.length === 0) {
+    await commandAdapter('git', ['push', '-u', 'origin', prepared.branch], {
+      cwd: prepared.worktree,
+    });
+    const bodyPath = join(runDir, 'pr.md');
+    await writeFile(bodyPath, buildPrBody(issue, changedPaths), { mode: 0o600 });
+    await commandAdapter('gh', [
+      'pr',
+      'create',
+      '--base',
+      'develop',
+      '--head',
+      prepared.branch,
+      '--title',
+      message,
+      '--body-file',
+      bodyPath,
+    ]);
+    pulls = existingPullRequests((await commandAdapter('gh', listArgs)).stdout);
+  }
+  if (pulls.length !== 1 || !pulls[0].url) throw new Error('pull request read-back failed');
+  await transitionIssue(number, STATES.RUNNING, STATES.REVIEW, { command: commandAdapter });
+  return { state: STATES.REVIEW, pullRequest: pulls[0].url, worktree: prepared.worktree };
+}
+
 export async function runOnce({
   dryRun = false,
   command: commandAdapter = command,
   readAccount = readCodexAccount,
+  runRunner = startRunner,
+  stateRoot = FACTORY_ROOT,
+  workRoot = join(FACTORY_ROOT, 'worktrees'),
+  env = process.env,
 } = {}) {
   const issue = selectReadyIssue(await listIssues(commandAdapter));
   if (!issue) return { mode: dryRun ? 'dry-run' : 'once', reason: 'no-ready-issue' };
@@ -163,17 +420,29 @@ export async function runOnce({
     return { mode: dryRun ? 'dry-run' : 'once', issue: issue.number, usage };
   }
   const number = validateIssueNumber(issue.number);
+  const identity = runIdentity(number);
   const plan = {
     mode: dryRun ? 'dry-run' : 'once',
     issue: number,
     usage,
-    branch: `codex/issue-${number}`,
-    worktreeId: `issue-${number}`,
+    ...identity,
     nextState: STATES.RUNNING,
     model: 'gpt-5.6-terra',
   };
   if (dryRun) return plan;
-  throw new Error('runner execution is not implemented');
+  const lock = await acquireLock(stateRoot);
+  if (!lock.acquired) return { ...plan, reason: lock.reason };
+  try {
+    return await executeIssue(issue, {
+      command: commandAdapter,
+      runRunner,
+      stateRoot,
+      workRoot,
+      env,
+    });
+  } finally {
+    await lock.release();
+  }
 }
 
 export function readCodexAccount({ spawn = spawnProcess, timeoutMs = 5_000 } = {}) {
