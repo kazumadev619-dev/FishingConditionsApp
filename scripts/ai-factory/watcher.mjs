@@ -599,8 +599,6 @@ function runnerArguments(issue, worktree, schemaPath, resultPath) {
     'gpt-5.6-terra',
     '-C',
     worktree,
-    '--sandbox',
-    'workspace-write',
     '--approve-for-me',
     '--json',
     '--output-schema',

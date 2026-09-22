@@ -357,6 +357,7 @@ describe('single Terra runner', () => {
       const codexArgs = calls.find(({ file }) => file === 'codex')?.args ?? [];
       expect(codexArgs).toContain('--approve-for-me');
       expect(codexArgs).not.toContain('--ask-for-approval');
+      expect(codexArgs).not.toContain('--sandbox');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
