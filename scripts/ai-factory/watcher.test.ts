@@ -336,6 +336,11 @@ describe('GitHub state transitions', () => {
 });
 
 describe('Sol planner', () => {
+  const usageAccount = (usedPercent: number) => ({
+    account: { type: 'chatgpt' },
+    ordinaryUsageAllowed: true,
+    rateLimits: { primary: { usedPercent, resetsAt: 1_800_000_000 } },
+  });
   const issue = {
     number: 42,
     title: 'Update docs',
@@ -519,6 +524,113 @@ describe('Sol planner', () => {
       await expect(readFile(join(root, 'runs', 'issue-42', 'planner-infra-retried'), 'utf8')).resolves.toBe(
         '1\n',
       );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not retry Sol after an infrastructure failure when the quota reaches the reserve', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-quota-'));
+    const states = ['agent:ready', 'agent:failed'];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify([issue]) };
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '' };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api') return { stdout: JSON.stringify([[]]) };
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const readAccount = vi
+      .fn()
+      .mockResolvedValueOnce(usageAccount(25))
+      .mockResolvedValueOnce(usageAccount(25))
+      .mockResolvedValueOnce(usageAccount(80));
+    const runRunner = vi.fn(async () => {
+      throw new Error('planner exited without result');
+    });
+    try {
+      await expect(
+        runOnce({
+          command,
+          readAccount,
+          runRunner,
+          stateRoot: root,
+          repoRoot: root,
+          useLock: false,
+          env: { PATH: '/usr/bin', HOME: root },
+        }),
+      ).resolves.toMatchObject({
+        state: 'agent:ready',
+        reason: 'reserve-floor',
+        usage: { allowed: false },
+      });
+      expect(runRunner).toHaveBeenCalledTimes(1);
+      expect(readAccount).toHaveBeenCalledTimes(3);
+      expect(command).not.toHaveBeenCalledWith('gh', expect.arrayContaining(['edit']));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not start the worker when the quota reaches the reserve after Sol plans', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-worker-quota-'));
+    const states = ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify([issue]) };
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '' };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && !args.includes('POST')) return { stdout: JSON.stringify([[]]) };
+      if (args[0] === 'api' && args.includes('POST')) return { stdout: JSON.stringify({ id: 77 }) };
+      if (args[0] === 'worktree') return { stdout: '' };
+      if (args[0] === 'show-ref') throw Object.assign(new Error('missing branch'), { code: 1 });
+      if (args[0] === 'fetch' || args[0] === 'add' || args[0] === 'ci') return { stdout: '' };
+      if (args[0] === 'issue' && args[1] === 'comment') return { stdout: '' };
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const readAccount = vi
+      .fn()
+      .mockResolvedValueOnce(usageAccount(25))
+      .mockResolvedValueOnce(usageAccount(25))
+      .mockResolvedValueOnce(usageAccount(80));
+    const runRunner = vi
+      .fn()
+      .mockResolvedValueOnce({ result: planned, threadId: 'planner-thread', runnerPid: 321 })
+      .mockResolvedValueOnce({
+        result: {
+          outcome: 'blocked',
+          commitType: 'docs',
+          summary: 'Should not start',
+          reason: 'worker started',
+        },
+        threadId: 'worker-thread',
+        runnerPid: 322,
+      });
+    try {
+      await expect(
+        runOnce({
+          command,
+          readAccount,
+          runRunner,
+          stateRoot: root,
+          repoRoot: root,
+          useLock: false,
+          env: { PATH: '/usr/bin', HOME: root },
+        }),
+      ).resolves.toMatchObject({
+        state: 'agent:ready',
+        reason: 'reserve-floor',
+        usage: { allowed: false },
+      });
+      expect(runRunner).toHaveBeenCalledTimes(1);
+      expect(readAccount).toHaveBeenCalledTimes(3);
+      expect(command).not.toHaveBeenCalledWith('gh', expect.arrayContaining(['edit']));
     } finally {
       await rm(root, { recursive: true, force: true });
     }

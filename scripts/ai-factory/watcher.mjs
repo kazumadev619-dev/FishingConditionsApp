@@ -295,11 +295,21 @@ function plannerArguments(issue, repoRoot, schemaPath, resultPath) {
   ];
 }
 
-/** @param {any} issue @param {{ command?: CommandAdapter, runRunner?: (options: any) => Promise<any>, stateRoot?: string, repoRoot?: string, env?: Record<string, string | undefined>, now?: Date }} [options] */
+async function ensureQuota(readAccount, env) {
+  if (!readAccount) return;
+  const usage = evaluateUsage(await readAccount({ env }));
+  if (usage.allowed) return;
+  const error = new Error(usage.reason);
+  error.usage = usage;
+  throw error;
+}
+
+/** @param {any} issue @param {{ command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (options: any) => Promise<any>, stateRoot?: string, repoRoot?: string, env?: Record<string, string | undefined>, now?: Date }} [options] */
 export async function planIssue(
   issue,
   {
     command: commandAdapter = command,
+    readAccount,
     runRunner = startRunner,
     stateRoot = FACTORY_ROOT,
     repoRoot = process.cwd(),
@@ -325,6 +335,7 @@ export async function planIssue(
       if (error?.code !== 'ENOENT') throw error;
     });
     try {
+      await ensureQuota(readAccount, env);
       runner = await runRunner({
         args: plannerArguments(issue, repoRoot, schemaPath, resultPath),
         runDir,
@@ -1346,6 +1357,9 @@ async function planAndExecuteIssue(issue, options) {
   try {
     plan = await planIssue(issue, options);
   } catch (error) {
+    if (error?.usage) {
+      return { state: STATES.READY, usage: error.usage, reason: error.usage.reason };
+    }
     if (error?.planInvalid) {
       const runDir = join(options.stateRoot, 'runs', `issue-${number}`);
       await mkdir(runDir, { recursive: true });
@@ -1368,6 +1382,12 @@ async function planAndExecuteIssue(issue, options) {
   }
   if (!(await dependenciesClosed(plan, options.command))) {
     return { state: STATES.READY, reason: 'dependencies-open', plan };
+  }
+  try {
+    await ensureQuota(options.readAccount, options.env);
+  } catch (error) {
+    if (!error?.usage) throw error;
+    return { state: STATES.READY, usage: error.usage, reason: error.usage.reason };
   }
   return executeIssue(issue, options);
 }
@@ -1406,6 +1426,7 @@ export async function runOnce({
   if (!useLock) {
     return planAndExecuteIssue(issue, {
       command: commandAdapter,
+      readAccount,
       runRunner,
       stateRoot,
       workRoot,
@@ -1418,6 +1439,7 @@ export async function runOnce({
   try {
     return await planAndExecuteIssue(issue, {
       command: commandAdapter,
+      readAccount,
       runRunner,
       stateRoot,
       workRoot,
