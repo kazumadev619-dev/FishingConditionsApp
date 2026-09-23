@@ -181,6 +181,10 @@ kubectl -n fishing logs -f job/db-seed
 kubectl -n fishing delete job db-seed
 ```
 
+再実行しても港の id と座標は保たれ、`locations.port_id` の紐づけも切れない（seed は
+`(prefecture_code, port_code)` で upsert し、更新するのは港名と都道府県名だけ。#146）。
+CSV から消えた港は削除されずに残る。2段目は全港の座標を tide736.net から取り直す。
+
 ## Secret の編集
 
 ```bash
