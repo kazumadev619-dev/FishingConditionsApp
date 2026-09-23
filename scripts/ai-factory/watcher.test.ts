@@ -4,10 +4,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { renderRunComment } from './core.mjs';
+import { planInputHash, renderPlanComment, renderRunComment } from './core.mjs';
 import {
   acquireLock,
+  dependenciesClosed,
   executeIssue,
+  loadPlan,
+  planIssue,
+  plannerPrompt,
   readCodexAccount,
   reconcileStartup,
   runOnce,
@@ -328,6 +332,224 @@ describe('GitHub state transitions', () => {
       ['issue', 'edit', '3', '--remove-label', 'agent:ready', '--add-label', 'agent:running'],
       ['issue', 'view', '3', '--json', 'labels'],
     ]);
+  });
+});
+
+describe('Sol planner', () => {
+  const issue = {
+    number: 42,
+    title: 'Update docs',
+    body: 'Refresh the fishing guide',
+    labels: [{ name: 'agent:ready' }, { name: 'docs' }],
+  };
+  const planned = {
+    outcome: 'planned',
+    workerModel: 'gpt-5.6-luna',
+    plannedPaths: ['docs'],
+    dependencies: [],
+    exclusive: false,
+    reason: 'docs only',
+  };
+
+  it('runs Sol once in read-only mode and stores a validated plan comment', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const runRunner = vi.fn(async ({ args }: { args: string[] }) => {
+      expect(args).toContain('gpt-5.6-sol');
+      expect(args).toContain('read-only');
+      expect(args).not.toContain('--approve-for-me');
+      return { result: planned, threadId: 'planner-thread', runnerPid: 321 };
+    });
+    const command = vi.fn(async (file: string, args: string[]) => {
+      calls.push({ file, args });
+      if (file !== 'gh') throw new Error(`unexpected command: ${file}`);
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (
+        args[0] === 'api' &&
+        args[1] === 'repos/owner/repo/issues/42/comments' &&
+        !args.includes('POST')
+      ) {
+        return { stdout: JSON.stringify([[]]) };
+      }
+      if (args[0] === 'api' && args.includes('POST')) {
+        const field = args.find((value) => value.startsWith('body=@'));
+        expect(field).toBeDefined();
+        await expect(readFile(field?.slice('body=@'.length) ?? '', 'utf8')).resolves.toContain(
+          '<!-- ai-factory-plan:v1 -->',
+        );
+        return { stdout: JSON.stringify({ id: 77 }) };
+      }
+      throw new Error(`unexpected command: gh ${args.join(' ')}`);
+    });
+    try {
+      await expect(
+        planIssue(issue, {
+          command,
+          runRunner,
+          stateRoot: root,
+          repoRoot: root,
+          env: { PATH: '/usr/bin', HOME: root },
+          now: new Date('2026-09-23T00:00:00.000Z'),
+        }),
+      ).resolves.toEqual(planned);
+      expect(runRunner).toHaveBeenCalledTimes(1);
+      expect(calls.some(({ args }) => args.includes('POST'))).toBe(true);
+      expect(plannerPrompt(issue)).toContain(JSON.stringify(issue));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reuses only the last valid viewer-owned plan cache and expires it when the Issue changes', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-cache-'));
+    const current = {
+      issue: 42,
+      inputHash: planInputHash(issue),
+      model: 'gpt-5.6-sol',
+      plan: planned,
+      plannedAt: '2026-09-23T00:00:00.000Z',
+    };
+    const lastPlan = { ...planned, reason: 'last valid plan' };
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file !== 'gh') throw new Error(`unexpected command: ${file}`);
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args[1] === 'repos/owner/repo/issues/42/comments') {
+        return {
+          stdout: JSON.stringify([
+            [
+              { id: 1, user: { login: 'attacker' }, body: renderPlanComment(current) },
+              {
+                id: 2,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({ ...current, inputHash: 'stale' }),
+              },
+              { id: 3, user: { login: 'factory-bot' }, body: renderPlanComment(current) },
+              {
+                id: 4,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({ ...current, plan: lastPlan }),
+              },
+            ],
+          ]),
+        };
+      }
+      throw new Error(`unexpected command: gh ${args.join(' ')}`);
+    });
+    const runRunner = vi.fn();
+    try {
+      await expect(
+        loadPlan(issue, { command }),
+      ).resolves.toMatchObject({ commentId: 4, plan: lastPlan });
+      await expect(
+        planIssue(issue, { command, runRunner, stateRoot: root }),
+      ).resolves.toEqual(lastPlan);
+      expect(runRunner).not.toHaveBeenCalled();
+      await expect(
+        planIssue(
+          { ...issue, body: 'Changed requirement' },
+          {
+            command: vi.fn(async (_file: string, args: string[]) => {
+              if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+              if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+              if (args[0] === 'api' && !args.includes('POST')) {
+                return { stdout: JSON.stringify([[]]) };
+              }
+              if (args[0] === 'api' && args.includes('POST')) {
+                return { stdout: JSON.stringify({ id: 78 }) };
+              }
+              throw new Error(`unexpected command: ${args.join(' ')}`);
+            }),
+            runRunner: async () => ({ result: planned, threadId: 'planner-thread', runnerPid: 321 }),
+            stateRoot: root,
+            repoRoot: root,
+          },
+        ),
+      ).resolves.toEqual(planned);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects an empty GitHub viewer before accepting cached comments', async () => {
+    await expect(
+      loadPlan(issue, {
+        command: async () => ({ stdout: '\n' }),
+      }),
+    ).rejects.toThrow('invalid GitHub viewer');
+  });
+
+  it('requires every dependency Issue to be CLOSED', async () => {
+    const calls: string[][] = [];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      calls.push(args);
+      return { stdout: args[2] === '10' ? 'CLOSED\n' : 'OPEN\n' };
+    });
+
+    await expect(dependenciesClosed({ dependencies: [10, 11] }, command)).resolves.toBe(false);
+    expect(calls).toEqual([
+      ['issue', 'view', '10', '--json', 'state', '--jq', '.state'],
+      ['issue', 'view', '11', '--json', 'state', '--jq', '.state'],
+    ]);
+    await expect(
+      dependenciesClosed(
+        { dependencies: [10, 11] },
+        async () => ({ stdout: 'CLOSED\n' }),
+      ),
+    ).resolves.toBe(true);
+  });
+
+  it('retries a planner infrastructure failure only once', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-retry-'));
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api') return { stdout: JSON.stringify([[]]) };
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const runRunner = vi.fn(async () => {
+      throw new Error('planner exited without result');
+    });
+    try {
+      await expect(
+        planIssue(issue, { command, runRunner, stateRoot: root, repoRoot: root }),
+      ).rejects.toMatchObject({ message: 'planner exited without result', plannerInfrastructure: true });
+      expect(runRunner).toHaveBeenCalledTimes(2);
+      await expect(readFile(join(root, 'runs', 'issue-42', 'planner-infra-retried'), 'utf8')).resolves.toBe(
+        '1\n',
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves the Issue state unchanged when reading the plan cache fails', async () => {
+    const calls: string[][] = [];
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      calls.push(args);
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return { stdout: JSON.stringify([issue]) };
+      }
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api') throw new Error('GitHub read failed');
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+
+    await expect(
+      runOnce({
+        command,
+        readAccount: async () => ({
+          account: { type: 'chatgpt' },
+          ordinaryUsageAllowed: true,
+          rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+        }),
+        useLock: false,
+        env: { PATH: '/usr/bin', HOME: '/tmp' },
+      }),
+    ).rejects.toThrow('GitHub read failed');
+    expect(calls.some((args) => args[0] === 'issue' && args[1] === 'edit')).toBe(false);
   });
 });
 

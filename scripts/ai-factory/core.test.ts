@@ -129,6 +129,8 @@ describe('plan validation', () => {
 describe('state machine', () => {
   it('allows the Phase 1 success path but not a review bypass', () => {
     expect(transitionAllowed('agent:ready', 'agent:running')).toBe(true);
+    expect(transitionAllowed('agent:ready', 'agent:blocked')).toBe(true);
+    expect(transitionAllowed('agent:ready', 'agent:failed')).toBe(true);
     expect(transitionAllowed('agent:running', 'agent:review')).toBe(true);
     expect(transitionAllowed('agent:review', 'done')).toBe(false);
   });

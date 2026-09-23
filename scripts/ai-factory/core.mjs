@@ -14,7 +14,7 @@ export const STATES = Object.freeze({
 
 const stateNames = new Set(Object.values(STATES));
 const transitions = new Map([
-  [STATES.READY, new Set([STATES.RUNNING, STATES.PAUSED])],
+  [STATES.READY, new Set([STATES.RUNNING, STATES.BLOCKED, STATES.FAILED, STATES.PAUSED])],
   [
     STATES.RUNNING,
     new Set([STATES.REVIEW, STATES.BLOCKED, STATES.FAILED, STATES.RECOVERY, STATES.PAUSED]),
