@@ -17,6 +17,7 @@ import {
   renderRunComment,
   runIdentity,
   runnerPrompt,
+  selectRunnablePlans,
   selectReadyIssue,
   transitionAllowed,
   validatePlan,
@@ -64,6 +65,24 @@ describe('plan validation', () => {
     expect(plansConflict(['src/app'], ['src/app/page.tsx'])).toBe(true);
     expect(plansConflict(['src/app'], ['src/application'])).toBe(false);
     expect(plansConflict([], ['docs'])).toBe(true);
+  });
+
+  it('selects at most three non-conflicting plans in issue order', () => {
+    const candidates = [
+      { issue: { number: 1 }, plan: { plannedPaths: ['docs/a'], exclusive: false } },
+      { issue: { number: 2 }, plan: { plannedPaths: ['src/app'], exclusive: false } },
+      { issue: { number: 3 }, plan: { plannedPaths: ['docs/b'], exclusive: false } },
+      { issue: { number: 4 }, plan: { plannedPaths: ['src/app/page.tsx'], exclusive: false } },
+    ];
+
+    expect(selectRunnablePlans(candidates, [], 3).map(({ issue }) => issue.number)).toEqual([1, 2, 3]);
+  });
+
+  it('runs an exclusive plan only when no runner is active', () => {
+    const exclusive = [{ issue: { number: 2 }, plan: { plannedPaths: [], exclusive: true } }];
+
+    expect(selectRunnablePlans(exclusive, [{ plannedPaths: ['docs'] }], 3)).toEqual([]);
+    expect(selectRunnablePlans(exclusive, [], 3)).toHaveLength(1);
   });
 
   it('rejects non-canonical path segments that could bypass conflict detection', () => {

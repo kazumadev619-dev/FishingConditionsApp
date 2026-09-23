@@ -251,6 +251,26 @@ export function plansConflict(left, right) {
   );
 }
 
+export function selectRunnablePlans(candidates, active, limit) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 3) {
+    throw new Error('runner limit must be between 1 and 3');
+  }
+  const activePlans = active.map((entry) => entry.plan ?? entry);
+  const selected = [];
+  for (const candidate of [...candidates].sort(
+    (left, right) => validateIssueNumber(left.issue.number) - validateIssueNumber(right.issue.number),
+  )) {
+    if (selected.length === limit) break;
+    const plan = candidate.plan;
+    const plans = [...activePlans, ...selected.map((entry) => entry.plan)];
+    const exclusive = plan.exclusive || plan.plannedPaths.length === 0;
+    if (exclusive ? plans.length === 0 : !plans.some((other) => other.exclusive || plansConflict(plan.plannedPaths, other.plannedPaths))) {
+      selected.push(candidate);
+    }
+  }
+  return selected;
+}
+
 export function changesWithinPlan(changedPaths, plannedPaths) {
   const changes = changedPaths.map(normalizeSafePath);
   const planned = plannedPaths.map(normalizeSafePath);

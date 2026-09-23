@@ -14,6 +14,7 @@ import {
   plannerPrompt,
   readCodexAccount,
   reconcileStartup,
+  runScheduledCycle,
   runOnce,
   syncRunComment,
   transitionIssue,
@@ -198,18 +199,43 @@ describe('watcher dry-run', () => {
 
   it('reads GitHub and usage without writing or starting Codex', async () => {
     const calls: Array<{ file: string; args: string[] }> = [];
+    const issue = {
+      number: 3,
+      title: 'Update docs',
+      body: 'Small documentation change',
+      labels: [{ name: 'agent:ready' }],
+      url: 'https://example.test/issues/3',
+    };
     const command = vi.fn(async (file: string, args: string[]) => {
       calls.push({ file, args });
       if (args[0] === 'issue' && args[1] === 'list') {
+        return { stdout: JSON.stringify([issue]) };
+      }
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) {
         return {
           stdout: JSON.stringify([
-            {
-              number: 3,
-              title: 'Update docs',
-              body: 'Small documentation change',
-              labels: [{ name: 'agent:ready' }],
-              url: 'https://example.test/issues/3',
-            },
+            [
+              {
+                id: 1,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({
+                  issue: 3,
+                  inputHash: planInputHash(issue),
+                  model: 'gpt-5.6-sol',
+                  plan: {
+                    outcome: 'planned',
+                    workerModel: 'gpt-5.6-terra',
+                    plannedPaths: ['docs'],
+                    dependencies: [],
+                    exclusive: false,
+                    reason: 'docs only',
+                  },
+                  plannedAt: '2026-09-23T00:00:00.000Z',
+                }),
+              },
+            ],
           ]),
         };
       }
@@ -238,6 +264,192 @@ describe('watcher dry-run', () => {
     expect(calls.some(({ args }) => args.includes('edit'))).toBe(false);
     expect(calls.some(({ args }) => args.includes('--method'))).toBe(false);
     expect(calls.some(({ file, args }) => file === 'codex' && args[0] === 'exec')).toBe(false);
+  });
+
+  it('reports planning-required without starting Sol when no valid plan is cached', async () => {
+    const issue = {
+      number: 3,
+      title: 'Update docs',
+      body: 'Small documentation change',
+      labels: [{ name: 'agent:ready' }],
+    };
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify([issue]) };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api') return { stdout: JSON.stringify([[]]) };
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const runRunner = vi.fn();
+
+    await expect(
+      runOnce({
+        dryRun: true,
+        command,
+        runRunner,
+        readAccount: async () => ({
+          account: { type: 'chatgpt' },
+          ordinaryUsageAllowed: true,
+          rateLimits: { primary: { usedPercent: 79, resetsAt: 1_800_000_000 } },
+        }),
+      }),
+    ).resolves.toMatchObject({ mode: 'dry-run', issue: 3, reason: 'planning-required' });
+    expect(runRunner).not.toHaveBeenCalled();
+  });
+});
+
+describe('daemon scheduler', () => {
+  it('starts three runners then refills a slot without waiting for the others', async () => {
+    const issues = [1, 2, 3, 4].map((number) => ({
+      number,
+      title: `Issue ${number}`,
+      body: 'Independent work',
+      labels: [{ name: 'agent:ready' }],
+    }));
+    let readyIssues = [...issues];
+    const releases = new Map<number, () => void>();
+    const started: number[] = [];
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-scheduler-'));
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return { stdout: JSON.stringify(args.includes('agent:ready') ? readyIssues : []) };
+      }
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) {
+        const number = Number(args[1].match(/issues\/(\d+)\/comments/)?.[1]);
+        const issue = issues.find((candidate) => candidate.number === number);
+        if (!issue) throw new Error('missing issue');
+        return {
+          stdout: JSON.stringify([
+            [
+              {
+                id: number,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({
+                  issue: number,
+                  inputHash: planInputHash(issue),
+                  model: 'gpt-5.6-sol',
+                  plan: {
+                    outcome: 'planned',
+                    workerModel: 'gpt-5.6-luna',
+                    plannedPaths: [`docs/${number}`],
+                    dependencies: [],
+                    exclusive: false,
+                    reason: 'independent docs',
+                  },
+                  plannedAt: '2026-09-23T00:00:00.000Z',
+                }),
+              },
+            ],
+          ]),
+        };
+      }
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const runIssue = vi.fn(
+      (issue: { number: number }) =>
+        new Promise<void>((resolve) => {
+          started.push(issue.number);
+          readyIssues = readyIssues.filter((candidate) => candidate.number !== issue.number);
+          releases.set(issue.number, resolve);
+        }),
+    );
+    const active = new Map();
+
+    try {
+      await runScheduledCycle({
+        active,
+        command,
+        runIssue,
+        stateRoot: root,
+        env: { PATH: '/usr/bin', HOME: root },
+      });
+      expect(started).toEqual([1, 2, 3]);
+      expect(active).toHaveLength(3);
+
+      releases.get(2)?.();
+      await vi.waitFor(() => expect(active).toHaveLength(2));
+      await runScheduledCycle({
+        active,
+        command,
+        runIssue,
+        stateRoot: root,
+        env: { PATH: '/usr/bin', HOME: root },
+      });
+
+      expect(started).toEqual([1, 2, 3, 4]);
+      expect(active).toHaveLength(3);
+    } finally {
+      for (const release of releases.values()) release();
+      await vi.waitFor(() => expect(active).toHaveLength(0));
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a conflicting cached plan out of an occupied worker pool', async () => {
+    const issue = {
+      number: 2,
+      title: 'Update README',
+      body: 'Small documentation change',
+      labels: [{ name: 'agent:ready' }],
+    };
+    const active = new Map([
+      [1, { plan: { plannedPaths: ['docs'], exclusive: false }, promise: new Promise(() => {}) }],
+    ]);
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(args.includes('agent:ready') ? [issue] : []),
+        };
+      }
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [
+              {
+                id: 1,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({
+                  issue: 2,
+                  inputHash: planInputHash(issue),
+                  model: 'gpt-5.6-sol',
+                  plan: {
+                    outcome: 'planned',
+                    workerModel: 'gpt-5.6-luna',
+                    plannedPaths: ['docs/README.md'],
+                    dependencies: [],
+                    exclusive: false,
+                    reason: 'README only',
+                  },
+                  plannedAt: '2026-09-23T00:00:00.000Z',
+                }),
+              },
+            ],
+          ]),
+        };
+      }
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const runRunner = vi.fn();
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-scheduler-'));
+
+    try {
+      await runScheduledCycle({
+        active,
+        command,
+        runRunner,
+        stateRoot: root,
+        env: { PATH: '/usr/bin', HOME: '/tmp' },
+      });
+
+      expect(active).toHaveLength(1);
+      expect(runRunner).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 

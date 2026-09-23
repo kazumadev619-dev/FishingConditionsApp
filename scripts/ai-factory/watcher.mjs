@@ -37,6 +37,7 @@ import {
   renderRunComment,
   runIdentity,
   runnerPrompt,
+  selectRunnablePlans,
   STATES,
   selectReadyIssue,
   transitionAllowed,
@@ -777,7 +778,11 @@ export async function reconcileStartup({
         { issue: number, record, repo, runDir, commentId: record.commentId },
         { command: commandAdapter },
       );
-      results.push({ issue: number, action: 'monitor' });
+      results.push({
+        issue: number,
+        action: 'monitor',
+        plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
+      });
       continue;
     }
 
@@ -1433,24 +1438,30 @@ export async function executeIssue(
 }
 
 async function planAndExecuteIssue(issue, options) {
+  const resolved = await resolveExecutionPlan(issue, options);
+  if ('result' in resolved) return resolved.result;
+  return executeIssue(issue, { ...options, plan: resolved.plan });
+}
+
+async function resolveExecutionPlan(issue, options) {
   const number = validateIssueNumber(issue.number);
   let plan;
   try {
     plan = await planIssue(issue, options);
   } catch (error) {
     if (error?.usage) {
-      return { state: STATES.READY, usage: error.usage, reason: error.usage.reason };
+      return { result: { state: STATES.READY, usage: error.usage, reason: error.usage.reason } };
     }
     if (error?.planInvalid) {
       const runDir = join(options.stateRoot, 'runs', `issue-${number}`);
       await mkdir(runDir, { recursive: true });
       await commentIssue(number, String(error.message).slice(0, 500), runDir, options.command);
       await transitionIssue(number, STATES.READY, STATES.BLOCKED, { command: options.command });
-      return { state: STATES.BLOCKED, reason: error.message };
+      return { result: { state: STATES.BLOCKED, reason: error.message } };
     }
     if (error?.plannerInfrastructure) {
       await transitionIssue(number, STATES.READY, STATES.FAILED, { command: options.command });
-      return { state: STATES.FAILED, reason: error.message };
+      return { result: { state: STATES.FAILED, reason: error.message } };
     }
     throw error;
   }
@@ -1459,12 +1470,74 @@ async function planAndExecuteIssue(issue, options) {
     await mkdir(runDir, { recursive: true });
     await commentIssue(number, String(plan.reason).slice(0, 500), runDir, options.command);
     await transitionIssue(number, STATES.READY, STATES.BLOCKED, { command: options.command });
-    return { state: STATES.BLOCKED, reason: plan.reason };
+    return { result: { state: STATES.BLOCKED, reason: plan.reason } };
   }
   if (!(await dependenciesClosed(plan, options.command))) {
-    return { state: STATES.READY, reason: 'dependencies-open', plan };
+    return { result: { state: STATES.READY, reason: 'dependencies-open', plan } };
   }
-  return executeIssue(issue, { ...options, plan });
+  return { plan };
+}
+
+async function fillAvailableSlots(active, options, recovered = []) {
+  const occupied = recovered.filter((result) => result.action === 'monitor');
+  const capacity = 3 - active.size - occupied.length;
+  if (capacity <= 0) return;
+  const issues = (await listIssues(options.command)).sort((left, right) => left.number - right.number);
+  const activePlans = [...active.values(), ...occupied];
+  const selected = [];
+  for (const issue of issues) {
+    if (selected.length === capacity || active.has(issue.number) || occupied.some(({ issue: number }) => number === issue.number)) {
+      continue;
+    }
+    const resolved = await resolveExecutionPlan(issue, options);
+    if ('result' in resolved) continue;
+    const candidate = { issue, plan: resolved.plan };
+    if (selectRunnablePlans([candidate], [...activePlans, ...selected], 1).length === 0) continue;
+    const promise = options.runIssue(issue, { ...options, plan: resolved.plan }).catch(async (error) => {
+      try {
+        await writeFactoryLog(join(options.stateRoot, 'watcher.jsonl'), {
+          level: 'error',
+          event: 'scheduled-runner-failed',
+          issue: issue.number,
+          reason: error.message,
+        });
+      } catch (logError) {
+        return { state: STATES.FAILED, reason: logError.message };
+      }
+      return { state: STATES.FAILED, reason: error.message };
+    });
+    active.set(issue.number, { plan: resolved.plan, promise });
+    void promise.finally(() => active.delete(issue.number));
+    selected.push(candidate);
+  }
+}
+
+/** @param {{ active?: Map<number, { plan: any, promise: Promise<any> }>, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, runIssue?: typeof executeIssue, stateRoot?: string, workRoot?: string, repoRoot?: string, env?: Record<string, string | undefined> }} [options] */
+export async function runScheduledCycle({
+  active = new Map(),
+  command: commandAdapter = command,
+  readAccount = readCodexAccount,
+  runRunner = startRunner,
+  runIssue = executeIssue,
+  stateRoot = FACTORY_ROOT,
+  workRoot = join(FACTORY_ROOT, 'worktrees'),
+  repoRoot = process.cwd(),
+  env = process.env,
+} = {}) {
+  safeRunnerEnv(env);
+  const options = {
+    command: commandAdapter,
+    readAccount,
+    runRunner,
+    runIssue,
+    stateRoot,
+    workRoot,
+    repoRoot,
+    env,
+  };
+  const recovered = await reconcileStartup(options);
+  await fillAvailableSlots(active, options, recovered);
+  return { active, recovered };
 }
 
 /** @param {{ dryRun?: boolean, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, repoRoot?: string, env?: Record<string, string | undefined>, useLock?: boolean }} [options] */
@@ -1497,7 +1570,11 @@ export async function runOnce({
     nextState: STATES.RUNNING,
     model: 'gpt-5.6-terra',
   };
-  if (dryRun) return plan;
+  if (dryRun) {
+    const cached = await loadPlan(issue, { command: commandAdapter });
+    if (!cached) return { ...plan, reason: 'planning-required' };
+    return { ...plan, model: cached.plan.workerModel, plan: cached.plan };
+  }
   if (!useLock) {
     return planAndExecuteIssue(issue, {
       command: commandAdapter,
@@ -1541,17 +1618,32 @@ export async function runCycle(options = {}) {
 }
 
 export async function watch({ pollMs = 30_000, ...options } = {}) {
-  for (;;) {
-    try {
-      await runCycle(options);
-    } catch (error) {
-      await writeFactoryLog(join(options.stateRoot ?? FACTORY_ROOT, 'watcher.jsonl'), {
-        level: 'error',
-        event: 'watch-cycle-failed',
-        reason: error.message,
-      });
+  const stateRoot = options.stateRoot ?? FACTORY_ROOT;
+  const lock = await acquireLock(stateRoot);
+  if (!lock.acquired) return { reason: lock.reason };
+  const active = new Map();
+  try {
+    for (;;) {
+      try {
+        await runScheduledCycle({ ...options, stateRoot, active });
+      } catch (error) {
+        await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+          level: 'error',
+          event: 'watch-cycle-failed',
+          reason: error.message,
+        });
+      }
+      if (active.size > 0) {
+        await Promise.race([
+          ...[...active.values()].map(({ promise }) => promise),
+          new Promise((resolve) => setTimeout(resolve, pollMs)),
+        ]);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, pollMs));
+      }
     }
-    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  } finally {
+    await lock.release();
   }
 }
 
