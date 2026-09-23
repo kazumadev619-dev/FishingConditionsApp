@@ -3,20 +3,123 @@ import {
   buildCommitMessage,
   buildPrBody,
   canRetryRunner,
+  changesWithinPlan,
   evaluateUsage,
   isRunStale,
   parseChangedPaths,
+  parsePlanComment,
   parseRunComment,
+  planInputHash,
+  plansConflict,
   RUNNER_RESULT_SCHEMA,
   readState,
+  renderPlanComment,
   renderRunComment,
   runIdentity,
   runnerPrompt,
   selectReadyIssue,
   transitionAllowed,
+  validatePlan,
   validateChangedPaths,
   validateIssueNumber,
+  WORKER_MODELS,
 } from './core.mjs';
+
+const plannedIssue = {
+  number: 42,
+  title: 'Update guide',
+  body: 'Update docs only',
+  labels: [{ name: 'agent:ready' }, { name: 'docs' }],
+};
+
+describe('plan validation', () => {
+  it('ignores state labels but invalidates the plan when requirements change', () => {
+    const ready = planInputHash(plannedIssue);
+    const running = planInputHash({
+      ...plannedIssue,
+      labels: [{ name: 'agent:running' }, { name: 'docs' }],
+    });
+    expect(running).toBe(ready);
+    expect(planInputHash({ ...plannedIssue, body: 'Different requirement' })).not.toBe(ready);
+  });
+
+  it('accepts only Luna and Terra worker models', () => {
+    expect(WORKER_MODELS).toEqual(['gpt-5.6-luna', 'gpt-5.6-terra']);
+    expect(() =>
+      validatePlan(
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-sol',
+          plannedPaths: ['docs'],
+          dependencies: [],
+          exclusive: false,
+          reason: 'wrong model',
+        },
+        42,
+      ),
+    ).toThrow('invalid worker model');
+  });
+
+  it('detects directory ancestry but not similar prefixes', () => {
+    expect(plansConflict(['src/app'], ['src/app/page.tsx'])).toBe(true);
+    expect(plansConflict(['src/app'], ['src/application'])).toBe(false);
+    expect(plansConflict([], ['docs'])).toBe(true);
+  });
+
+  it('rejects changes outside a bounded plan and allows an exclusive repo-wide plan', () => {
+    expect(changesWithinPlan(['docs/README.md'], ['docs'])).toBe(true);
+    expect(changesWithinPlan(['src/app/page.tsx'], ['docs'])).toBe(false);
+    expect(changesWithinPlan(['src/app/page.tsx'], [])).toBe(true);
+  });
+
+  it('rejects unsafe paths and self dependencies', () => {
+    expect(() =>
+      validatePlan(
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-terra',
+          plannedPaths: ['../outside'],
+          dependencies: [42],
+          exclusive: false,
+          reason: 'unsafe',
+        },
+        42,
+      ),
+    ).toThrow();
+  });
+
+  it('accepts only the viewer-owned exact plan marker and current hash', () => {
+    const plan = validatePlan(
+      {
+        outcome: 'planned',
+        workerModel: 'gpt-5.6-luna',
+        plannedPaths: ['docs'],
+        dependencies: [],
+        exclusive: false,
+        reason: 'docs only',
+      },
+      42,
+    );
+    const record = {
+      issue: 42,
+      inputHash: planInputHash(plannedIssue),
+      model: 'gpt-5.6-sol',
+      plan,
+      plannedAt: '2026-09-23T00:00:00.000Z',
+    };
+    const comment = { id: 7, user: { login: 'factory-bot' }, body: renderPlanComment(record) };
+    expect(parsePlanComment(comment, { issue: plannedIssue, viewer: 'factory-bot' })).toMatchObject({
+      ...record,
+      commentId: 7,
+    });
+    expect(() =>
+      parsePlanComment(comment, {
+        issue: { ...plannedIssue, body: 'changed' },
+        viewer: 'factory-bot',
+      }),
+    ).toThrow('plan input hash mismatch');
+  });
+});
 
 describe('state machine', () => {
   it('allows the Phase 1 success path but not a review bypass', () => {

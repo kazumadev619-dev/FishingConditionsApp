@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const STATES = Object.freeze({
   READY: 'agent:ready',
   RUNNING: 'agent:running',
@@ -34,6 +36,23 @@ export const RUNNER_RESULT_SCHEMA = Object.freeze({
     reason: { type: 'string', minLength: 1, maxLength: 500 },
   },
   required: ['outcome', 'commitType', 'summary', 'reason'],
+  additionalProperties: false,
+});
+
+export const PLANNER_MODEL = 'gpt-5.6-sol';
+export const WORKER_MODELS = Object.freeze(['gpt-5.6-luna', 'gpt-5.6-terra']);
+
+export const PLANNER_RESULT_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    outcome: { enum: ['planned', 'blocked'] },
+    workerModel: { enum: WORKER_MODELS },
+    plannedPaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+    dependencies: { type: 'array', items: { type: 'integer', minimum: 1 }, uniqueItems: true },
+    exclusive: { type: 'boolean' },
+    reason: { type: 'string', minLength: 1, maxLength: 500 },
+  },
+  required: ['outcome', 'workerModel', 'plannedPaths', 'dependencies', 'exclusive', 'reason'],
   additionalProperties: false,
 });
 
@@ -75,37 +94,160 @@ export function parseChangedPaths(porcelain) {
   return [...new Set(paths)];
 }
 
+function normalizeSafePath(file) {
+  if (
+    typeof file !== 'string' ||
+    file.length === 0 ||
+    file.includes('\0') ||
+    file.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(file) ||
+    file.split(/[\\/]/).includes('..')
+  ) {
+    throw new Error('unsafe changed path');
+  }
+  const normalized = file.replaceAll('\\', '/').replace(/\/+$/, '');
+  const name = normalized.split('/').at(-1);
+  if (
+    name === '.env' ||
+    name === '.env.local' ||
+    name === 'kubeconfig' ||
+    name?.endsWith('.key') ||
+    name?.endsWith('.pem') ||
+    normalized === 'k8s/secret.enc.yaml' ||
+    normalized === '.codex/auth.json' ||
+    name === 'biome.json' ||
+    name === '.oxlintrc.json' ||
+    name?.startsWith('eslint.config.')
+  ) {
+    throw new Error('protected changed path');
+  }
+  return normalized;
+}
+
 export function validateChangedPaths(paths) {
   if (paths.length === 0) throw new Error('no changed paths');
-  for (const file of paths) {
-    if (
-      typeof file !== 'string' ||
-      file.length === 0 ||
-      file.includes('\0') ||
-      file.startsWith('/') ||
-      /^[A-Za-z]:[\\/]/.test(file) ||
-      file.split(/[\\/]/).includes('..')
-    ) {
-      throw new Error('unsafe changed path');
-    }
-    const normalized = file.replaceAll('\\', '/');
-    const name = normalized.split('/').at(-1);
-    if (
-      name === '.env' ||
-      name === '.env.local' ||
-      name === 'kubeconfig' ||
-      name?.endsWith('.key') ||
-      name?.endsWith('.pem') ||
-      normalized === 'k8s/secret.enc.yaml' ||
-      normalized === '.codex/auth.json' ||
-      name === 'biome.json' ||
-      name === '.oxlintrc.json' ||
-      name?.startsWith('eslint.config.')
-    ) {
-      throw new Error('protected changed path');
-    }
-  }
+  paths.forEach(normalizeSafePath);
   return paths;
+}
+
+export function planInputHash(issue) {
+  const input = {
+    number: validateIssueNumber(issue.number),
+    title: issue.title ?? '',
+    body: issue.body ?? '',
+    labels: (issue.labels ?? [])
+      .map((label) => (typeof label === 'string' ? label : label.name))
+      .filter((label) => !stateNames.has(label))
+      .sort(),
+  };
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
+
+export function validatePlan(result, issueNumber) {
+  const number = validateIssueNumber(issueNumber);
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error('invalid plan');
+  }
+  if (Object.keys(result).some((key) => !PLANNER_RESULT_SCHEMA.required.includes(key))) {
+    throw new Error('invalid plan properties');
+  }
+  if (!['planned', 'blocked'].includes(result.outcome)) throw new Error('invalid plan outcome');
+  if (!WORKER_MODELS.includes(result.workerModel)) throw new Error('invalid worker model');
+  if (
+    !Array.isArray(result.plannedPaths) ||
+    result.plannedPaths.some((path) => typeof path !== 'string') ||
+    new Set(result.plannedPaths).size !== result.plannedPaths.length
+  ) {
+    throw new Error('invalid planned paths');
+  }
+  const plannedPaths = result.plannedPaths.map(normalizeSafePath);
+  if (new Set(plannedPaths).size !== plannedPaths.length) throw new Error('invalid planned paths');
+  if (
+    !Array.isArray(result.dependencies) ||
+    result.dependencies.some((dependency) => !Number.isSafeInteger(dependency) || dependency < 1) ||
+    new Set(result.dependencies).size !== result.dependencies.length
+  ) {
+    throw new Error('invalid plan dependencies');
+  }
+  if (result.dependencies.includes(number)) throw new Error('plan cannot depend on itself');
+  if (typeof result.exclusive !== 'boolean') throw new Error('invalid plan exclusivity');
+  if (
+    typeof result.reason !== 'string' ||
+    Array.from(result.reason).length < 1 ||
+    Array.from(result.reason).length > 500
+  ) {
+    throw new Error('invalid plan reason');
+  }
+  return {
+    outcome: result.outcome,
+    workerModel: result.workerModel,
+    plannedPaths,
+    dependencies: result.dependencies,
+    exclusive: plannedPaths.length === 0 ? true : result.exclusive,
+    reason: result.reason,
+  };
+}
+
+const PLAN_COMMENT_MARKER = '<!-- ai-factory-plan:v1 -->';
+
+export function renderPlanComment(record) {
+  return `${PLAN_COMMENT_MARKER}\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\`\n`;
+}
+
+export function parsePlanComment(comment, { issue, viewer }) {
+  if (comment?.user?.login !== viewer) throw new Error('plan comment author mismatch');
+  if (!comment.body?.startsWith(`${PLAN_COMMENT_MARKER}\n`)) {
+    throw new Error('invalid plan comment marker');
+  }
+  const match = comment.body.match(/^<!-- ai-factory-plan:v1 -->\n```json\n([^\n]+)\n```\n?$/);
+  if (!match) throw new Error('invalid plan comment body');
+  let record;
+  try {
+    record = JSON.parse(match[1]);
+  } catch {
+    throw new Error('invalid plan comment JSON');
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('invalid plan comment record');
+  }
+  if (record.issue !== issue.number) throw new Error('plan issue mismatch');
+  if (record.model !== PLANNER_MODEL) throw new Error('invalid planner model');
+  if (
+    typeof record.plannedAt !== 'string' ||
+    Number.isNaN(Date.parse(record.plannedAt)) ||
+    new Date(record.plannedAt).toISOString() !== record.plannedAt
+  ) {
+    throw new Error('invalid plan timestamp');
+  }
+  if (record.inputHash !== planInputHash(issue)) throw new Error('plan input hash mismatch');
+  return {
+    ...record,
+    plan: validatePlan(record.plan, issue.number),
+    commentId: comment.id,
+  };
+}
+
+export function plansConflict(left, right) {
+  const leftPaths = left.map(normalizeSafePath);
+  const rightPaths = right.map(normalizeSafePath);
+  if (leftPaths.length === 0 || rightPaths.length === 0) return true;
+  return leftPaths.some((leftPath) =>
+    rightPaths.some(
+      (rightPath) =>
+        leftPath === rightPath ||
+        leftPath.startsWith(`${rightPath}/`) ||
+        rightPath.startsWith(`${leftPath}/`),
+    ),
+  );
+}
+
+export function changesWithinPlan(changedPaths, plannedPaths) {
+  const changes = changedPaths.map(normalizeSafePath);
+  const planned = plannedPaths.map(normalizeSafePath);
+  if (planned.length === 0) return true;
+  return changes.every((change) =>
+    planned.some((path) => change === path || change.startsWith(`${path}/`)),
+  );
 }
 
 const COMMIT_EMOJI = Object.freeze({
