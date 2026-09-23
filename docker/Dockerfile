@@ -112,7 +112,17 @@ COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/validators/coordinateValidator.ts ./src/lib/validators/
 COPY --from=builder --chown=nextjs:nodejs /app/code.csv ./code.csv
+
+# db-seed Job が流す2本の import が、このイメージの中で解決できるかをビルド時に
+# 確かめる。src/ は必要なファイルだけを拾ってコピーしているため、スクリプトに
+# import を1つ足すと実行時に ERR_MODULE_NOT_FOUND で落ちる（#201）。
+# esbuild は tsx の依存として入っている。import type は解決しないので src/types は要らない。
+RUN node_modules/.bin/esbuild prisma/seed.ts scripts/update-port-coordinates.ts \
+      --bundle --platform=node --packages=external --log-level=warning \
+      --outdir=/tmp/import-check && \
+    rm -rf /tmp/import-check
 
 USER nextjs
 
