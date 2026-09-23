@@ -577,7 +577,7 @@ describe('Sol planner', () => {
 
   it('does not start the worker when the quota reaches the reserve after Sol plans', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-worker-quota-'));
-    const states = ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'];
+    const states = ['agent:ready', 'agent:running', 'agent:running', 'agent:ready'];
     const command = vi.fn(async (_file: string, args: string[]) => {
       if (args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify([issue]) };
       if (args[0] === 'issue' && args[1] === 'view') {
@@ -599,19 +599,15 @@ describe('Sol planner', () => {
       .mockResolvedValueOnce(usageAccount(25))
       .mockResolvedValueOnce(usageAccount(25))
       .mockResolvedValueOnce(usageAccount(80));
-    const runRunner = vi
-      .fn()
-      .mockResolvedValueOnce({ result: planned, threadId: 'planner-thread', runnerPid: 321 })
-      .mockResolvedValueOnce({
-        result: {
-          outcome: 'blocked',
-          commitType: 'docs',
-          summary: 'Should not start',
-          reason: 'worker started',
-        },
-        threadId: 'worker-thread',
-        runnerPid: 322,
-      });
+    const runnerModels: string[] = [];
+    const runRunner = vi.fn(async ({ args }: { args: string[] }) => {
+      const model = args[args.indexOf('-m') + 1];
+      runnerModels.push(model);
+      if (model === 'gpt-5.6-sol') {
+        return { result: planned, threadId: 'planner-thread', runnerPid: 321 };
+      }
+      throw new Error('worker started');
+    });
     try {
       await expect(
         runOnce({
@@ -629,8 +625,21 @@ describe('Sol planner', () => {
         usage: { allowed: false },
       });
       expect(runRunner).toHaveBeenCalledTimes(1);
+      expect(runnerModels).toEqual(['gpt-5.6-sol']);
       expect(readAccount).toHaveBeenCalledTimes(3);
-      expect(command).not.toHaveBeenCalledWith('gh', expect.arrayContaining(['edit']));
+      expect(command).toHaveBeenCalledWith(
+        'gh',
+        ['issue', 'edit', '42', '--remove-label', 'agent:ready', '--add-label', 'agent:running'],
+      );
+      expect(command).toHaveBeenCalledWith(
+        'gh',
+        ['issue', 'edit', '42', '--remove-label', 'agent:running', '--add-label', 'agent:ready'],
+      );
+      expect(
+        command.mock.calls.some(
+          ([file, args]) => file === 'git' && (args[0] === 'reset' || args[1] === 'remove'),
+        ),
+      ).toBe(false);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

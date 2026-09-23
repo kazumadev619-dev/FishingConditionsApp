@@ -1177,12 +1177,13 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
 
 /**
  * @param {any} issue
- * @param {{ command?: CommandAdapter, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, fromState?: string }} [options]
+ * @param {{ command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, fromState?: string }} [options]
  */
 export async function executeIssue(
   issue,
   {
     command: commandAdapter = command,
+    readAccount,
     runRunner = startRunner,
     stateRoot = FACTORY_ROOT,
     workRoot = join(FACTORY_ROOT, 'worktrees'),
@@ -1268,6 +1269,20 @@ export async function executeIssue(
             resultPath,
             '固定検証 npm run check-code が失敗した。再実行して根本原因だけを直し、成功するまで確認する。push、PR、Issue、labelは操作しない。',
           ];
+    if (attempt === 1) {
+      try {
+        await ensureQuota(readAccount, env);
+      } catch (error) {
+        if (!error?.usage) throw error;
+        await transitionIssue(number, STATES.RUNNING, STATES.READY, { command: commandAdapter });
+        return {
+          state: STATES.READY,
+          usage: error.usage,
+          reason: error.usage.reason,
+          worktree: prepared.worktree,
+        };
+      }
+    }
     const heartbeatRecord = async ({ runnerPid, threadId: activeThread, heartbeatAt }) => {
       const record = {
         issue: number,
@@ -1382,12 +1397,6 @@ async function planAndExecuteIssue(issue, options) {
   }
   if (!(await dependenciesClosed(plan, options.command))) {
     return { state: STATES.READY, reason: 'dependencies-open', plan };
-  }
-  try {
-    await ensureQuota(options.readAccount, options.env);
-  } catch (error) {
-    if (!error?.usage) throw error;
-    return { state: STATES.READY, usage: error.usage, reason: error.usage.reason };
   }
   return executeIssue(issue, options);
 }
