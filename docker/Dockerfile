@@ -119,8 +119,11 @@ COPY --from=builder --chown=nextjs:nodejs /app/code.csv ./code.csv
 # 確かめる。src/ は必要なファイルだけを拾ってコピーしているため、スクリプトに
 # import を1つ足すと実行時に ERR_MODULE_NOT_FOUND で落ちる（#201）。
 # esbuild は tsx の依存として入っている。import type は解決しないので src/types は要らない。
+# パッケージも外部扱いにせず解決させる。--packages=external だと tsconfig の @/ や
+# prune で消えた dev 依存を素通りさせる。--format=esm は top-level await を通すため。
+# Job の command にスクリプトを足したら、この行にも足すこと。
 RUN node_modules/.bin/esbuild prisma/seed.ts scripts/update-port-coordinates.ts \
-      --bundle --platform=node --packages=external --log-level=warning \
+      --bundle --platform=node --format=esm --log-level=warning \
       --outdir=/tmp/import-check && \
     rm -rf /tmp/import-check
 
