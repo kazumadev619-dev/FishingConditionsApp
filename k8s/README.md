@@ -172,6 +172,11 @@ kubectl -n fishing get deploy fishing-app \
 `:latest` に解決されて必ず ImagePullBackOff になる（`:latest` は GHCR に push しない）。
 **タグを明示して流すこと。**
 
+接続にはオーナー（`DATABASE_URL_DIRECT`）ではなく、Secret の `DATABASE_URL_RW_DIRECT`
+（アプリロール `fishing_app_rw` の **direct** 接続。pooled の `DATABASE_URL` のホスト名から
+`-pooler` を外したもの）を使う。seed に DDL は無く DML だけなので、オーナーは要らない（#135）。
+このキーが Secret に無いと Pod は `CreateContainerConfigError` で止まる。
+
 ```bash
 TAG=sha-$(git rev-parse --short HEAD)   # デプロイしたイメージのタグに合わせる
 sed "s|\(fishing-app-migrator\)$|\1:${TAG}|" k8s/job-db-seed.yaml | kubectl apply -f -
