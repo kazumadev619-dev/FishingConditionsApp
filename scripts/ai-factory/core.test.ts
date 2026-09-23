@@ -294,12 +294,14 @@ describe('runner boundary', () => {
 });
 
 describe('run recovery record', () => {
+  const planHash = 'a'.repeat(64);
   const record = {
     issue: 42,
     status: 'running',
     branch: 'codex/issue-42',
     worktreeId: 'issue-42',
     model: 'gpt-5.6-terra',
+    planHash,
     attempt: 1,
     runnerPid: 1234,
     threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
@@ -351,6 +353,45 @@ describe('run recovery record', () => {
         { issue: 42, viewer: 'factory-bot' },
       ),
     ).toThrow('invalid run heartbeat');
+  });
+
+  it('accepts only planned Luna or Terra records with a lowercase plan hash', () => {
+    const comment = { id: 9, user: { login: 'factory-bot' }, body: '' };
+    for (const model of WORKER_MODELS) {
+      expect(
+        parseRunComment(
+          { ...comment, body: renderRunComment({ ...record, model }) },
+          { issue: 42, viewer: 'factory-bot' },
+        ),
+      ).toMatchObject({ model, planHash });
+    }
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, model: 'gpt-5.6-sol' }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('run identity mismatch');
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, planHash: 'A'.repeat(64) }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('invalid run plan hash');
+  });
+
+  it('accepts Phase 1 Terra records without a plan hash for recovery only', () => {
+    const legacyRecord = { ...record };
+    delete legacyRecord.planHash;
+    expect(
+      parseRunComment(
+        {
+          id: 9,
+          user: { login: 'factory-bot' },
+          body: renderRunComment(legacyRecord),
+        },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toMatchObject({ model: 'gpt-5.6-terra' });
   });
 
   it('becomes stale at exactly 30 minutes and retries at most three attempts', () => {

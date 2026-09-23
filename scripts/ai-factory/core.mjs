@@ -312,9 +312,14 @@ export function parseRunComment(comment, { issue, viewer }) {
     record.issue !== issue ||
     record.branch !== identity.branch ||
     record.worktreeId !== identity.worktreeId ||
-    record.model !== 'gpt-5.6-terra'
+    !WORKER_MODELS.includes(record.model)
   ) {
     throw new Error('run identity mismatch');
+  }
+  if (record.planHash === undefined) {
+    if (record.model !== 'gpt-5.6-terra') throw new Error('invalid run plan hash');
+  } else if (typeof record.planHash !== 'string' || !/^[0-9a-f]{64}$/.test(record.planHash)) {
+    throw new Error('invalid run plan hash');
   }
   if (!Number.isInteger(record.attempt) || record.attempt < 1 || record.attempt > 3) {
     throw new Error('invalid run attempt');

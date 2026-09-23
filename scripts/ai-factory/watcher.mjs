@@ -22,6 +22,7 @@ import {
   buildCommitMessage,
   buildPrBody,
   canRetryRunner,
+  changesWithinPlan,
   evaluateUsage,
   isRunStale,
   parseChangedPaths,
@@ -42,6 +43,7 @@ import {
   validateChangedPaths,
   validateIssueNumber,
   validatePlan,
+  WORKER_MODELS,
 } from './core.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -625,19 +627,6 @@ export async function reconcileStartup({
       });
       state = STATES.RECOVERY;
     }
-    if (prepareRetry) {
-      results.push(
-        await executeIssue(issue, {
-          command: commandAdapter,
-          runRunner,
-          stateRoot,
-          workRoot,
-          env,
-          fromState: STATES.RECOVERY,
-        }),
-      );
-      continue;
-    }
     const commentPages = parseJson(
       (
         await commandAdapter('gh', [
@@ -653,6 +642,28 @@ export async function reconcileStartup({
       throw new Error('invalid issue comments JSON');
     }
     const comments = commentPages.flat();
+    let planRecord = null;
+    for (const comment of comments) {
+      try {
+        planRecord = parsePlanComment(comment, { issue, viewer });
+      } catch {
+        // Comments are untrusted cache entries; only a fully valid plan can be reused.
+      }
+    }
+    if (prepareRetry) {
+      results.push(
+        await executeIssue(issue, {
+          command: commandAdapter,
+          runRunner,
+          stateRoot,
+          workRoot,
+          env,
+          fromState: STATES.RECOVERY,
+          plan: planRecord?.plan,
+        }),
+      );
+      continue;
+    }
     const ownRunComments = comments.filter(
       (comment) =>
         comment.user?.login === viewer && comment.body?.startsWith('<!-- ai-factory-run:v1 -->'),
@@ -667,6 +678,7 @@ export async function reconcileStartup({
             workRoot,
             env,
             fromState: STATES.RECOVERY,
+            plan: planRecord?.plan,
           }),
         );
         continue;
@@ -679,6 +691,13 @@ export async function reconcileStartup({
       results.push(await blockRecoveredIssue(issue, state, error.message, runDir, commandAdapter));
       continue;
     }
+    if (record.planHash && record.planHash !== planRecord?.inputHash) {
+      results.push(
+        await blockRecoveredIssue(issue, state, 'run plan hash mismatch', runDir, commandAdapter),
+      );
+      continue;
+    }
+    const recoveryPlan = record.planHash ? planRecord.plan : undefined;
 
     const pullArgs = [
       'pr',
@@ -768,6 +787,7 @@ export async function reconcileStartup({
             runDir,
             state,
             commandAdapter,
+            recoveryPlan,
           ),
         );
         continue;
@@ -787,13 +807,14 @@ export async function reconcileStartup({
       const nextAttempt = record.attempt + 1;
       let resumed;
       try {
+        const model = workerModel(record.model);
         resumed = await runAttempt(runRunner, {
           args: [
             'exec',
             'resume',
             record.threadId,
             '-m',
-            'gpt-5.6-terra',
+            model,
             '--json',
             '--output-schema',
             join(runDir, 'runner-result.schema.json'),
@@ -853,6 +874,7 @@ export async function reconcileStartup({
               runDir,
               STATES.RUNNING,
               commandAdapter,
+              recoveryPlan,
             ),
           );
         } else {
@@ -991,11 +1013,16 @@ function safeRunnerEnv(env) {
   );
 }
 
-function runnerArguments(issue, worktree, schemaPath, resultPath) {
+function workerModel(model) {
+  if (!WORKER_MODELS.includes(model)) throw new Error('invalid worker model');
+  return model;
+}
+
+function runnerArguments(issue, plan, worktree, schemaPath, resultPath) {
   return [
     'exec',
     '-m',
-    'gpt-5.6-terra',
+    workerModel(plan.workerModel),
     '-C',
     worktree,
     '--approve-for-me',
@@ -1109,7 +1136,7 @@ async function commentIssue(issue, body, runDir, commandAdapter) {
   await commandAdapter('gh', ['issue', 'comment', String(issue), '--body-file', path]);
 }
 
-async function publishReady(issue, prepared, result, runDir, fromState, commandAdapter) {
+async function publishReady(issue, prepared, result, runDir, fromState, commandAdapter, plan) {
   const number = validateIssueNumber(issue.number);
   const status = await commandAdapter('git', ['status', '--porcelain=v1', '-z'], {
     cwd: prepared.worktree,
@@ -1117,6 +1144,11 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
   let changedPaths;
   if (status.stdout) {
     changedPaths = validateChangedPaths(parseChangedPaths(status.stdout));
+    if (!changesWithinPlan(changedPaths, plan?.plannedPaths ?? [])) {
+      await commentIssue(number, 'changed paths are outside the planned paths', runDir, commandAdapter);
+      await transitionIssue(number, fromState, STATES.BLOCKED, { command: commandAdapter });
+      return { state: STATES.BLOCKED, worktree: prepared.worktree };
+    }
     await commandAdapter('git', ['add', '--', ...changedPaths], { cwd: prepared.worktree });
     const staged = await commandAdapter(
       'git',
@@ -1177,7 +1209,7 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
 
 /**
  * @param {any} issue
- * @param {{ command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, fromState?: string }} [options]
+ * @param {{ command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (options: any) => Promise<any>, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, fromState?: string, plan?: any }} [options]
  */
 export async function executeIssue(
   issue,
@@ -1189,10 +1221,16 @@ export async function executeIssue(
     workRoot = join(FACTORY_ROOT, 'worktrees'),
     env = process.env,
     fromState = STATES.READY,
+    plan,
   } = {},
 ) {
   const number = validateIssueNumber(issue.number);
   safeRunnerEnv(env);
+  const effectivePlan = plan
+    ? validatePlan(plan, number)
+    : { workerModel: 'gpt-5.6-terra', plannedPaths: [] };
+  const model = workerModel(effectivePlan.workerModel);
+  const planHash = planInputHash(issue);
   const identity = runIdentity(number);
   const runDir = join(stateRoot, 'runs', identity.worktreeId);
   await mkdir(runDir, { recursive: true });
@@ -1255,13 +1293,13 @@ export async function executeIssue(
   while (attempt <= 3) {
     const args =
       attempt === 1
-        ? runnerArguments(issue, prepared.worktree, schemaPath, resultPath)
+        ? runnerArguments(issue, effectivePlan, prepared.worktree, schemaPath, resultPath)
         : [
             'exec',
             'resume',
             threadId,
             '-m',
-            'gpt-5.6-terra',
+            workerModel(model),
             '--json',
             '--output-schema',
             schemaPath,
@@ -1289,7 +1327,8 @@ export async function executeIssue(
         status: 'running',
         branch: prepared.branch,
         worktreeId: prepared.worktreeId,
-        model: 'gpt-5.6-terra',
+        model,
+        planHash,
         attempt,
         runnerPid,
         threadId: activeThread,
@@ -1363,7 +1402,15 @@ export async function executeIssue(
     return { state: STATES.BLOCKED, worktree: prepared.worktree };
   }
 
-  return publishReady(issue, prepared, runner.result, runDir, STATES.RUNNING, commandAdapter);
+  return publishReady(
+    issue,
+    prepared,
+    runner.result,
+    runDir,
+    STATES.RUNNING,
+    commandAdapter,
+    effectivePlan,
+  );
 }
 
 async function planAndExecuteIssue(issue, options) {
@@ -1398,7 +1445,7 @@ async function planAndExecuteIssue(issue, options) {
   if (!(await dependenciesClosed(plan, options.command))) {
     return { state: STATES.READY, reason: 'dependencies-open', plan };
   }
-  return executeIssue(issue, options);
+  return executeIssue(issue, { ...options, plan });
 }
 
 /** @param {{ dryRun?: boolean, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, repoRoot?: string, env?: Record<string, string | undefined>, useLock?: boolean }} [options] */

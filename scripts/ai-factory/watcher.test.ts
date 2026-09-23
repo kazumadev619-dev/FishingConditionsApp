@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { planInputHash, renderPlanComment, renderRunComment } from './core.mjs';
+import { parseRunComment, planInputHash, renderPlanComment, renderRunComment } from './core.mjs';
 import {
   acquireLock,
   dependenciesClosed,
@@ -675,6 +675,15 @@ describe('Sol planner', () => {
 });
 
 describe('single Terra runner', () => {
+  const planned = (workerModel: 'gpt-5.6-luna' | 'gpt-5.6-terra', plannedPaths = ['docs']) => ({
+    outcome: 'planned' as const,
+    workerModel,
+    plannedPaths,
+    dependencies: [],
+    exclusive: plannedPaths.length === 0,
+    reason: 'worker boundary',
+  });
+
   function pipelineCommand(
     states: string[],
     runnerCalls: Array<{ file: string; args: string[] }>,
@@ -801,6 +810,142 @@ describe('single Terra runner', () => {
     }
   });
 
+  it.each(['gpt-5.6-luna', 'gpt-5.6-terra'] as const)(
+    'uses the planned worker model and persists it with the plan hash',
+    async (workerModel) => {
+      const root = await mkdtemp(join(tmpdir(), 'ai-factory-model-'));
+      const calls: Array<{ file: string; args: string[] }> = [];
+      const command = pipelineCommand(
+        ['agent:ready', 'agent:running', 'agent:running', 'agent:review'],
+        calls,
+      );
+      const issue = {
+        number: 42,
+        title: 'Update docs',
+        body: 'Small documentation change',
+        labels: [{ name: 'agent:ready' }],
+      };
+      let runnerArgs: string[] = [];
+      try {
+        await expect(
+          executeIssue(issue, {
+            command,
+            plan: planned(workerModel),
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async ({ args }: { args: string[] }) => {
+              runnerArgs = args;
+              return {
+                result: {
+                  outcome: 'ready',
+                  commitType: 'docs',
+                  summary: 'Update fishing guide',
+                  reason: 'Implementation and checks complete',
+                },
+                threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                runnerPid: 1234,
+                args,
+              };
+            },
+          }),
+        ).resolves.toMatchObject({ state: 'agent:review' });
+        expect(runnerArgs[runnerArgs.indexOf('-m') + 1]).toBe(workerModel);
+        const record = parseRunComment(
+          {
+            id: 77,
+            user: { login: 'factory-bot' },
+            body: await readFile(join(root, 'runs', 'issue-42', 'run-comment.md'), 'utf8'),
+          },
+          { issue: 42, viewer: 'factory-bot' },
+        );
+        expect(record).toMatchObject({ model: workerModel, planHash: planInputHash(issue) });
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it('blocks a planned path violation before git add, commit, push, or PR creation', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-path-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'],
+      calls,
+      { status: ' M src/app/page.tsx\0' },
+    );
+    try {
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Update docs', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            plan: planned('gpt-5.6-luna'),
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async () => ({
+              result: {
+                outcome: 'ready',
+                commitType: 'docs',
+                summary: 'Update guide',
+                reason: 'Checks passed',
+              },
+              threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+              runnerPid: 1234,
+            }),
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:blocked' });
+      expect(
+        calls.some(({ file, args }) => file === 'git' && ['add', 'commit', 'push'].includes(args[0])),
+      ).toBe(false);
+      expect(
+        calls.some(({ file, args }) => file === 'gh' && args[0] === 'pr' && args[1] === 'create'),
+      ).toBe(false);
+      expect(calls.some(({ file, args }) => file === 'gh' && args[0] === 'issue' && args[1] === 'comment')).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('allows a planned path outside docs for an exclusive plan', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-path-'));
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = pipelineCommand(
+      ['agent:ready', 'agent:running', 'agent:running', 'agent:review'],
+      calls,
+      { status: ' M src/app/page.tsx\0', staged: 'src/app/page.tsx\0' },
+    );
+    try {
+      await expect(
+        executeIssue(
+          { number: 42, title: 'Update app', body: '', labels: [{ name: 'agent:ready' }] },
+          {
+            command,
+            plan: planned('gpt-5.6-terra', []),
+            workRoot: join(root, 'worktrees'),
+            stateRoot: root,
+            env: { PATH: '/usr/bin', HOME: root },
+            runRunner: async () => ({
+              result: {
+                outcome: 'ready',
+                commitType: 'feat',
+                summary: 'Update app',
+                reason: 'Checks passed',
+              },
+              threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+              runnerPid: 1234,
+            }),
+          },
+        ),
+      ).resolves.toMatchObject({ state: 'agent:review' });
+      expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'add')).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('stages both sides of a rename with lossless path comparison', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-run-'));
     const calls: Array<{ file: string; args: string[] }> = [];
@@ -915,6 +1060,7 @@ describe('single Terra runner', () => {
           { number: 42, title: 'Retry safely', body: '', labels: [{ name: 'agent:ready' }] },
           {
             command,
+            plan: planned('gpt-5.6-luna'),
             workRoot: join(root, 'worktrees'),
             stateRoot: root,
             env: { PATH: '/usr/bin', HOME: root },
@@ -944,6 +1090,11 @@ describe('single Terra runner', () => {
         'resume',
         '0199a213-81c0-7800-8aa1-bbab2a035a53',
         '-m',
+      ]);
+      expect(runs.map(({ args }) => args[args.indexOf('-m') + 1])).toEqual([
+        'gpt-5.6-luna',
+        'gpt-5.6-luna',
+        'gpt-5.6-luna',
       ]);
       expect(runs[1].cwd).toBe(join(root, 'worktrees', 'issue-42'));
       expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'push')).toBe(false);
@@ -1093,6 +1244,87 @@ describe('heartbeat and recovery', () => {
       expect(calls[0]).toContain('POST');
       expect(calls[1]).toContain('PATCH');
       expect(calls[1]).toContain('repos/owner/repo/issues/comments/77');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks a recovered Phase 2 run when its plan hash no longer matches', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+    const issue = {
+      number: 42,
+      title: 'Recovered work',
+      body: '',
+      labels: [{ name: 'agent:running' }],
+    };
+    const plan = {
+      outcome: 'planned',
+      workerModel: 'gpt-5.6-luna',
+      plannedPaths: ['docs'],
+      dependencies: [],
+      exclusive: false,
+      reason: 'docs only',
+    };
+    const states = ['agent:running', 'agent:blocked'];
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return { stdout: JSON.stringify(args.includes('agent:running') ? [issue] : []) };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        return {
+          stdout: JSON.stringify([
+            [
+              {
+                id: 76,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({
+                  issue: 42,
+                  inputHash: planInputHash(issue),
+                  model: 'gpt-5.6-sol',
+                  plan,
+                  plannedAt: '2026-09-23T00:00:00.000Z',
+                }),
+              },
+              {
+                id: 77,
+                user: { login: 'factory-bot' },
+                body: renderRunComment({
+                  ...record,
+                  model: 'gpt-5.6-luna',
+                  planHash: 'b'.repeat(64),
+                }),
+              },
+            ],
+          ]),
+        };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'comment') {
+        const bodyPath = args.at(-1);
+        await expect(readFile(bodyPath ?? '', 'utf8')).resolves.toContain('run plan hash mismatch');
+        return { stdout: '' };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') return { stdout: '' };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: states.shift() }] }) };
+      }
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+    const runRunner = vi.fn();
+    try {
+      await expect(
+        reconcileStartup({
+          command,
+          runRunner,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      expect(runRunner).not.toHaveBeenCalled();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
