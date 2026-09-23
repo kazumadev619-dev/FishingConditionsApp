@@ -9,6 +9,14 @@
 --
 -- 丸め前の座標を持つ古い行は丸めない。値を動かすと別の行と衝突しうるうえ、アプリは
 -- 丸めた値でしか検索しないので、ここで寄せなくても重複の原因にはならない。
+--
+-- prisma migrate deploy は文ごとに autocommit するので、自分でトランザクションに包む。
+-- 包まないと途中で失敗したとき重複の削除だけが確定する。ロックは、migrate の間も動いている
+-- 旧 Pod が付け替えの後に重複行へお気に入りを足し、4) の CASCADE で消えるのを防ぐ。
+
+BEGIN;
+
+LOCK TABLE "locations", "user_favorites", "user_settings" IN SHARE ROW EXCLUSIVE MODE;
 
 CREATE TEMP TABLE location_dupes AS
 SELECT dup_id, keep_id
@@ -69,3 +77,5 @@ DROP TABLE location_dupes;
 DROP INDEX IF EXISTS "locations_latitude_longitude_idx";
 
 CREATE UNIQUE INDEX IF NOT EXISTS "locations_latitude_longitude_key" ON "locations"("latitude", "longitude");
+
+COMMIT;
