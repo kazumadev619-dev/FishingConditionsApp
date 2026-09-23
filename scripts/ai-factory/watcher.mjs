@@ -651,6 +651,25 @@ export async function reconcileStartup({
       }
     }
     if (prepareRetry) {
+      const ownRunComments = comments.filter(
+        (comment) =>
+          comment.user?.login === viewer && comment.body?.startsWith('<!-- ai-factory-run:v1 -->'),
+      );
+      if (ownRunComments.length > 0) {
+        let retryRecord;
+        try {
+          retryRecord = parseRunComment(ownRunComments.at(-1), { issue: number, viewer });
+        } catch (error) {
+          results.push(await blockRecoveredIssue(issue, state, error.message, runDir, commandAdapter));
+          continue;
+        }
+        if (retryRecord.planHash && retryRecord.planHash !== planRecord?.inputHash) {
+          results.push(
+            await blockRecoveredIssue(issue, state, 'run plan hash mismatch', runDir, commandAdapter),
+          );
+          continue;
+        }
+      }
       results.push(
         await executeIssue(issue, {
           command: commandAdapter,
@@ -1141,33 +1160,33 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
   const status = await commandAdapter('git', ['status', '--porcelain=v1', '-z'], {
     cwd: prepared.worktree,
   });
-  let changedPaths;
+  const committed = await commandAdapter(
+    'git',
+    ['diff', '--name-only', '--no-renames', '-z', 'origin/develop...HEAD'],
+    { cwd: prepared.worktree },
+  );
+  const worktreePaths = status.stdout ? validateChangedPaths(parseChangedPaths(status.stdout)) : [];
+  const changedPaths = validateChangedPaths([
+    ...new Set([...committed.stdout.split('\0').filter(Boolean), ...worktreePaths]),
+  ]);
+  if (!changesWithinPlan(changedPaths, plan?.plannedPaths ?? [])) {
+    await commentIssue(number, 'changed paths are outside the planned paths', runDir, commandAdapter);
+    await transitionIssue(number, fromState, STATES.BLOCKED, { command: commandAdapter });
+    return { state: STATES.BLOCKED, worktree: prepared.worktree };
+  }
   if (status.stdout) {
-    changedPaths = validateChangedPaths(parseChangedPaths(status.stdout));
-    if (!changesWithinPlan(changedPaths, plan?.plannedPaths ?? [])) {
-      await commentIssue(number, 'changed paths are outside the planned paths', runDir, commandAdapter);
-      await transitionIssue(number, fromState, STATES.BLOCKED, { command: commandAdapter });
-      return { state: STATES.BLOCKED, worktree: prepared.worktree };
-    }
-    await commandAdapter('git', ['add', '--', ...changedPaths], { cwd: prepared.worktree });
+    await commandAdapter('git', ['add', '--', ...worktreePaths], { cwd: prepared.worktree });
     const staged = await commandAdapter(
       'git',
       ['diff', '--cached', '--name-only', '--no-renames', '-z'],
       { cwd: prepared.worktree },
     );
     const stagedPaths = staged.stdout.split('\0').filter(Boolean);
-    if ([...stagedPaths].sort().join('\0') !== [...changedPaths].sort().join('\0')) {
+    if ([...stagedPaths].sort().join('\0') !== [...worktreePaths].sort().join('\0')) {
       throw new Error('staged paths do not match validated changes');
     }
     const message = buildCommitMessage(result, number);
     await commandAdapter('git', ['commit', '-m', message], { cwd: prepared.worktree });
-  } else {
-    const committed = await commandAdapter(
-      'git',
-      ['diff', '--name-only', '--no-renames', '-z', 'origin/develop...HEAD'],
-      { cwd: prepared.worktree },
-    );
-    changedPaths = validateChangedPaths(committed.stdout.split('\0').filter(Boolean));
   }
   const message = buildCommitMessage(result, number);
 
