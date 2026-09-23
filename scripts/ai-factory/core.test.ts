@@ -66,6 +66,11 @@ describe('plan validation', () => {
     expect(plansConflict([], ['docs'])).toBe(true);
   });
 
+  it('rejects non-canonical path segments that could bypass conflict detection', () => {
+    expect(() => plansConflict(['src/app'], ['src/./app'])).toThrow('unsafe changed path');
+    expect(() => plansConflict(['src/app'], ['src//app'])).toThrow('unsafe changed path');
+  });
+
   it('rejects changes outside a bounded plan and allows an exclusive repo-wide plan', () => {
     expect(changesWithinPlan(['docs/README.md'], ['docs'])).toBe(true);
     expect(changesWithinPlan(['src/app/page.tsx'], ['docs'])).toBe(false);

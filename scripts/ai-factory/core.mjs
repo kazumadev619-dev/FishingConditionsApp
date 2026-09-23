@@ -106,6 +106,9 @@ function normalizeSafePath(file) {
     throw new Error('unsafe changed path');
   }
   const normalized = file.replaceAll('\\', '/').replace(/\/+$/, '');
+  if (normalized.split('/').some((segment) => segment === '' || segment === '.')) {
+    throw new Error('unsafe changed path');
+  }
   const name = normalized.split('/').at(-1);
   if (
     name === '.env' ||
