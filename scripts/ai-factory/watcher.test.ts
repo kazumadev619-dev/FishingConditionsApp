@@ -299,6 +299,38 @@ describe('watcher dry-run', () => {
 });
 
 describe('daemon scheduler', () => {
+  it('does not reconcile this process active issues before filling the remaining slot', async () => {
+    const active = new Map([
+      [1, { plan: { plannedPaths: ['docs/1'], exclusive: false }, promise: new Promise(() => {}) }],
+      [2, { plan: { plannedPaths: ['docs/2'], exclusive: false }, promise: new Promise(() => {}) }],
+    ]);
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:ready')
+              ? []
+              : [
+                  { number: 1, labels: [{ name: 'agent:running' }] },
+                  { number: 2, labels: [{ name: 'agent:running' }] },
+                ],
+          ),
+        };
+      }
+      throw new Error(`active issue must not be reconciled: ${args.join(' ')}`);
+    });
+
+    await expect(
+      runScheduledCycle({
+        active,
+        command,
+        stateRoot: await mkdtemp(join(tmpdir(), 'ai-factory-scheduler-')),
+        env: { PATH: '/usr/bin', HOME: '/tmp' },
+      }),
+    ).resolves.toMatchObject({ recovered: [] });
+    expect(active).toHaveLength(2);
+  });
+
   it('starts three runners then refills a slot without waiting for the others', async () => {
     const issues = [1, 2, 3, 4].map((number) => ({
       number,
@@ -2235,7 +2267,9 @@ describe('heartbeat and recovery', () => {
           isPidAlive: () => true,
           now: new Date('2026-09-22T00:30:00.000Z'),
         }),
-      ).resolves.toEqual([{ issue: 42, action: 'recovery' }]);
+      ).resolves.toMatchObject([
+        { issue: 42, action: 'recovery', reserved: true, plan: { exclusive: true } },
+      ]);
       await expect(
         reconcileStartup({
           command,
@@ -2246,7 +2280,9 @@ describe('heartbeat and recovery', () => {
           isPidAlive: () => true,
           now: new Date('2026-09-22T00:30:00.000Z'),
         }),
-      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      ).resolves.toMatchObject([
+        { issue: 42, action: 'blocked', reserved: true, plan: { exclusive: true } },
+      ]);
       expect(runRunner).not.toHaveBeenCalled();
       expect(
         calls.some(

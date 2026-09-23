@@ -586,6 +586,8 @@ async function recoverInfrastructureFailure(
 export async function reconcileStartup({
   command: commandAdapter = command,
   runRunner = startRunner,
+  readAccount,
+  active = new Map(),
   stateRoot = FACTORY_ROOT,
   workRoot = join(FACTORY_ROOT, 'worktrees'),
   env = process.env,
@@ -596,7 +598,7 @@ export async function reconcileStartup({
   const issues = [
     ...(await listIssuesForState(STATES.RUNNING, commandAdapter)),
     ...(await listIssuesForState(STATES.RECOVERY, commandAdapter)),
-  ];
+  ].filter((issue) => !active.has(validateIssueNumber(issue.number)));
   if (issues.length === 0) return [];
 
   const repo = (
@@ -758,17 +760,24 @@ export async function reconcileStartup({
         await transitionIssue(number, STATES.RUNNING, STATES.RECOVERY, {
           command: commandAdapter,
         });
-        results.push({ issue: number, action: 'recovery' });
+        results.push({
+          issue: number,
+          action: 'recovery',
+          reserved: true,
+          plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
+        });
       } else {
-        results.push(
-          await blockRecoveredIssue(
+        results.push({
+          ...(await blockRecoveredIssue(
             issue,
             STATES.RECOVERY,
             'stale live runner requires human review',
             runDir,
             commandAdapter,
-          ),
-        );
+          )),
+          reserved: true,
+          plan: { plannedPaths: [], exclusive: true },
+        });
       }
       continue;
     }
@@ -781,6 +790,7 @@ export async function reconcileStartup({
       results.push({
         issue: number,
         action: 'monitor',
+        reserved: true,
         plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
       });
       continue;
@@ -825,6 +835,18 @@ export async function reconcileStartup({
     }
 
     if (record.threadId && record.attempt < 3) {
+      try {
+        await ensureQuota(readAccount, env);
+      } catch (error) {
+        if (!error?.usage) throw error;
+        results.push({
+          issue: number,
+          action: 'quota',
+          usage: error.usage,
+          plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
+        });
+        continue;
+      }
       if (state === STATES.RECOVERY) {
         await transitionIssue(number, STATES.RECOVERY, STATES.RUNNING, { command: commandAdapter });
       }
@@ -1479,7 +1501,7 @@ async function resolveExecutionPlan(issue, options) {
 }
 
 async function fillAvailableSlots(active, options, recovered = []) {
-  const occupied = recovered.filter((result) => result.action === 'monitor');
+  const occupied = recovered.filter((result) => result.reserved);
   const capacity = 3 - active.size - occupied.length;
   if (capacity <= 0) return;
   const issues = (await listIssues(options.command)).sort((left, right) => left.number - right.number);
@@ -1535,7 +1557,7 @@ export async function runScheduledCycle({
     repoRoot,
     env,
   };
-  const recovered = await reconcileStartup(options);
+  const recovered = await reconcileStartup({ ...options, active });
   await fillAvailableSlots(active, options, recovered);
   return { active, recovered };
 }
