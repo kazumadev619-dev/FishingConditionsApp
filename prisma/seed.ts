@@ -61,6 +61,7 @@ async function seedPorts() {
     // 既存の港は消さずに id と座標を保つ。消して作り直すと locations.port_id の
     // FK（ON DELETE SET NULL）で地点との紐づけが静かに切れる（#146）。
     // CSV から消えた港は残る。消すと同じ理由で紐づけが切れるため。
+    // 確認: bash scripts/verify-seed-rerun.sh
     // SQL injection 対策：シングルクォートをエスケープ
     const escapeSql = (str: string): string => str.replace(/'/g, "''");
 
