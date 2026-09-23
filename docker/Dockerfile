@@ -62,7 +62,30 @@ RUN AUTH_SECRET=build-time-placeholder-not-used-at-runtime \
     npm run build
 
 # ============================================
-# Stage 3: Migrator (db-migrate / db-seed Job 用)
+# Stage 3: Migrator 用の依存
+# ============================================
+# deps の node_modules は next build のために dev 依存を含む。migrator が
+# それを丸ごとコピーすると eslint / vitest / biome まで載って 1.85GB になって
+# いたため、ここで dev 依存を落としてから migrator に渡す。
+#
+# prune をこの中間ステージで行うのは、migrator のステージで消しても
+# レイヤは加算のため実体がイメージに残るから（runner のコメントと同じ落とし穴）。
+#
+# Prisma CLI（と prisma.config.ts が読む dotenv）は package-lock.json 上で
+# devOptional 扱いのため --omit=dev でも残る。seed が使う tsx は
+# dependencies に置いている。prune の直後に prisma.config.ts を tsx で
+# 読み込み、どれかが消えていたらビルドの時点で落とす。
+#
+# typescript も @prisma/client の optional peer のため devOptional になり
+# --omit=dev では残る。migrate も seed（tsx は esbuild で変換する）も
+# 使わないので明示的に消す。
+FROM deps AS migrator-deps
+RUN npm prune --omit=dev && \
+    rm -rf node_modules/typescript node_modules/.bin/tsc node_modules/.bin/tsserver && \
+    node --import tsx/esm prisma.config.ts
+
+# ============================================
+# Stage 4: Migrator (db-migrate / db-seed Job 用)
 # ============================================
 # Prisma CLI と tsx を必要とするのはマイグレーションと seed だけなので、
 # Web 用イメージから切り離す。
@@ -82,7 +105,7 @@ RUN addgroup --system --gid 1001 nodejs && \
 ENV HOME=/tmp
 ENV NODE_ENV=production
 
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=migrator-deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma.config.ts ./
 COPY --from=deps /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
@@ -96,7 +119,7 @@ USER nextjs
 CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 
 # ============================================
-# Stage 4: Runner (Production)
+# Stage 5: Runner (Production)
 # ============================================
 # **このステージは必ずファイル末尾に置くこと。** docker は --target 省略時に
 # 最後のステージをビルドするため、順序を変えると `docker build` や
