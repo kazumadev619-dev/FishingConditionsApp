@@ -281,6 +281,7 @@ export type locationsOrderByWithRelationInput = {
 
 export type locationsWhereUniqueInput = Prisma.AtLeast<{
   id?: string
+  latitude_longitude?: Prisma.locationsLatitudeLongitudeCompoundUniqueInput
   AND?: Prisma.locationsWhereInput | Prisma.locationsWhereInput[]
   OR?: Prisma.locationsWhereInput[]
   NOT?: Prisma.locationsWhereInput | Prisma.locationsWhereInput[]
@@ -295,7 +296,7 @@ export type locationsWhereUniqueInput = Prisma.AtLeast<{
   updated_at?: Prisma.DateTimeFilter<"locations"> | Date | string
   port?: Prisma.XOR<Prisma.PortsNullableScalarRelationFilter, Prisma.portsWhereInput> | null
   favorites?: Prisma.User_favoritesListRelationFilter
-}, "id">
+}, "id" | "latitude_longitude">
 
 export type locationsOrderByWithAggregationInput = {
   id?: Prisma.SortOrder
@@ -423,6 +424,11 @@ export type locationsUncheckedUpdateManyInput = {
   port_id?: Prisma.NullableStringFieldUpdateOperationsInput | string | null
   created_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
   updated_at?: Prisma.DateTimeFieldUpdateOperationsInput | Date | string
+}
+
+export type locationsLatitudeLongitudeCompoundUniqueInput = {
+  latitude: number
+  longitude: number
 }
 
 export type locationsCountOrderByAggregateInput = {

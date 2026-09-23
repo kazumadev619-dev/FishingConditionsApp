@@ -80,7 +80,8 @@ model locations {
   port      ports?           @relation(fields: [port_id], references: [id])
   favorites user_favorites[]
 
-  @@index([latitude, longitude])
+  // 座標1つに行は1つ（#151）。値は roundCoordinate で丸めた後のもの（src/lib/locationIdentity.ts）
+  @@unique([latitude, longitude])
   @@index([prefecture])
 }
 
