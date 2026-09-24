@@ -79,6 +79,47 @@ describe('useFavoritesOptimistic', () => {
     expect(store.get().map((f) => f.locationId)).toEqual(['X', 'Z']);
   });
 
+  it('削除の失敗で戻す位置は、その間に上の行が消えていても元の並びを保つ', async () => {
+    const store = createStore([fav('W'), fav('X'), fav('Y'), fav('Z')]);
+    const pending = deferredFetch();
+
+    const removeY = renderHook(store).removeFavorite('Y');
+    const removeX = renderHook(store).removeFavorite('X');
+
+    pending[1](jsonResponse(200, { success: true }));
+    await removeX;
+    pending[0](jsonResponse(500, { error: 'boom' }));
+    await expect(removeY).rejects.toThrow('boom');
+
+    expect(store.get().map((f) => f.locationId)).toEqual(['W', 'Y', 'Z']);
+  });
+
+  it('削除の失敗で戻すとき、元々後ろにあった行がすべて消えていれば末尾に戻す', async () => {
+    const store = createStore([fav('W'), fav('X'), fav('Y')]);
+    const pending = deferredFetch();
+
+    const removeX = renderHook(store).removeFavorite('X');
+    const removeY = renderHook(store).removeFavorite('Y');
+
+    pending[1](jsonResponse(200, { success: true }));
+    await removeY;
+    pending[0](jsonResponse(500, { error: 'boom' }));
+    await expect(removeX).rejects.toThrow('boom');
+
+    expect(store.get().map((f) => f.locationId)).toEqual(['W', 'X']);
+  });
+
+  it('一覧に無い項目の削除が失敗しても、一覧を変えない', async () => {
+    const store = createStore([fav('X')]);
+    const pending = deferredFetch();
+
+    const removeUnknown = renderHook(store).removeFavorite('unknown');
+    pending[0](jsonResponse(500, { error: 'boom' }));
+    await expect(removeUnknown).rejects.toThrow('boom');
+
+    expect(store.get()).toEqual([fav('X')]);
+  });
+
   it('削除の失敗時、既に一覧に戻っている項目を二重に足さない', async () => {
     const store = createStore([fav('X'), fav('Y')]);
     const pending = deferredFetch();
@@ -99,8 +140,11 @@ describe('useFavoritesOptimistic', () => {
     const addA = renderHook(store).addFavorite(undefined, 'port-a');
     const addB = renderHook(store).addFavorite(undefined, 'port-b');
 
+    // id は React の key、locationId は FavoriteTab の削除中表示の判定に使われる
     const ids = store.get().map((f) => f.id);
     expect(new Set(ids).size).toBe(ids.length);
+    const locationIds = store.get().map((f) => f.locationId);
+    expect(new Set(locationIds).size).toBe(locationIds.length);
 
     pending[0](jsonResponse(500, { error: 'boom' }));
     await expect(addA).rejects.toThrow('boom');

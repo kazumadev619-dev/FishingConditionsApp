@@ -17,6 +17,9 @@ interface UseFavoritesOptimisticProps {
   fetchFavorites: () => Promise<void>;
 }
 
+// 楽観更新の一時行の id。一意でさえあればよいので連番で足りる
+let tempSeq = 0;
+
 export function useFavoritesOptimistic({
   favorites,
   setFavorites,
@@ -32,7 +35,7 @@ export function useFavoritesOptimistic({
     ): Promise<string> => {
       // 同時に複数追加したとき、失敗した1件だけを消せるよう毎回別の id にする。
       // FavoriteTab は id を React の key に使うので、固定値だと key も衝突する（#152）
-      const tempId = `temp-${crypto.randomUUID()}`;
+      const tempId = `temp-${++tempSeq}`;
       const tempFavorite: FavoriteLocation = {
         id: tempId,
         locationId: locationId || tempId,
@@ -94,6 +97,8 @@ export function useFavoritesOptimistic({
     async (locationId: string) => {
       const removedIndex = favorites.findIndex((fav) => fav.locationId === locationId);
       const removed = favorites[removedIndex];
+      // 戻す位置の目印。index で覚えると、その間に上の行が消えたとき並びがずれる
+      const laterIds = new Set(favorites.slice(removedIndex + 1).map((fav) => fav.locationId));
       setFavorites((prev) => prev.filter((fav) => fav.locationId !== locationId));
 
       try {
@@ -115,13 +120,16 @@ export function useFavoritesOptimistic({
       } catch (err) {
         logger.error({ err, locationId }, 'Failed to remove favorite');
         // クリック時点の配列を丸ごと戻すと、その間に成功した別の操作まで巻き戻る。
-        // 消した1件だけを元の位置に戻す（#152）
+        // 消した1件だけを、元々後ろにあって今も残っている最初の行の前に戻す。
+        // そういう行が無ければ末尾に戻す（#152）
         if (removed) {
-          setFavorites((prev) =>
-            prev.some((fav) => fav.locationId === locationId)
-              ? prev
-              : [...prev.slice(0, removedIndex), removed, ...prev.slice(removedIndex)],
-          );
+          setFavorites((prev) => {
+            if (prev.some((fav) => fav.locationId === locationId)) return prev;
+            const at = prev.findIndex((fav) => laterIds.has(fav.locationId));
+            return at === -1
+              ? [...prev, removed]
+              : [...prev.slice(0, at), removed, ...prev.slice(at)];
+          });
         }
         throw err;
       }
