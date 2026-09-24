@@ -21,11 +21,16 @@ env:
   # sops のリリースアセットはファイル名にバージョンが入るため
   # releases/latest/download/ が使えない。明示的に固定する
   SOPS_VERSION: v3.13.3
+  # *_SHA256 は各リリースが公開しているチェックサムファイルの linux amd64 の値。
+  # 版を上げるときは一緒に書き換える（#164）
+  SOPS_SHA256: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
   # 本番マニフェストをレンダリングするツール。ci.yml と同じ版に揃える。
   # ズレると「CI では通るが本番で出力が変わる」が起こりうる（#157）
   KUSTOMIZE_VERSION: v5.8.1
+  KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
   # ローカルで YAML を切り出すだけなので、版を固定して出力を安定させる
   YQ_VERSION: v4.48.1
+  YQ_SHA256: 99df6047f5b577a9d25f969f7c3823ada3488de2e2115b30a0abb10d9324fd9f
 
 jobs:
   # ============================================
@@ -112,22 +117,29 @@ jobs:
           # 未認証で引くためレートリミットに当たると落ちるうえ、引数を渡さないと
           # 最新版が入る。本番マニフェストのレンダリングに使うツールが未固定だと
           # 上流のリリースだけでレビューを経ずに出力が変わる（#157）
-          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
+          # 取得したものは展開・インストールの前にチェックサムを照合する（#164）
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" -o /tmp/kustomize.tar.gz
+          echo "${KUSTOMIZE_SHA256}  /tmp/kustomize.tar.gz" | sha256sum -c -
+          tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
           sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
           curl -fsSL "https://github.com/getsops/sops/releases/download/${SOPS_VERSION}/sops-${SOPS_VERSION}.linux.amd64" -o /tmp/sops
+          echo "${SOPS_SHA256}  /tmp/sops" | sha256sum -c -
           sudo install -m 0755 /tmp/sops /usr/local/bin/sops
+          # cloudflared は latest 追従なので固定のチェックサムは持てない。
+          # 代わりに入った版をログに残す（下の cloudflared --version）
           curl -fsSL https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb -o /tmp/cloudflared.deb
           sudo dpkg -i /tmp/cloudflared.deb
           # yq は ubuntu ランナーに同梱されているが、イメージ更新で消えても
           # 気づけるようにフォールバックを置く
           command -v yq >/dev/null || {
-            sudo curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /usr/local/bin/yq
-            sudo chmod +x /usr/local/bin/yq
+            curl -fsSL "https://github.com/mikefarah/yq/releases/download/${YQ_VERSION}/yq_linux_amd64" -o /tmp/yq
+            echo "${YQ_SHA256}  /tmp/yq" | sha256sum -c -
+            sudo install -m 0755 /tmp/yq /usr/local/bin/yq
           }
           kustomize version
           sops --version
           yq --version
+          cloudflared --version
 
       - name: Set up kubeconfig
         run: |
