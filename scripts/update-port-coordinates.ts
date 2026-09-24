@@ -117,6 +117,9 @@ async function main() {
 
     let successCount = 0;
     let failCount = 0;
+    // DB 側の失敗は権限不足など設定の誤りなので、Job を失敗させる（#208）。
+    // 外部 API 側の失敗は一時的なものが多く、1港の失敗で全体をやり直させないよう数えるだけにする
+    let dbFailCount = 0;
     let skipCount = 0;
 
     for (let i = 0; i < targetPorts.length; i++) {
@@ -170,6 +173,7 @@ async function main() {
       } catch (error) {
         console.log(`❌ DB update failed: ${error}`);
         failCount++;
+        dbFailCount++;
       }
     }
 
@@ -182,11 +186,14 @@ async function main() {
       console.log(`  Would fail: ${failCount}`);
     } else {
       console.log(`  ✅ Successfully updated: ${successCount}`);
-      console.log(`  ❌ Failed: ${failCount}`);
+      console.log(`  ❌ Failed: ${failCount}（うち DB 更新: ${dbFailCount}）`);
     }
     console.log('='.repeat(60));
 
-    if (!isDryRun && successCount > 0) {
+    if (dbFailCount > 0) {
+      console.error(`\n❌ DB update failed for ${dbFailCount} port(s). Exiting with code 1.`);
+      process.exitCode = 1;
+    } else if (!isDryRun && successCount > 0) {
       console.log('\n✨ Coordinates update completed!');
     } else if (isDryRun) {
       console.log('\n🔍 DRY RUN completed. Run without --dry-run to apply changes.');
