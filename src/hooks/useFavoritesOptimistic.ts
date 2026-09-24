@@ -30,9 +30,12 @@ export function useFavoritesOptimistic({
       lng?: number,
       name?: string,
     ): Promise<string> => {
+      // 同時に複数追加したとき、失敗した1件だけを消せるよう毎回別の id にする。
+      // FavoriteTab は id を React の key に使うので、固定値だと key も衝突する（#152）
+      const tempId = `temp-${crypto.randomUUID()}`;
       const tempFavorite: FavoriteLocation = {
-        id: 'temp',
-        locationId: locationId || 'temp',
+        id: tempId,
+        locationId: locationId || tempId,
         name: name || '',
         latitude: lat || 0,
         longitude: lng || 0,
@@ -80,7 +83,7 @@ export function useFavoritesOptimistic({
         return data.locationId;
       } catch (err) {
         logger.error({ err, locationId, portId, lat, lng }, 'Failed to add favorite');
-        setFavorites((prev) => prev.filter((fav) => fav.id !== 'temp'));
+        setFavorites((prev) => prev.filter((fav) => fav.id !== tempId));
         throw err;
       }
     },
@@ -89,7 +92,8 @@ export function useFavoritesOptimistic({
 
   const removeFavorite = useCallback(
     async (locationId: string) => {
-      const previousFavorites = favorites;
+      const removedIndex = favorites.findIndex((fav) => fav.locationId === locationId);
+      const removed = favorites[removedIndex];
       setFavorites((prev) => prev.filter((fav) => fav.locationId !== locationId));
 
       try {
@@ -110,7 +114,15 @@ export function useFavoritesOptimistic({
         }
       } catch (err) {
         logger.error({ err, locationId }, 'Failed to remove favorite');
-        setFavorites(previousFavorites);
+        // クリック時点の配列を丸ごと戻すと、その間に成功した別の操作まで巻き戻る。
+        // 消した1件だけを元の位置に戻す（#152）
+        if (removed) {
+          setFavorites((prev) =>
+            prev.some((fav) => fav.locationId === locationId)
+              ? prev
+              : [...prev.slice(0, removedIndex), removed, ...prev.slice(removedIndex)],
+          );
+        }
         throw err;
       }
     },
