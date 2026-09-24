@@ -73,10 +73,13 @@ jobs:
       - name: Lint workflows (actionlint)
         env:
           ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
+          set -euo pipefail
           shellcheck --version
-          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp actionlint
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz
+          echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
+          tar xzf /tmp/actionlint.tar.gz -C /tmp actionlint
           /tmp/actionlint
 
   # ============================================
@@ -137,6 +140,8 @@ jobs:
       # バージョンは固定する。master / latest 参照だと上流の更新だけで
       # CI が赤にも緑にも変わり、失敗の原因を差分から追えなくなる。
       # curl は -f を付ける（付けないと 404 本文を取得して exit 0 になる）。
+      # *_SHA256 は各リリースが公開しているチェックサムファイルの linux amd64 の値で、
+      # 展開前に照合する。版を上げるときは一緒に書き換える（#164）。
       #
       # 上流の install_kustomize.sh は使わない。あれはダウンロード URL を
       # 解決するために GitHub の releases API を未認証で引くため、ランナーの
@@ -146,18 +151,24 @@ jobs:
       - name: Install kustomize
         env:
           KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
         run: |
-          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
+          set -euo pipefail
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" -o /tmp/kustomize.tar.gz
+          echo "${KUSTOMIZE_SHA256}  /tmp/kustomize.tar.gz" | sha256sum -c -
+          tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
           sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
           kustomize version
 
       - name: Install kubeconform
         env:
           KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
         run: |
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar xz -C /tmp
+          set -euo pipefail
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" -o /tmp/kubeconform.tar.gz
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
+          tar xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
           sudo mv /tmp/kubeconform /usr/local/bin/
 
       # -kubernetes-version を付けないと上流 master のスキーマで検証してしまい、
