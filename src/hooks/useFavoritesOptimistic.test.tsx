@@ -6,13 +6,17 @@ import { useFavoritesOptimistic } from './useFavoritesOptimistic';
 
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }));
 
+/**
+ * サーバは createdAt の新しい順で返す。テストでも同じ並びにするため、
+ * 1文字目が若いほど新しくする（W > X > Y > Z の順に新しい）
+ */
 const fav = (locationId: string): FavoriteLocation => ({
   id: `fav-${locationId}`,
   locationId,
   name: locationId,
   latitude: 0,
   longitude: 0,
-  createdAt: '2026-01-01T00:00:00.000Z',
+  createdAt: new Date(Date.UTC(2026, 0, 1) - locationId.charCodeAt(0) * 1000).toISOString(),
 });
 
 /** useState の代わり。関数形・値形のどちらの更新も手元の配列に当てる */
@@ -119,6 +123,25 @@ describe('useFavoritesOptimistic', () => {
 
     expect(store.get()).toEqual([fav('X')]);
   });
+
+  // サーバ障害ではすべての削除が失敗し、先に送った方が先に失敗しやすい
+  it.each([[['X', 'Y', 'Z']], [['X', 'Y']]])(
+    '下の行→上の行の順に削除し、両方が送った順に失敗しても並びが戻る（%j）',
+    async (ids) => {
+      const store = createStore(ids.map(fav));
+      const pending = deferredFetch();
+
+      const removeY = renderHook(store).removeFavorite('Y');
+      const removeX = renderHook(store).removeFavorite('X');
+
+      pending[0](jsonResponse(500, { error: 'boom' }));
+      await expect(removeY).rejects.toThrow('boom');
+      pending[1](jsonResponse(500, { error: 'boom' }));
+      await expect(removeX).rejects.toThrow('boom');
+
+      expect(store.get().map((f) => f.locationId)).toEqual(ids);
+    },
+  );
 
   it('削除の失敗時、既に一覧に戻っている項目を二重に足さない', async () => {
     const store = createStore([fav('X'), fav('Y')]);

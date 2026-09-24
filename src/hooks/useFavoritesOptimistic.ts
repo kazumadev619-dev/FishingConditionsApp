@@ -95,10 +95,7 @@ export function useFavoritesOptimistic({
 
   const removeFavorite = useCallback(
     async (locationId: string) => {
-      const removedIndex = favorites.findIndex((fav) => fav.locationId === locationId);
-      const removed = favorites[removedIndex];
-      // 戻す位置の目印。index で覚えると、その間に上の行が消えたとき並びがずれる
-      const laterIds = new Set(favorites.slice(removedIndex + 1).map((fav) => fav.locationId));
+      const removed = favorites.find((fav) => fav.locationId === locationId);
       setFavorites((prev) => prev.filter((fav) => fav.locationId !== locationId));
 
       try {
@@ -120,12 +117,13 @@ export function useFavoritesOptimistic({
       } catch (err) {
         logger.error({ err, locationId }, 'Failed to remove favorite');
         // クリック時点の配列を丸ごと戻すと、その間に成功した別の操作まで巻き戻る。
-        // 消した1件だけを、元々後ろにあって今も残っている最初の行の前に戻す。
-        // そういう行が無ければ末尾に戻す（#152）
+        // 消した1件だけを、サーバと同じ createdAt の新しい順の位置に戻す（#152）。
+        // index やクリック時点の前後の行で決めると、操作や失敗の順番で並びが入れ替わる。
+        // createdAt はどちらも toISOString() の文字列なので、文字列比較で新旧が決まる
         if (removed) {
           setFavorites((prev) => {
             if (prev.some((fav) => fav.locationId === locationId)) return prev;
-            const at = prev.findIndex((fav) => laterIds.has(fav.locationId));
+            const at = prev.findIndex((fav) => fav.createdAt < removed.createdAt);
             return at === -1
               ? [...prev, removed]
               : [...prev.slice(0, at), removed, ...prev.slice(at)];
