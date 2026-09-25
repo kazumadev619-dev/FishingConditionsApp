@@ -16,11 +16,24 @@ import { fileURLToPath } from 'node:url';
 import { unstable_doesMiddlewareMatch } from 'next/experimental/testing/server';
 import { NextRequest } from 'next/server';
 import type { Session } from 'next-auth';
+import { encode } from 'next-auth/jwt';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { auth, authorized } from '@/auth/edge';
-import { config } from './proxy';
+import proxy, { config } from './proxy';
 
 const ORIGIN = 'https://fishing.kazuma-lab.com';
+
+/**
+ * JWT の署名・検証に使う。next-auth は NextAuth() を呼んだ時点（= @/auth/edge の
+ * import 時）の process.env.AUTH_SECRET を設定へ焼き付け、以後は読み直さない
+ * （node_modules/next-auth/index.js の末尾の setEnvDefaults）。beforeAll で
+ * stubEnv しても間に合わないので、import より前に置く。
+ */
+const { AUTH_SECRET } = vi.hoisted(() => {
+  const secret = 'test-secret-for-proxy-test';
+  process.env.AUTH_SECRET = secret;
+  return { AUTH_SECRET: secret };
+});
 
 const SESSION: Session = {
   user: { id: 'test-user', email: 'test@example.com' },
@@ -400,5 +413,77 @@ describe('proxy の matcher', () => {
     ['/sitemapZxml', '`.` をエスケープしないと素通りする'],
   ])('素通りさせない: %s（%s）', (pathname) => {
     expect(matches(pathname)).toBe(true);
+  });
+});
+
+describe('nonce 入りの CSP（#147）', () => {
+  // script-src から 'unsafe-inline' を外したので、Next.js のインラインスクリプトは
+  // proxy が付ける nonce が無いと1本も実行されない（画面が固まる）。
+  // Next.js は「リクエストヘッダの CSP」から nonce を拾うため、レスポンスだけでなく
+  // リクエスト側にも同じ値が載っていることを確かめる。
+  // ORIGIN が https なので、Auth.js は __Secure- 付きの Cookie 名を使う
+  const COOKIE = '__Secure-authjs.session-token';
+
+  async function callProxy(pathname: string, cookie?: string): Promise<Response> {
+    const headers = cookie ? { cookie: `${COOKIE}=${cookie}` } : undefined;
+    return proxy(new NextRequest(`${ORIGIN}${pathname}`, { headers }));
+  }
+
+  /** レスポンスの CSP と、Next.js へ渡すリクエストヘッダの CSP */
+  function csps(response: Response) {
+    return {
+      response: response.headers.get('content-security-policy'),
+      // NextResponse.next({ request: { headers } }) はこの形で後段へ渡す
+      request: response.headers.get('x-middleware-request-content-security-policy'),
+    };
+  }
+
+  function scriptSrc(csp: string | null): string[] {
+    const directive = csp?.split(';').find((d) => d.trim().startsWith('script-src '));
+    return directive?.trim().split(/\s+/).slice(1) ?? [];
+  }
+
+  it('公開ページに nonce 入りの CSP をリクエストとレスポンスの両方へ付ける', async () => {
+    const response = await callProxy('/login');
+    const { response: resCsp, request: reqCsp } = csps(response);
+
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(reqCsp).toBe(resCsp);
+    const src = scriptSrc(resCsp);
+    expect(src).toContainEqual(expect.stringMatching(/^'nonce-[A-Za-z0-9+/=]{16,}'$/));
+    expect(src).toContain("'strict-dynamic'");
+    expect(src).not.toContain("'unsafe-inline'");
+  });
+
+  it('nonce はリクエスト毎に変わる', async () => {
+    const a = csps(await callProxy('/login')).response;
+    const b = csps(await callProxy('/login')).response;
+
+    expect(a).not.toBe(b);
+  });
+
+  it('認証済みのページにも付け、セッション更新の Set-Cookie を落とさない', async () => {
+    const token = await encode({
+      token: { id: 'test-user', email: 'test@example.com', sub: 'test-user' },
+      secret: AUTH_SECRET,
+      salt: COOKIE,
+    });
+    const response = await callProxy('/dashboard', token);
+
+    expect(response.headers.get('x-middleware-next')).toBe('1');
+    expect(scriptSrc(csps(response).request)).toContainEqual(expect.stringMatching(/^'nonce-/));
+    // Auth.js はリクエストのたびにトークンを作り直して返す。落とすとセッションが延びない
+    expect(response.headers.getSetCookie().some((c) => c.startsWith(`${COOKIE}=`))).toBe(true);
+  });
+
+  it('認証判定は proxy を通しても効いている（401 / ログインへのリダイレクト）', async () => {
+    // auth((req) => ...) のラッパー形式にすると、next-auth は authorized() が false を
+    // 返してもリダイレクトせずラッパーを呼ぶ。そうなるとここが 200 になる
+    const api = await callProxy('/api/ports');
+    expect(api.status).toBe(401);
+
+    const page = await callProxy('/dashboard');
+    expect(page.status).toBe(307);
+    expect(page.headers.get('location')).toMatch(/\/login\?callbackUrl=/);
   });
 });

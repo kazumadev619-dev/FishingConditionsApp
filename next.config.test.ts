@@ -89,6 +89,13 @@ describe('CSP', () => {
     expect(d['form-action']).toEqual(["'self'"]);
   });
 
+  it('インラインスクリプトを許可しない（ページの nonce は proxy が付ける。#147）', async () => {
+    const d = await cspDirectives();
+
+    expect(d['script-src']).not.toContain("'unsafe-inline'");
+    expect(d['script-src']).not.toContainEqual(expect.stringMatching(/^'nonce-/));
+  });
+
   it('本番では unsafe-eval と ws: を許可しない', async () => {
     const d = await cspDirectives();
 
