@@ -7,7 +7,8 @@ import { buildCsp } from '@/lib/csp.mjs';
  * Node.js Runtimeで動作（runtime設定は不可）
  *
  * 1. auth()（src/auth/edge.ts）で認証判定する
- * 2. 通すリクエストには、nonce 入りの CSP をリクエストとレスポンスの両方に付ける（#147）。
+ * 2. 通すリクエスト（ページと、ログイン済みの /api/*）には、nonce 入りの CSP を
+ *    リクエストとレスポンスの両方に付ける（#147）。API は HTML を返さないので実害は無い。
  *    Next.js はリクエストヘッダの CSP から nonce を拾い、自前の <script> に付ける
  *
  * `auth((req) => ...)` のラッパー形式は使わない。next-auth はラッパーを渡されると、

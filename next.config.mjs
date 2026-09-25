@@ -9,9 +9,10 @@
 import { buildCsp } from './src/lib/csp.mjs';
 
 /*
- * ここで付ける CSP は proxy を通らないレスポンス（API・静的アセット・プローブ）向けで、
- * インラインスクリプトを許可しない。ページには proxy（src/proxy.ts）が nonce 入りの
- * CSP を付け直す（同じ名前のヘッダは proxy の値で上書きされる）。
+ * ここで付ける CSP は、proxy が nonce を付けないレスポンス向けで、インラインスクリプトを
+ * 許可しない。対象は matcher が除外するパス（/api/auth・/healthz・/readyz・静的アセット）と、
+ * proxy が返す 401 / リダイレクト。proxy が後続へ通すリクエスト（ページと、ログイン済みの
+ * /api/*）には proxy（src/proxy.ts）が nonce 入りの CSP を付け、同じ名前のこのヘッダを上書きする。
  */
 
 const securityHeaders = [

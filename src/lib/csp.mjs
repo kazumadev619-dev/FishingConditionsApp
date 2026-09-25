@@ -1,8 +1,8 @@
 /**
  * Content-Security-Policy の組み立て (#134, #147)
  *
- * next.config.mjs（proxy を通らないレスポンス用）と src/proxy.ts（ページ用。
- * リクエスト毎の nonce 入り）の両方から使うので、どちらからも import できる .mjs に置く。
+ * next.config.mjs（proxy が nonce を付けないレスポンス用）と src/proxy.ts（proxy が後続へ
+ * 通すリクエスト用。リクエスト毎の nonce 入り）の両方から使うので、どちらからも import できる .mjs に置く。
  */
 
 // ESLint の Node グローバル設定は next.config.mjs などのファイル名指定で、ここには
@@ -44,8 +44,10 @@ const GOOGLE_MAPS = {
  * これを解釈するブラウザは script-src のホスト指定と `'self'` を無視するが、
  * 解釈しない古いブラウザ向けにホスト指定は残す。
  *
- * nonce を渡さないとき（proxy を通らない API・静的アセット・プローブ）は
- * インラインスクリプトを一切許可しない。HTML を返さないので困らない。
+ * nonce を渡さないとき（/api/auth・プローブ・静的アセット、および proxy が返す
+ * 401 / リダイレクト）はインラインスクリプトを一切許可しない。/api/auth の組み込み
+ * ページ（エラー画面など）もインラインスクリプトを使うのは WebAuthn の画面だけで、
+ * このアプリでは使っていないので困らない。
  *
  * @param {{ nonce?: string }} [options]
  * @returns {string}
