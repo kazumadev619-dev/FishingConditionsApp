@@ -285,12 +285,41 @@ jobs:
           fi
 
   # ============================================
+  # Docker イメージのビルド検証
+  # ============================================
+  # イメージをビルドするのは deploy.yml だけで、main への push でしか走らない。
+  # そのため Dockerfile のビルド時チェック（migrator の import 解決 #201、
+  # prune 後の prisma.config.ts 読み込み、`# check=error=true`）が main に
+  # マージしたあとの deploy で初めて働いていた（#207）。PR の時点でビルドだけする。
+  #
+  # push しないのでレジストリの権限も secrets も要らない。NEXT_PUBLIC_* の
+  # build-arg は空のまま（埋め込まれるだけでビルドの成否には関わらない）。
+  # ランナーは本番と同じ arm64（public リポジトリでは無料）。alpine 上の
+  # ネイティブモジュール（bcrypt など）の取得はアーキテクチャごとに違う。
+  # runner は builder ステージを migrator と共有するので、続けてビルドすれば
+  # ほぼキャッシュで済む。
+  docker:
+    name: Docker Images
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build migrator image
+        run: docker build --file docker/Dockerfile --target migrator .
+
+      - name: Build runner image
+        run: docker build --file docker/Dockerfile --target runner .
+
+  # ============================================
   # CIサマリー
   # ============================================
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [quality-check, build, manifests]
+    needs: [quality-check, build, manifests, docker]
     if: always() # 失敗してもサマリーは表示
 
     steps:
@@ -300,18 +329,20 @@ jobs:
             echo "## CI Results"
             echo ""
 
-            if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ]; then
+            if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ] && [ "${{ needs.docker.result }}" == "success" ]; then
               echo "🟢 All checks passed!"
               echo ""
               echo "- 🟢 Code Quality Check"
               echo "- 🟢 Build Verification"
               echo "- 🟢 Kubernetes Manifests"
+              echo "- 🟢 Docker Images"
             else
               echo "❌ Some checks failed"
               echo ""
               echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check"
               echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification"
               echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests"
+              echo "- ${{ needs.docker.result == 'success' && '🟢' || '❌' }} Docker Images"
               exit 1
             fi
           } >> "$GITHUB_STEP_SUMMARY"
