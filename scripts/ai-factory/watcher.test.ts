@@ -1,5 +1,5 @@
-import { EventEmitter } from 'node:events';
 import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -15,8 +15,8 @@ import {
   plannerPrompt,
   readCodexAccount,
   reconcileStartup,
-  runScheduledCycle,
   runOnce,
+  runScheduledCycle,
   syncRunComment,
   transitionIssue,
   writeFactoryLog,
@@ -210,7 +210,7 @@ describe('watcher dry-run', () => {
     const command = vi.fn(async (file: string, args: string[]) => {
       calls.push({ file, args });
       if (args[0] === 'issue' && args[1] === 'list') {
-        return { stdout: JSON.stringify([issue]) };
+        return { stdout: JSON.stringify(args.includes('agent:ready') ? [issue] : []) };
       }
       if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
       if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
@@ -297,40 +297,189 @@ describe('watcher dry-run', () => {
     ).resolves.toMatchObject({ mode: 'dry-run', issue: 3, reason: 'planning-required' });
     expect(runRunner).not.toHaveBeenCalled();
   });
+
+  it('reports active plan conflicts without changing GitHub state', async () => {
+    const ready = { number: 3, title: 'Update docs', body: '', labels: [{ name: 'agent:ready' }] };
+    const running = {
+      number: 2,
+      title: 'Update README',
+      body: '',
+      labels: [{ name: 'agent:running' }],
+    };
+    const plans = new Map([
+      [
+        2,
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-luna',
+          plannedPaths: ['docs'],
+          dependencies: [],
+          exclusive: false,
+          reason: 'active docs',
+        },
+      ],
+      [
+        3,
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-luna',
+          plannedPaths: ['docs/README.md'],
+          dependencies: [],
+          exclusive: false,
+          reason: 'ready docs',
+        },
+      ],
+    ]);
+    const calls: Array<{ file: string; args: string[] }> = [];
+    const command = vi.fn(async (file: string, args: string[]) => {
+      calls.push({ file, args });
+      if (args[0] === 'issue' && args[1] === 'list')
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:ready')
+              ? [ready]
+              : args.includes('agent:running')
+                ? [running]
+                : [],
+          ),
+        };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) {
+        const number = Number(args[1].match(/issues\/(\d+)\/comments/)?.[1]);
+        const issue = number === 2 ? running : ready;
+        const plan = plans.get(number);
+        return {
+          stdout: JSON.stringify([
+            [
+              {
+                id: number,
+                user: { login: 'factory-bot' },
+                body: renderPlanComment({
+                  issue: number,
+                  inputHash: planInputHash(issue),
+                  model: 'gpt-5.6-sol',
+                  plan,
+                  plannedAt: '2026-09-23T00:00:00.000Z',
+                }),
+              },
+            ],
+          ]),
+        };
+      }
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+
+    await expect(
+      runOnce({
+        dryRun: true,
+        command,
+        readAccount: async () => ({
+          account: { type: 'chatgpt' },
+          ordinaryUsageAllowed: true,
+          rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+        }),
+      }),
+    ).resolves.toMatchObject({
+      mode: 'dry-run',
+      issue: 3,
+      runnable: false,
+      conflicts: [2],
+      nextState: 'agent:ready',
+      reason: 'plan-conflict',
+    });
+    expect(
+      calls.some(
+        ({ args }) => args.includes('edit') || args.includes('POST') || args.includes('PATCH'),
+      ),
+    ).toBe(false);
+  });
 });
 
 describe('daemon scheduler', () => {
-  function recoveredRunCommand(root: string, ready: Array<{ number: number; title: string; body: string; labels: Array<{ name: string }> }>) {
-    const recovering = { number: 42, title: 'Resume docs', body: '', labels: [{ name: 'agent:recovery' }] };
-    const plan = { outcome: 'planned', workerModel: 'gpt-5.6-luna', plannedPaths: ['docs'], dependencies: [], exclusive: false, reason: 'docs' };
+  function recoveredRunCommand(
+    root: string,
+    ready: Array<{ number: number; title: string; body: string; labels: Array<{ name: string }> }>,
+  ) {
+    const recovering = {
+      number: 42,
+      title: 'Resume docs',
+      body: '',
+      labels: [{ name: 'agent:recovery' }],
+    };
+    const plan = {
+      outcome: 'planned',
+      workerModel: 'gpt-5.6-luna',
+      plannedPaths: ['docs'],
+      dependencies: [],
+      exclusive: false,
+      reason: 'docs',
+    };
     const worktree = join(root, 'worktrees', 'issue-42');
     let state = 'agent:recovery';
     const command = vi.fn(async (file: string, args: string[]) => {
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
-        return { stdout: JSON.stringify(args.includes('agent:recovery') && state === 'agent:recovery' ? [recovering] : args.includes('agent:ready') ? ready : []) };
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:recovery') && state === 'agent:recovery'
+              ? [recovering]
+              : args.includes('agent:ready')
+                ? ready
+                : [],
+          ),
+        };
       }
       if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
-      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user')
+        return { stdout: 'factory-bot\n' };
       if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
         const number = Number(args[1].match(/issues\/(\d+)\/comments/)?.[1]);
-        const issue = number === 42 ? recovering : ready.find((candidate) => candidate.number === number);
+        const issue =
+          number === 42 ? recovering : ready.find((candidate) => candidate.number === number);
         if (!issue) throw new Error(`missing Issue ${number}`);
-        const comments = [{ id: number, user: { login: 'factory-bot' }, body: renderPlanComment({
-          issue: number, inputHash: planInputHash(issue), model: 'gpt-5.6-sol',
-          plan: number === 42 ? plan : { ...plan, plannedPaths: number === 43 ? ['docs/README.md'] : [`src/${number}`] },
-          plannedAt: '2026-09-23T00:00:00.000Z',
-        }) }];
-        if (number === 42) comments.push({ id: 77, user: { login: 'factory-bot' }, body: renderRunComment({
-          issue: 42, status: 'running', branch: 'codex/issue-42', worktreeId: 'issue-42',
-          model: 'gpt-5.6-luna', attempt: 1, runnerPid: 1234,
-          threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
-          heartbeatAt: '2026-09-22T00:00:00.000Z', planHash: planInputHash(recovering),
-        }) });
+        const comments = [
+          {
+            id: number,
+            user: { login: 'factory-bot' },
+            body: renderPlanComment({
+              issue: number,
+              inputHash: planInputHash(issue),
+              model: 'gpt-5.6-sol',
+              plan:
+                number === 42
+                  ? plan
+                  : {
+                      ...plan,
+                      plannedPaths: number === 43 ? ['docs/README.md'] : [`src/${number}`],
+                    },
+              plannedAt: '2026-09-23T00:00:00.000Z',
+            }),
+          },
+        ];
+        if (number === 42)
+          comments.push({
+            id: 77,
+            user: { login: 'factory-bot' },
+            body: renderRunComment({
+              issue: 42,
+              status: 'running',
+              branch: 'codex/issue-42',
+              worktreeId: 'issue-42',
+              model: 'gpt-5.6-luna',
+              attempt: 1,
+              runnerPid: 1234,
+              threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+              heartbeatAt: '2026-09-22T00:00:00.000Z',
+              planHash: planInputHash(recovering),
+            }),
+          });
         return { stdout: JSON.stringify([comments]) };
       }
       if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
-      if (file === 'git' && args[0] === 'worktree') return { stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+      if (file === 'git' && args[0] === 'worktree')
+        return { stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view')
+        return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
         state = args[args.indexOf('--add-label') + 1];
         return { stdout: '' };
@@ -344,23 +493,53 @@ describe('daemon scheduler', () => {
 
   it('registers a deferred resume in the pool and fills unrelated slots', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-resume-pool-'));
-    const ready = [43, 44, 45].map((number) => ({ number, title: `Issue ${number}`, body: '', labels: [{ name: 'agent:ready' }] }));
+    const ready = [43, 44, 45].map((number) => ({
+      number,
+      title: `Issue ${number}`,
+      body: '',
+      labels: [{ name: 'agent:ready' }],
+    }));
     const command = recoveredRunCommand(root, ready);
     const started: number[] = [];
     let releaseResume: (value: unknown) => void = () => {};
-    const runRunner = vi.fn(() => new Promise((resolve) => { releaseResume = resolve; }));
-    const runIssue = vi.fn((issue: { number: number }) => { started.push(issue.number); return new Promise(() => {}); });
+    const runRunner = vi.fn(
+      () =>
+        new Promise((resolve) => {
+          releaseResume = resolve;
+        }),
+    );
+    const runIssue = vi.fn((issue: { number: number }) => {
+      started.push(issue.number);
+      return new Promise(() => {});
+    });
     const active = new Map();
     try {
-      const result = await runScheduledCycle({ active, command, runRunner, runIssue, stateRoot: root,
-        workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
-        readAccount: async () => ({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } }),
+      const result = await runScheduledCycle({
+        active,
+        command,
+        runRunner,
+        runIssue,
+        stateRoot: root,
+        workRoot: join(root, 'worktrees'),
+        env: { PATH: '/usr/bin', HOME: root },
+        isPidAlive: () => false,
+        readAccount: async () => ({
+          account: { type: 'chatgpt' },
+          ordinaryUsageAllowed: true,
+          rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+        }),
       });
       await vi.waitFor(() => expect(runRunner).toHaveBeenCalledOnce());
-      expect(result.recovered).toMatchObject([{ issue: 42, action: 'launch', plan: { plannedPaths: ['docs'] } }]);
+      expect(result.recovered).toMatchObject([
+        { issue: 42, action: 'launch', plan: { plannedPaths: ['docs'] } },
+      ]);
       expect(Array.from(active.keys())).toEqual([42, 44, 45]);
       expect(started).toEqual([44, 45]);
-      releaseResume({ result: { outcome: 'blocked', reason: 'stop', commitType: 'fix', summary: 'Stop' }, threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53', runnerPid: 1234 });
+      releaseResume({
+        result: { outcome: 'blocked', reason: 'stop', commitType: 'fix', summary: 'Stop' },
+        threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+        runnerPid: 1234,
+      });
       await vi.waitFor(() => expect(active.has(42)).toBe(false));
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -371,13 +550,28 @@ describe('daemon scheduler', () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-resume-quota-'));
     const command = recoveredRunCommand(root, []);
     const runRunner = vi.fn();
-    const readAccount = vi.fn()
-      .mockResolvedValueOnce({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } })
-      .mockResolvedValueOnce({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 81, resetsAt: 1_800_000_000 } } });
+    const readAccount = vi
+      .fn()
+      .mockResolvedValueOnce({
+        account: { type: 'chatgpt' },
+        ordinaryUsageAllowed: true,
+        rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+      })
+      .mockResolvedValueOnce({
+        account: { type: 'chatgpt' },
+        ordinaryUsageAllowed: true,
+        rateLimits: { primary: { usedPercent: 81, resetsAt: 1_800_000_000 } },
+      });
     const active = new Map();
     try {
-      await runScheduledCycle({ active, command, runRunner, stateRoot: root,
-        workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
+      await runScheduledCycle({
+        active,
+        command,
+        runRunner,
+        stateRoot: root,
+        workRoot: join(root, 'worktrees'),
+        env: { PATH: '/usr/bin', HOME: root },
+        isPidAlive: () => false,
         readAccount,
       });
       await vi.waitFor(() => expect(active.size).toBe(0));
@@ -391,13 +585,25 @@ describe('daemon scheduler', () => {
   it('settles a recovered runner failure even when its error log cannot be written', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-recovery-log-'));
     const active = new Map();
-    const readAccount = vi.fn()
-      .mockResolvedValueOnce({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } })
-      .mockRejectedValueOnce(new Error('account unavailable'));
+    const readAccount = vi.fn().mockResolvedValue({
+      account: { type: 'chatgpt' },
+      ordinaryUsageAllowed: true,
+      rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+    });
+    const runRunner = vi.fn(async () => {
+      throw new Error('runner failed');
+    });
     try {
       await mkdir(join(root, 'watcher.jsonl'));
-      await runScheduledCycle({ active, command: recoveredRunCommand(root, []), readAccount,
-        stateRoot: root, workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
+      await runScheduledCycle({
+        active,
+        command: recoveredRunCommand(root, []),
+        readAccount,
+        runRunner,
+        stateRoot: root,
+        workRoot: join(root, 'worktrees'),
+        env: { PATH: '/usr/bin', HOME: root },
+        isPidAlive: () => false,
       });
       await expect(active.get(42)?.promise).resolves.toMatchObject({ state: 'agent:failed' });
       await vi.waitFor(() => expect(active.size).toBe(0));
@@ -408,27 +614,57 @@ describe('daemon scheduler', () => {
 
   it('plans ready Issues with Sol one at a time', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-sol-serial-'));
-    const ready = [1, 2].map((number) => ({ number, title: `Issue ${number}`, body: '', labels: [{ name: 'agent:ready' }] }));
+    const ready = [1, 2].map((number) => ({
+      number,
+      title: `Issue ${number}`,
+      body: '',
+      labels: [{ name: 'agent:ready' }],
+    }));
     const command = vi.fn(async (file: string, args: string[]) => {
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify(args.includes('agent:ready') ? ready : []) };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list')
+        return { stdout: JSON.stringify(args.includes('agent:ready') ? ready : []) };
       if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
-      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
-      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) return { stdout: '[[]]' };
-      if (file === 'gh' && args[0] === 'api' && args.includes('POST')) return { stdout: '{"id":77}' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user')
+        return { stdout: 'factory-bot\n' };
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate'))
+        return { stdout: '[[]]' };
+      if (file === 'gh' && args[0] === 'api' && args.includes('POST'))
+        return { stdout: '{"id":77}' };
       throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
     });
     let releaseFirst: (value: unknown) => void = () => {};
     let planning = 0;
     const runRunner = vi.fn(() => {
       planning += 1;
-      const result = { result: { outcome: 'planned', workerModel: 'gpt-5.6-luna', plannedPaths: [`src/${planning}`], dependencies: [], exclusive: false, reason: 'independent' } };
-      return planning === 1 ? new Promise((resolve) => { releaseFirst = () => resolve(result); }) : Promise.resolve(result);
+      const result = {
+        result: {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-luna',
+          plannedPaths: [`src/${planning}`],
+          dependencies: [],
+          exclusive: false,
+          reason: 'independent',
+        },
+      };
+      return planning === 1
+        ? new Promise((resolve) => {
+            releaseFirst = () => resolve(result);
+          })
+        : Promise.resolve(result);
     });
     const runIssue = vi.fn(() => new Promise(() => {}));
     try {
-      const cycle = runScheduledCycle({ command, runRunner, runIssue, stateRoot: root,
+      const cycle = runScheduledCycle({
+        command,
+        runRunner,
+        runIssue,
+        stateRoot: root,
         env: { PATH: '/usr/bin', HOME: root },
-        readAccount: async () => ({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } }),
+        readAccount: async () => ({
+          account: { type: 'chatgpt' },
+          ordinaryUsageAllowed: true,
+          rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+        }),
       });
       await vi.waitFor(() => expect(runRunner).toHaveBeenCalledOnce());
       expect(runIssue).not.toHaveBeenCalled();
@@ -440,29 +676,259 @@ describe('daemon scheduler', () => {
       await rm(root, { recursive: true, force: true });
     }
   });
+  it('keeps ready Issues queued when quota usage cannot be read', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-quota-unavailable-'));
+    const ready = {
+      number: 42,
+      title: 'Wait for quota',
+      body: '',
+      labels: [{ name: 'agent:ready' }],
+    };
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list')
+        return { stdout: JSON.stringify(args.includes('agent:ready') ? [ready] : []) };
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) return { stdout: '[[]]' };
+      if (args[0] === 'issue' && args[1] === 'view')
+        return { stdout: JSON.stringify({ labels: [{ name: 'agent:ready' }] }) };
+      if (args[0] === 'issue' && args[1] === 'edit') return { stdout: '' };
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const runRunner = vi.fn();
+    try {
+      await runScheduledCycle({
+        command,
+        readAccount: async () => {
+          throw new Error('app-server usage request timed out');
+        },
+        runRunner,
+        stateRoot: root,
+        env: { PATH: '/usr/bin', HOME: root },
+      });
+      expect(runRunner).not.toHaveBeenCalled();
+      expect(command).not.toHaveBeenCalledWith('gh', expect.arrayContaining(['edit']));
+      await expect(
+        readFile(join(root, 'runs', 'issue-42', 'planner-infra-retried'), 'utf8'),
+      ).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['full', ['docs/1', 'docs/2', 'docs/3'], 'src/new', 'runner-capacity', 0],
+    ['conflicting', ['docs'], 'docs/README.md', 'plan-conflict', 0],
+    ['available', ['docs'], 'src/new', undefined, 1],
+  ] as const)(
+    'honors recovered worker reservations in once mode: %s',
+    async (_case, activePaths, readyPath, reason, calls) => {
+      const root = await mkdtemp(join(tmpdir(), 'ai-factory-once-reservations-'));
+      const running = activePaths.map((_path, index) => ({
+        number: index + 1,
+        title: `Running ${index + 1}`,
+        body: '',
+        labels: [{ name: 'agent:running' }],
+      }));
+      const ready = { number: 99, title: 'Ready', body: '', labels: [{ name: 'agent:ready' }] };
+      type TestPlan = {
+        outcome: 'planned';
+        workerModel: 'gpt-5.6-luna';
+        plannedPaths: string[];
+        dependencies: number[];
+        exclusive: false;
+        reason: string;
+      };
+      const entries: Array<[number, TestPlan]> = running.map((issue, index) => [
+        issue.number,
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-luna',
+          plannedPaths: [activePaths[index]],
+          dependencies: [],
+          exclusive: false,
+          reason: 'running',
+        },
+      ]);
+      entries.push([
+        99,
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-luna',
+          plannedPaths: [readyPath],
+          dependencies: [],
+          exclusive: false,
+          reason: 'ready',
+        },
+      ]);
+      const plans = new Map(entries);
+      const issues = new Map([...running, ready].map((issue) => [issue.number, issue]));
+      const command = vi.fn(async (file: string, args: string[]) => {
+        if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          return {
+            stdout: JSON.stringify(
+              args.includes('agent:running')
+                ? running
+                : args.includes('agent:ready')
+                  ? [ready]
+                  : [],
+            ),
+          };
+        }
+        if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+        if (file === 'gh' && args[0] === 'api' && args[1] === 'user')
+          return { stdout: 'factory-bot\n' };
+        if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+          const number = Number(args[1].match(/issues\/(\d+)\/comments/)?.[1]);
+          const issue = issues.get(number);
+          const plan = plans.get(number);
+          if (!issue || !plan) throw new Error(`missing Issue ${number}`);
+          const comments = [
+            {
+              id: number,
+              user: { login: 'factory-bot' },
+              body: renderPlanComment({
+                issue: number,
+                inputHash: planInputHash(issue),
+                model: 'gpt-5.6-sol',
+                plan,
+                plannedAt: '2026-09-23T00:00:00.000Z',
+              }),
+            },
+          ];
+          if (number !== 99)
+            comments.push({
+              id: number + 100,
+              user: { login: 'factory-bot' },
+              body: renderRunComment({
+                issue: number,
+                status: 'running',
+                branch: `codex/issue-${number}`,
+                worktreeId: `issue-${number}`,
+                model: 'gpt-5.6-luna',
+                attempt: 1,
+                runnerPid: 1000 + number,
+                threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                heartbeatAt: '2026-09-23T00:00:00.000Z',
+                planHash: planInputHash(issue),
+              }),
+            });
+          return { stdout: JSON.stringify([comments]) };
+        }
+        if (file === 'gh' && args[0] === 'api' && args.includes('PATCH')) return { stdout: '{}' };
+        if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
+        if (file === 'git' && args[0] === 'worktree')
+          return {
+            stdout: running
+              .map(
+                (issue) =>
+                  `worktree ${join(root, 'worktrees', `issue-${issue.number}`)}\nHEAD abc${issue.number}\nbranch refs/heads/codex/issue-${issue.number}\n\n`,
+              )
+              .join(''),
+          };
+        throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+      });
+      const runIssue = vi.fn(async () => ({ state: 'agent:review' }));
+      try {
+        const result = await runOnce({
+          command,
+          readAccount: async () => ({
+            account: { type: 'chatgpt' },
+            ordinaryUsageAllowed: true,
+            rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } },
+          }),
+          runIssue,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => true,
+          now: new Date('2026-09-23T00:05:00.000Z'),
+        });
+        expect(result).toMatchObject(
+          reason ? { mode: 'once', issue: 99, reason } : { state: 'agent:review' },
+        );
+        expect(runIssue).toHaveBeenCalledTimes(calls);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
   it('keeps a blocked Issue with a live runner reserved across cycles', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-blocked-'));
-    const blocked = { number: 42, title: 'Blocked run', body: '', labels: [{ name: 'agent:blocked' }] };
+    const blocked = {
+      number: 42,
+      title: 'Blocked run',
+      body: '',
+      labels: [{ name: 'agent:blocked' }],
+    };
     const ready = { number: 43, title: 'Ready', body: '', labels: [{ name: 'agent:ready' }] };
     const command = vi.fn(async (file: string, args: string[]) => {
-      if (file === 'git' && args[0] === 'worktree') return { stdout: `worktree ${join(root, 'worktrees', 'issue-42')}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
-      if (file === 'ps') return { stdout: 'codex exec resume 0199a213-81c0-7800-8aa1-bbab2a035a53\n' };
+      if (file === 'git' && args[0] === 'worktree')
+        return {
+          stdout: `worktree ${join(root, 'worktrees', 'issue-42')}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
+      if (file === 'ps')
+        return { stdout: 'codex exec resume 0199a213-81c0-7800-8aa1-bbab2a035a53\n' };
       if (args[0] === 'issue' && args[1] === 'list') {
-        return { stdout: JSON.stringify(args.includes('agent:blocked') ? [blocked] : args.includes('agent:ready') ? [ready] : []) };
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:blocked')
+              ? [blocked]
+              : args.includes('agent:ready')
+                ? [ready]
+                : [],
+          ),
+        };
       }
       if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
       if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
       if (args[0] === 'api' && args.includes('--paginate')) {
-        if (args[1].includes('/43/')) return { stdout: JSON.stringify([[{ id: 78, user: { login: 'factory-bot' }, body: renderPlanComment({
-          issue: 43, inputHash: planInputHash(ready), model: 'gpt-5.6-sol',
-          plan: { outcome: 'planned', workerModel: 'gpt-5.6-luna', plannedPaths: ['docs'], dependencies: [], exclusive: false, reason: 'docs' },
-          plannedAt: '2026-09-23T00:00:00.000Z',
-        }) }]]) };
-        return { stdout: JSON.stringify([[{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment({
-          issue: 42, status: 'running', branch: 'codex/issue-42', worktreeId: 'issue-42',
-          model: 'gpt-5.6-terra', attempt: 1, runnerPid: 1234,
-          threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53', heartbeatAt: '2026-09-22T00:00:00.000Z',
-        }) }]]) };
+        if (args[1].includes('/43/'))
+          return {
+            stdout: JSON.stringify([
+              [
+                {
+                  id: 78,
+                  user: { login: 'factory-bot' },
+                  body: renderPlanComment({
+                    issue: 43,
+                    inputHash: planInputHash(ready),
+                    model: 'gpt-5.6-sol',
+                    plan: {
+                      outcome: 'planned',
+                      workerModel: 'gpt-5.6-luna',
+                      plannedPaths: ['docs'],
+                      dependencies: [],
+                      exclusive: false,
+                      reason: 'docs',
+                    },
+                    plannedAt: '2026-09-23T00:00:00.000Z',
+                  }),
+                },
+              ],
+            ]),
+          };
+        return {
+          stdout: JSON.stringify([
+            [
+              {
+                id: 77,
+                user: { login: 'factory-bot' },
+                body: renderRunComment({
+                  issue: 42,
+                  status: 'running',
+                  branch: 'codex/issue-42',
+                  worktreeId: 'issue-42',
+                  model: 'gpt-5.6-terra',
+                  attempt: 1,
+                  runnerPid: 1234,
+                  threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                  heartbeatAt: '2026-09-22T00:00:00.000Z',
+                }),
+              },
+            ],
+          ]),
+        };
       }
       throw new Error(`unexpected command: ${args.join(' ')}`);
     });
@@ -470,7 +936,11 @@ describe('daemon scheduler', () => {
     try {
       for (let cycle = 0; cycle < 2; cycle += 1) {
         const result = await runScheduledCycle({
-          command, runIssue, stateRoot: root, workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root },
+          command,
+          runIssue,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          env: { PATH: '/usr/bin', HOME: root },
           isPidAlive: () => true,
         });
         expect(result.recovered).toMatchObject([
@@ -485,28 +955,70 @@ describe('daemon scheduler', () => {
 
   it('does not reserve a blocked run when its PID belongs to another process', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-reused-pid-'));
-    const blocked = { number: 42, title: 'Blocked run', body: '', labels: [{ name: 'agent:blocked' }] };
+    const blocked = {
+      number: 42,
+      title: 'Blocked run',
+      body: '',
+      labels: [{ name: 'agent:blocked' }],
+    };
     let processCommand = 'unrelated-service --listen';
     const command = vi.fn(async (file: string, args: string[]) => {
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify(args.includes('agent:blocked') ? [blocked] : []) };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list')
+        return { stdout: JSON.stringify(args.includes('agent:blocked') ? [blocked] : []) };
       if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
-      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
-      if (file === 'gh' && args[0] === 'api') return { stdout: JSON.stringify([[{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment({
-        issue: 42, status: 'running', branch: 'codex/issue-42', worktreeId: 'issue-42', model: 'gpt-5.6-terra',
-        attempt: 1, runnerPid: 1234, threadId: 'old-thread', heartbeatAt: '2026-09-22T00:00:00.000Z',
-      }) }]]) };
-      if (file === 'git' && args[0] === 'worktree') return { stdout: `worktree ${join(root, 'worktrees', 'issue-42')}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user')
+        return { stdout: 'factory-bot\n' };
+      if (file === 'gh' && args[0] === 'api')
+        return {
+          stdout: JSON.stringify([
+            [
+              {
+                id: 77,
+                user: { login: 'factory-bot' },
+                body: renderRunComment({
+                  issue: 42,
+                  status: 'running',
+                  branch: 'codex/issue-42',
+                  worktreeId: 'issue-42',
+                  model: 'gpt-5.6-terra',
+                  attempt: 1,
+                  runnerPid: 1234,
+                  threadId: 'old-thread',
+                  heartbeatAt: '2026-09-22T00:00:00.000Z',
+                }),
+              },
+            ],
+          ]),
+        };
+      if (file === 'git' && args[0] === 'worktree')
+        return {
+          stdout: `worktree ${join(root, 'worktrees', 'issue-42')}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n`,
+        };
       if (file === 'ps') return { stdout: `${processCommand}\n` };
       throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
     });
     try {
-      await expect(reconcileStartup({ command, stateRoot: root, workRoot: join(root, 'worktrees'),
-        includeBlocked: true, isPidAlive: () => true, env: { PATH: '/usr/bin', HOME: root },
-      })).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      await expect(
+        reconcileStartup({
+          command,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          includeBlocked: true,
+          isPidAlive: () => true,
+          env: { PATH: '/usr/bin', HOME: root },
+        }),
+      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
       processCommand = '';
-      await expect(reconcileStartup({ command, stateRoot: root, workRoot: join(root, 'worktrees'),
-        includeBlocked: true, isPidAlive: () => true, env: { PATH: '/usr/bin', HOME: root },
-      })).resolves.toMatchObject([{ issue: 42, action: 'blocked', reserved: true }]);
+      await expect(
+        reconcileStartup({
+          command,
+          stateRoot: root,
+          workRoot: join(root, 'worktrees'),
+          includeBlocked: true,
+          isPidAlive: () => true,
+          env: { PATH: '/usr/bin', HOME: root },
+        }),
+      ).resolves.toMatchObject([{ issue: 42, action: 'blocked', reserved: true }]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -701,12 +1213,20 @@ describe('daemon scheduler', () => {
 describe('watcher lock', () => {
   it('holds the daemon lock while its scheduling cycle is alive', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-daemon-lock-'));
-    const child = spawn(process.execPath, ['--input-type=module', '-e',
-      `import { watch } from ${JSON.stringify(new URL('./watcher.mjs', import.meta.url).href)}; await watch({ stateRoot: ${JSON.stringify(root)}, command: () => new Promise(() => { setInterval(() => {}, 1000); }) });`],
-      { stdio: ['ignore', 'ignore', 'pipe'] });
+    const child = spawn(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { watch } from ${JSON.stringify(new URL('./watcher.mjs', import.meta.url).href)}; await watch({ stateRoot: ${JSON.stringify(root)}, command: () => new Promise(() => { setInterval(() => {}, 1000); }) });`,
+      ],
+      { stdio: ['ignore', 'ignore', 'pipe'] },
+    );
     const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
     let stderr = '';
-    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    child.stderr.on('data', (chunk) => {
+      stderr += chunk.toString();
+    });
     try {
       await vi.waitFor(async () => {
         if (child.exitCode !== null) throw new Error(`daemon exited: ${stderr}`);
@@ -922,12 +1442,13 @@ describe('Sol planner', () => {
     });
     const runRunner = vi.fn();
     try {
-      await expect(
-        loadPlan(issue, { command }),
-      ).resolves.toMatchObject({ commentId: 4, plan: lastPlan });
-      await expect(
-        planIssue(issue, { command, runRunner, stateRoot: root }),
-      ).resolves.toEqual(lastPlan);
+      await expect(loadPlan(issue, { command })).resolves.toMatchObject({
+        commentId: 4,
+        plan: lastPlan,
+      });
+      await expect(planIssue(issue, { command, runRunner, stateRoot: root })).resolves.toEqual(
+        lastPlan,
+      );
       expect(runRunner).not.toHaveBeenCalled();
       await expect(
         planIssue(
@@ -944,7 +1465,11 @@ describe('Sol planner', () => {
               }
               throw new Error(`unexpected command: ${args.join(' ')}`);
             }),
-            runRunner: async () => ({ result: planned, threadId: 'planner-thread', runnerPid: 321 }),
+            runRunner: async () => ({
+              result: planned,
+              threadId: 'planner-thread',
+              runnerPid: 321,
+            }),
             stateRoot: root,
             repoRoot: root,
           },
@@ -976,10 +1501,7 @@ describe('Sol planner', () => {
       ['issue', 'view', '11', '--json', 'state', '--jq', '.state'],
     ]);
     await expect(
-      dependenciesClosed(
-        { dependencies: [10, 11] },
-        async () => ({ stdout: 'CLOSED\n' }),
-      ),
+      dependenciesClosed({ dependencies: [10, 11] }, async () => ({ stdout: 'CLOSED\n' })),
     ).resolves.toBe(true);
   });
 
@@ -997,11 +1519,14 @@ describe('Sol planner', () => {
     try {
       await expect(
         planIssue(issue, { command, runRunner, stateRoot: root, repoRoot: root }),
-      ).rejects.toMatchObject({ message: 'planner exited without result', plannerInfrastructure: true });
+      ).rejects.toMatchObject({
+        message: 'planner exited without result',
+        plannerInfrastructure: true,
+      });
       expect(runRunner).toHaveBeenCalledTimes(2);
-      await expect(readFile(join(root, 'runs', 'issue-42', 'planner-infra-retried'), 'utf8')).resolves.toBe(
-        '1\n',
-      );
+      await expect(
+        readFile(join(root, 'runs', 'issue-42', 'planner-infra-retried'), 'utf8'),
+      ).resolves.toBe('1\n');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1105,14 +1630,24 @@ describe('Sol planner', () => {
       expect(runRunner).toHaveBeenCalledTimes(1);
       expect(runnerModels).toEqual(['gpt-5.6-sol']);
       expect(readAccount).toHaveBeenCalledTimes(3);
-      expect(command).toHaveBeenCalledWith(
-        'gh',
-        ['issue', 'edit', '42', '--remove-label', 'agent:ready', '--add-label', 'agent:running'],
-      );
-      expect(command).toHaveBeenCalledWith(
-        'gh',
-        ['issue', 'edit', '42', '--remove-label', 'agent:running', '--add-label', 'agent:ready'],
-      );
+      expect(command).toHaveBeenCalledWith('gh', [
+        'issue',
+        'edit',
+        '42',
+        '--remove-label',
+        'agent:ready',
+        '--add-label',
+        'agent:running',
+      ]);
+      expect(command).toHaveBeenCalledWith('gh', [
+        'issue',
+        'edit',
+        '42',
+        '--remove-label',
+        'agent:running',
+        '--add-label',
+        'agent:ready',
+      ]);
       expect(
         command.mock.calls.some(
           ([file, args]) => file === 'git' && (args[0] === 'reset' || args[1] === 'remove'),
@@ -1192,7 +1727,9 @@ describe('single Terra runner', () => {
       if (file === 'gh' && args[0] === 'api') return { stdout: JSON.stringify({ id: 77 }) };
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
         return {
-          stdout: JSON.stringify({ labels: [{ name: liveStates ? currentState : states.shift() }] }),
+          stdout: JSON.stringify({
+            labels: [{ name: liveStates ? currentState : states.shift() }],
+          }),
         };
       }
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
@@ -1233,9 +1770,7 @@ describe('single Terra runner', () => {
       ['agent:ready', 'agent:running', 'agent:running', 'agent:review'],
       calls,
       {
-        initialPulls: [
-          { number: 98, url: 'https://example.test/pull/98', state: 'MERGED' },
-        ],
+        initialPulls: [{ number: 98, url: 'https://example.test/pull/98', state: 'MERGED' }],
       },
     );
     try {
@@ -1389,12 +1924,18 @@ describe('single Terra runner', () => {
         ),
       ).resolves.toMatchObject({ state: 'agent:blocked' });
       expect(
-        calls.some(({ file, args }) => file === 'git' && ['add', 'commit', 'push'].includes(args[0])),
+        calls.some(
+          ({ file, args }) => file === 'git' && ['add', 'commit', 'push'].includes(args[0]),
+        ),
       ).toBe(false);
       expect(
         calls.some(({ file, args }) => file === 'gh' && args[0] === 'pr' && args[1] === 'create'),
       ).toBe(false);
-      expect(calls.some(({ file, args }) => file === 'gh' && args[0] === 'issue' && args[1] === 'comment')).toBe(true);
+      expect(
+        calls.some(
+          ({ file, args }) => file === 'gh' && args[0] === 'issue' && args[1] === 'comment',
+        ),
+      ).toBe(true);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1402,53 +1943,63 @@ describe('single Terra runner', () => {
 
   it.each([
     ['a committed path', '', '', 'src/app/page.tsx\0'],
-    ['committed and uncommitted paths', ' M docs/README.md\0', 'docs/README.md\0', 'src/app/page.tsx\0'],
-  ] as const)('blocks %s outside the plan before publishing', async (_scenario, status, staged, committed) => {
-    const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-path-'));
-    const calls: Array<{ file: string; args: string[] }> = [];
-    const command = pipelineCommand(
-      ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'],
-      calls,
-      {
-        status,
-        staged,
-        committed,
-        liveStates: true,
-      },
-    );
-    try {
-      await expect(
-        executeIssue(
-          { number: 42, title: 'Update docs', body: '', labels: [{ name: 'agent:ready' }] },
-          {
-            command,
-            plan: planned('gpt-5.6-luna'),
-            workRoot: join(root, 'worktrees'),
-            stateRoot: root,
-            env: { PATH: '/usr/bin', HOME: root },
-            runRunner: async () => ({
-              result: {
-                outcome: 'ready',
-                commitType: 'docs',
-                summary: 'Update guide',
-                reason: 'Checks passed',
-              },
-              threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
-              runnerPid: 1234,
-            }),
-          },
-        ),
-      ).resolves.toMatchObject({ state: 'agent:blocked' });
-      expect(
-        calls.some(({ file, args }) => file === 'git' && ['add', 'commit', 'push'].includes(args[0])),
-      ).toBe(false);
-      expect(
-        calls.some(({ file, args }) => file === 'gh' && args[0] === 'pr' && args[1] === 'create'),
-      ).toBe(false);
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+    [
+      'committed and uncommitted paths',
+      ' M docs/README.md\0',
+      'docs/README.md\0',
+      'src/app/page.tsx\0',
+    ],
+  ] as const)(
+    'blocks %s outside the plan before publishing',
+    async (_scenario, status, staged, committed) => {
+      const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-path-'));
+      const calls: Array<{ file: string; args: string[] }> = [];
+      const command = pipelineCommand(
+        ['agent:ready', 'agent:running', 'agent:running', 'agent:blocked'],
+        calls,
+        {
+          status,
+          staged,
+          committed,
+          liveStates: true,
+        },
+      );
+      try {
+        await expect(
+          executeIssue(
+            { number: 42, title: 'Update docs', body: '', labels: [{ name: 'agent:ready' }] },
+            {
+              command,
+              plan: planned('gpt-5.6-luna'),
+              workRoot: join(root, 'worktrees'),
+              stateRoot: root,
+              env: { PATH: '/usr/bin', HOME: root },
+              runRunner: async () => ({
+                result: {
+                  outcome: 'ready',
+                  commitType: 'docs',
+                  summary: 'Update guide',
+                  reason: 'Checks passed',
+                },
+                threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+                runnerPid: 1234,
+              }),
+            },
+          ),
+        ).resolves.toMatchObject({ state: 'agent:blocked' });
+        expect(
+          calls.some(
+            ({ file, args }) => file === 'git' && ['add', 'commit', 'push'].includes(args[0]),
+          ),
+        ).toBe(false);
+        expect(
+          calls.some(({ file, args }) => file === 'gh' && args[0] === 'pr' && args[1] === 'create'),
+        ).toBe(false);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
 
   it('allows a planned path outside docs for an exclusive plan', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-plan-path-'));
@@ -1523,13 +2074,7 @@ describe('single Terra runner', () => {
       const stagedDiff = calls.find(
         ({ file, args }) => file === 'git' && args[0] === 'diff' && args.includes('--cached'),
       );
-      expect(stagedDiff?.args).toEqual([
-        'diff',
-        '--cached',
-        '--name-only',
-        '--no-renames',
-        '-z',
-      ]);
+      expect(stagedDiff?.args).toEqual(['diff', '--cached', '--name-only', '--no-renames', '-z']);
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1863,8 +2408,16 @@ describe('heartbeat and recovery', () => {
           stateRoot: root,
           workRoot: join(root, 'worktrees'),
           env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => true,
         }),
-      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      ).resolves.toEqual([
+        {
+          issue: 42,
+          action: 'blocked',
+          reserved: true,
+          plan: { plannedPaths: [], exclusive: true },
+        },
+      ]);
       expect(runRunner).not.toHaveBeenCalled();
     } finally {
       await rm(root, { recursive: true, force: true });
@@ -1874,82 +2427,69 @@ describe('heartbeat and recovery', () => {
   it.each(['prepare-retried', 'infra-retried'] as const)(
     'blocks a Phase 2 %s recovery when its plan comment is missing',
     async (marker) => {
-    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
-    const runDir = join(root, 'runs', 'issue-42');
-    const issue = {
-      number: 42,
-      title: 'Retry prepare',
-      body: '',
-      labels: [{ name: 'agent:recovery' }],
-    };
-    let state = 'agent:recovery';
-    const command = vi.fn(async (file: string, args: string[]) => {
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
-        return { stdout: JSON.stringify(args.includes('agent:recovery') ? [issue] : []) };
-      }
-      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
-      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
-        return { stdout: 'factory-bot\n' };
-      }
-      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
-        return {
-          stdout: JSON.stringify([
-            [
-              {
-                id: 77,
-                user: { login: 'factory-bot' },
-                body: renderRunComment({
-                  ...record,
-                  planHash: planInputHash(issue),
-                }),
-              },
-            ],
-          ]),
-        };
-      }
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'comment') return { stdout: '' };
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
-        state = args[args.indexOf('--add-label') + 1];
-        return { stdout: '' };
-      }
-      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
-        return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
-      }
-      if (file === 'git' && args[0] === 'worktree') return { stdout: '' };
-      if (file === 'git' && args[0] === 'show-ref') {
-        throw Object.assign(new Error('missing branch'), { code: 1 });
-      }
-      if (file === 'git' && (args[0] === 'fetch' || args[0] === 'add')) return { stdout: '' };
-      if (file === 'npm' && args[0] === 'ci') return { stdout: '' };
-      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
-    });
-    const runRunner = vi.fn(async () => ({
-      result: {
-        outcome: 'blocked',
-        commitType: 'chore',
-        summary: 'Blocked retry',
-        reason: 'Missing plan',
-      },
-      threadId: record.threadId,
-      runnerPid: 1234,
-    }));
-    try {
-      await mkdir(runDir, { recursive: true });
-      await writeFile(join(runDir, marker), '1\n');
+      const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
+      const runDir = join(root, 'runs', 'issue-42');
+      const issue = {
+        number: 42,
+        title: 'Retry prepare',
+        body: '',
+        labels: [{ name: 'agent:recovery' }],
+      };
+      let state = 'agent:recovery';
+      const command = vi.fn(async (file: string, args: string[]) => {
+        if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+          return { stdout: JSON.stringify(args.includes('agent:recovery') ? [issue] : []) };
+        }
+        if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+        if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+          return { stdout: 'factory-bot\n' };
+        }
+        if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+          return { stdout: '[[]]' };
+        }
+        if (file === 'gh' && args[0] === 'issue' && args[1] === 'comment') return { stdout: '' };
+        if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
+          state = args[args.indexOf('--add-label') + 1];
+          return { stdout: '' };
+        }
+        if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+          return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+        }
+        if (file === 'git' && args[0] === 'worktree') return { stdout: '' };
+        if (file === 'git' && args[0] === 'show-ref') {
+          throw Object.assign(new Error('missing branch'), { code: 1 });
+        }
+        if (file === 'git' && (args[0] === 'fetch' || args[0] === 'add')) return { stdout: '' };
+        if (file === 'npm' && args[0] === 'ci') return { stdout: '' };
+        throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+      });
+      const runRunner = vi.fn(async () => ({
+        result: {
+          outcome: 'blocked',
+          commitType: 'chore',
+          summary: 'Blocked retry',
+          reason: 'Missing plan',
+        },
+        threadId: record.threadId,
+        runnerPid: 1234,
+      }));
+      try {
+        await mkdir(runDir, { recursive: true });
+        await writeFile(join(runDir, marker), '1\n');
 
-      await expect(
-        reconcileStartup({
-          command,
-          runRunner,
-          stateRoot: root,
-          workRoot: join(root, 'worktrees'),
-          env: { PATH: '/usr/bin', HOME: root },
-        }),
-      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
-      expect(runRunner).not.toHaveBeenCalled();
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
+        await expect(
+          reconcileStartup({
+            command,
+            runRunner,
+            stateRoot: root,
+            workRoot: join(root, 'worktrees'),
+            env: { PATH: '/usr/bin', HOME: root },
+          }),
+        ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+        expect(runRunner).not.toHaveBeenCalled();
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
     },
   );
 
@@ -2033,18 +2573,11 @@ describe('heartbeat and recovery', () => {
     }
   });
 
-  it('recovers a persisted infrastructure retry before its label transition completed', async () => {
+  it('blocks a persisted infrastructure retry without Phase 1 or Phase 2 plan evidence', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-reconcile-'));
     const worktree = join(root, 'worktrees', 'issue-42');
     const runDir = join(root, 'runs', 'issue-42');
-    const states = [
-      'agent:running',
-      'agent:recovery',
-      'agent:recovery',
-      'agent:running',
-      'agent:running',
-      'agent:failed',
-    ];
+    const states = ['agent:running', 'agent:recovery', 'agent:recovery', 'agent:blocked'];
     const command = vi.fn(async (file: string, args: string[]) => {
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
         return {
@@ -2094,8 +2627,8 @@ describe('heartbeat and recovery', () => {
           workRoot: join(root, 'worktrees'),
           env: { PATH: '/usr/bin', HOME: root },
         }),
-      ).resolves.toEqual([{ state: 'agent:failed', worktree }]);
-      expect(runRunner).toHaveBeenCalledTimes(1);
+      ).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      expect(runRunner).not.toHaveBeenCalled();
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -2336,7 +2869,9 @@ describe('heartbeat and recovery', () => {
         },
       ]);
       expect(calls.some(({ file, args }) => file === 'git' && args[0] === 'commit')).toBe(false);
-      expect(calls.filter(({ file, args }) => file === 'git' && args[0] === 'push')).toHaveLength(1);
+      expect(calls.filter(({ file, args }) => file === 'git' && args[0] === 'push')).toHaveLength(
+        1,
+      );
       expect(
         calls.filter(({ file, args }) => file === 'gh' && args[0] === 'pr' && args[1] === 'create'),
       ).toHaveLength(1);
@@ -2521,13 +3056,15 @@ describe('heartbeat and recovery', () => {
       expect(
         calls.some(
           ({ file, args }) =>
-            file === 'gh' && args[0] === 'issue' && args[1] === 'edit' && args.includes('agent:recovery'),
+            file === 'gh' &&
+            args[0] === 'issue' &&
+            args[1] === 'edit' &&
+            args.includes('agent:recovery'),
         ),
       ).toBe(true);
       expect(
         calls.some(
-          ({ file, args }) =>
-            file === 'gh' && args[0] === 'api' && args.includes('PATCH'),
+          ({ file, args }) => file === 'gh' && args[0] === 'api' && args.includes('PATCH'),
         ),
       ).toBe(false);
     } finally {

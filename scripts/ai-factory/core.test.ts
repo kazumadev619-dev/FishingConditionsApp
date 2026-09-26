@@ -17,12 +17,12 @@ import {
   renderRunComment,
   runIdentity,
   runnerPrompt,
-  selectRunnablePlans,
   selectReadyIssue,
+  selectRunnablePlans,
   transitionAllowed,
-  validatePlan,
   validateChangedPaths,
   validateIssueNumber,
+  validatePlan,
   WORKER_MODELS,
 } from './core.mjs';
 
@@ -75,8 +75,12 @@ describe('plan validation', () => {
       { issue: { number: 4 }, plan: { plannedPaths: ['src/app/page.tsx'], exclusive: false } },
     ];
 
-    expect(selectRunnablePlans(candidates, [], 3).map(({ issue }) => issue.number)).toEqual([1, 2, 3]);
-    expect(() => selectRunnablePlans(candidates, [], 4)).toThrow('runner limit must be between 1 and 3');
+    expect(selectRunnablePlans(candidates, [], 3).map(({ issue }) => issue.number)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(() => selectRunnablePlans(candidates, [], 4)).toThrow(
+      'runner limit must be between 1 and 3',
+    );
   });
 
   it('runs an exclusive plan only when no runner is active', () => {
@@ -133,10 +137,12 @@ describe('plan validation', () => {
       plannedAt: '2026-09-23T00:00:00.000Z',
     };
     const comment = { id: 7, user: { login: 'factory-bot' }, body: renderPlanComment(record) };
-    expect(parsePlanComment(comment, { issue: plannedIssue, viewer: 'factory-bot' })).toMatchObject({
-      ...record,
-      commentId: 7,
-    });
+    expect(parsePlanComment(comment, { issue: plannedIssue, viewer: 'factory-bot' })).toMatchObject(
+      {
+        ...record,
+        commentId: 7,
+      },
+    );
     expect(() =>
       parsePlanComment(comment, {
         issue: { ...plannedIssue, body: 'changed' },
@@ -283,6 +289,7 @@ describe('runner boundary', () => {
     expect(body).toContain('`npm run check-code`');
     expect(body).toContain('Human review is required');
     expect(body).not.toContain(issue.body);
+    expect(body).not.toContain('Terra');
   });
 
   it('derives branch and worktree identifiers only from the issue number', () => {

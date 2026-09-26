@@ -42,7 +42,7 @@ npm run factory:dry-run
 npm run factory:once
 ```
 
-onceはSolによるread-only計画と最大1つのLuna/Terra workerを実行する。成功時は`agent:ready`から`agent:running`、`agent:review`へ進み、`develop`向けPRを1件作る。計画とworker起動の直前にCodex利用枠を確認し、残量20%以下なら起動しない。Watcherはmergeもdeployも行わない。
+onceは有効な計画cacheがなければSolでread-only計画を行い、最大1つのLuna/Terra workerを実行する。成功時は`agent:ready`から`agent:running`、`agent:review`へ進み、`develop`向けPRを1件作る。計画とworker起動の直前にCodex利用枠を確認し、残量20%以下なら起動しない。Watcherはmergeもdeployも行わない。
 
 ## 常駐運用
 

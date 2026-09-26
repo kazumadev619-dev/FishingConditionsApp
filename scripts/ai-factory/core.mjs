@@ -258,13 +258,20 @@ export function selectRunnablePlans(candidates, active, limit) {
   const activePlans = active.map((entry) => entry.plan ?? entry);
   const selected = [];
   for (const candidate of [...candidates].sort(
-    (left, right) => validateIssueNumber(left.issue.number) - validateIssueNumber(right.issue.number),
+    (left, right) =>
+      validateIssueNumber(left.issue.number) - validateIssueNumber(right.issue.number),
   )) {
     if (selected.length === limit) break;
     const plan = candidate.plan;
     const plans = [...activePlans, ...selected.map((entry) => entry.plan)];
     const exclusive = plan.exclusive || plan.plannedPaths.length === 0;
-    if (exclusive ? plans.length === 0 : !plans.some((other) => other.exclusive || plansConflict(plan.plannedPaths, other.plannedPaths))) {
+    if (
+      exclusive
+        ? plans.length === 0
+        : !plans.some(
+            (other) => other.exclusive || plansConflict(plan.plannedPaths, other.plannedPaths),
+          )
+    ) {
       selected.push(candidate);
     }
   }
@@ -423,7 +430,7 @@ export function buildPrBody(issue, changedFiles) {
   const files = changedFiles.map((file) => `- \`${file.replaceAll('`', '\\`')}\``).join('\n');
   return `## Summary
 
-Automated implementation for Issue #${issue.number} by the single Terra runner.
+Automated implementation for Issue #${issue.number} by a single worker.
 
 ## Changed files
 
