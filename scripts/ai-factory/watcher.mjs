@@ -846,7 +846,7 @@ export async function startRunner({
   try {
     resultText = await readFile(resultPath, 'utf8');
   } catch (error) {
-    if (exitCode !== 0 && error?.code === 'ENOENT') throw new Error('runner exited without result');
+    if (exitCode !== 0 && error?.code === 'ENOENT') throw new Error('runner exited without result', { cause: error });
     throw error;
   }
   const events = (await readFile(stdoutPath, 'utf8'))
