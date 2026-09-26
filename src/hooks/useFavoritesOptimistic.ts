@@ -9,12 +9,15 @@ import type {
   FavoriteErrorResponse,
   FavoriteLocation,
 } from '@/types/favorites';
+import type { PendingFavoriteOps } from './useFavoritesFetch';
 import { buildFavoriteRequestBody } from './utils/favoriteRequestBuilder';
 
 interface UseFavoritesOptimisticProps {
   favorites: FavoriteLocation[];
   setFavorites: Dispatch<SetStateAction<FavoriteLocation[]>>;
   fetchFavorites: () => Promise<void>;
+  /** 取り直しで重ね直してもらうため、処理中の操作をここに登録する（#217） */
+  pending: PendingFavoriteOps;
 }
 
 // 楽観更新の一時行の id。一意でさえあればよいので連番で足りる
@@ -24,6 +27,7 @@ export function useFavoritesOptimistic({
   favorites,
   setFavorites,
   fetchFavorites,
+  pending,
 }: UseFavoritesOptimisticProps) {
   const addFavorite = useCallback(
     async (
@@ -45,6 +49,7 @@ export function useFavoritesOptimistic({
         createdAt: new Date().toISOString(),
       };
 
+      pending.adds.set(tempId, tempFavorite);
       setFavorites((prev) => [tempFavorite, ...prev]);
 
       try {
@@ -55,6 +60,8 @@ export function useFavoritesOptimistic({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         });
+        // 応答が返れば成否にかかわらず一時行は不要。成功ならこの後の取り直しでサーバの行に置き換わる
+        pending.adds.delete(tempId);
 
         if (!response.ok) {
           const errorData: FavoriteErrorResponse = await response.json();
@@ -86,16 +93,18 @@ export function useFavoritesOptimistic({
         return data.locationId;
       } catch (err) {
         logger.error({ err, locationId, portId, lat, lng }, 'Failed to add favorite');
+        pending.adds.delete(tempId);
         setFavorites((prev) => prev.filter((fav) => fav.id !== tempId));
         throw err;
       }
     },
-    [setFavorites, fetchFavorites],
+    [setFavorites, fetchFavorites, pending],
   );
 
   const removeFavorite = useCallback(
     async (locationId: string) => {
       const removed = favorites.find((fav) => fav.locationId === locationId);
+      pending.removes.add(locationId);
       setFavorites((prev) => prev.filter((fav) => fav.locationId !== locationId));
 
       try {
@@ -130,9 +139,11 @@ export function useFavoritesOptimistic({
           });
         }
         throw err;
+      } finally {
+        pending.removes.delete(locationId);
       }
     },
-    [favorites, setFavorites],
+    [favorites, setFavorites, pending],
   );
 
   return { addFavorite, removeFavorite };
