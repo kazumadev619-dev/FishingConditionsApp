@@ -76,6 +76,7 @@ describe('plan validation', () => {
     ];
 
     expect(selectRunnablePlans(candidates, [], 3).map(({ issue }) => issue.number)).toEqual([1, 2, 3]);
+    expect(() => selectRunnablePlans(candidates, [], 4)).toThrow('runner limit must be between 1 and 3');
   });
 
   it('runs an exclusive plan only when no runner is active', () => {
