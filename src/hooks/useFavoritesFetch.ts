@@ -23,8 +23,8 @@ export function overlayPending(
 ): FavoriteLocation[] {
   const onServer = new Set(server.map((fav) => fav.locationId));
   // 一時行は新しい順に先頭へ（楽観更新と同じ並び）。サーバに既に載った地点は二重にしない。
-  // ponytail: portId / 座標での追加は一時行の locationId が仮なので、POST の応答より先に
-  // 別の取り直しがその行を拾うと一瞬二重に見える。その追加自身の取り直しで消える
+  // ponytail: portId / 座標での追加は一時行の locationId が仮なので、POST の確定後、
+  // その追加自身の取り直しより先に別の取り直しが返ると一瞬二重に見える。自身の取り直しで消える
   const temps = Array.from(pending.adds.values())
     .reverse()
     .filter((fav) => !onServer.has(fav.locationId));

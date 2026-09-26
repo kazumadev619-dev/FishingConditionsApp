@@ -267,6 +267,64 @@ describe('useFavoritesOptimistic', () => {
       expect(store.get()).toEqual(server);
     });
 
+    it('同じ地点を削除→追加と続けて押し、削除の応答が遅くても、追加の取り直しで行が隠れない', async () => {
+      let server = [fav('X'), fav('Y')];
+      const store = createStore([fav('X'), fav('Y')]);
+      const refetch = refetchWith(store, () => server);
+      const pending = deferredFetch();
+
+      const removeX = renderHook(store, refetch).removeFavorite('X');
+      const addX = renderHook(store, refetch).addFavorite('X');
+
+      // DELETE → POST の順にサーバで処理され、POST の応答が先に返った
+      server = [fav('X'), fav('Y')];
+      pending[1](jsonResponse(200, { success: true, locationId: 'X' }));
+      await expect(addX).resolves.toBe('X');
+
+      expect(store.get().map((f) => f.locationId)).toEqual(['X', 'Y']);
+
+      pending[0](jsonResponse(200, { success: true }));
+      await removeX;
+    });
+
+    it('追加の応答の本文を読んでいる間に別の取り直しが返っても、一時行は消えない', async () => {
+      const store = createStore([fav('X')]);
+      const refetch = refetchWith(store, () => [fav('X')]);
+      const pending = deferredFetch();
+
+      const addA = renderHook(store, refetch).addFavorite('A');
+      let resolveBody!: (body: unknown) => void;
+      const slowBody = {
+        ok: true,
+        status: 200,
+        json: () => new Promise((resolve) => (resolveBody = resolve)),
+      } as unknown as Response;
+      pending[0](slowBody);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // 先に始まっていた別の操作の取り直し（サーバにはまだ A が無い）
+      await refetch();
+      expect(store.get().map((f) => f.locationId)).toEqual(['A', 'X']);
+
+      resolveBody({ success: true, locationId: 'A' });
+      await expect(addA).resolves.toBe('A');
+    });
+
+    it('港からの追加が成功した取り直しでは、自身の一時行を重ねない（locationId が仮でも）', async () => {
+      const server = [fav('A'), fav('X')];
+      const store = createStore([fav('X')]);
+      const pending = deferredFetch();
+
+      const addA = renderHook(
+        store,
+        refetchWith(store, () => server),
+      ).addFavorite(undefined, 'port-a');
+      pending[0](jsonResponse(200, { success: true, locationId: 'A' }));
+      await expect(addA).resolves.toBe('A');
+
+      expect(store.get()).toEqual(server);
+    });
+
     it('409 の取り直しでは、その追加自身の一時行を重ねない', async () => {
       const server = [fav('A'), fav('X')];
       const store = createStore([fav('X')]);

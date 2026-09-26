@@ -50,6 +50,9 @@ export function useFavoritesOptimistic({
       };
 
       pending.adds.set(tempId, tempFavorite);
+      // 同じ地点の削除がまだ処理中でも、後から押した追加を優先する。
+      // 残すと、追加の取り直しでサーバに登録済みの行が隠れたままになる（#217）
+      if (locationId) pending.removes.delete(locationId);
       setFavorites((prev) => [tempFavorite, ...prev]);
 
       try {
@@ -60,8 +63,6 @@ export function useFavoritesOptimistic({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(requestBody),
         });
-        // 応答が返れば成否にかかわらず一時行は不要。成功ならこの後の取り直しでサーバの行に置き換わる
-        pending.adds.delete(tempId);
 
         if (!response.ok) {
           const errorData: FavoriteErrorResponse = await response.json();
@@ -70,6 +71,7 @@ export function useFavoritesOptimistic({
             // サーバ上では既に登録済み。ここでロールバックすると
             // 「登録済みなのにハートが灰色」という誤った表示に戻ってしまうので、
             // 一覧を取り直して UI を実態に合わせる（#78）
+            pending.adds.delete(tempId);
             await fetchFavorites();
 
             if (!errorData.locationId) {
@@ -89,6 +91,9 @@ export function useFavoritesOptimistic({
         }
 
         const data: FavoriteAddResponse = await response.json();
+        // 一時行を外すのは自身の取り直しの直前。早く外すと、response.json() を待つ間に
+        // 返った別の取り直しで一時行が一瞬消える。この後の取り直しでサーバの行に置き換わる
+        pending.adds.delete(tempId);
         await fetchFavorites();
         return data.locationId;
       } catch (err) {

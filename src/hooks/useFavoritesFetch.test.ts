@@ -99,6 +99,38 @@ describe('createFavoritesFetcher（#217）', () => {
     expect(state.loadingHistory.at(-1)).toBe(false);
   });
 
+  it('古い取り直しが先に終わっても、最後の取り直しが終わるまで isLoading を下ろさない', async () => {
+    const { state, fetchFavorites } = createFetcher();
+    const pending = deferredFetch();
+
+    // StrictMode では初回の取得が2本走る
+    const first = fetchFavorites();
+    const second = fetchFavorites();
+    pending[0](ok([]));
+    await first;
+    // ここで下ろすと、まだ一覧が無いのに「お気に入りはまだありません」が一瞬出る
+    expect(state.loadingHistory).toEqual([]);
+
+    pending[1](ok([fav('X')]));
+    await second;
+    expect(state.loadingHistory).toEqual([false]);
+  });
+
+  it('失敗のあと取り直しを始めた時点では、エラー表示を消さない', async () => {
+    const { state, fetchFavorites } = createFetcher();
+    const pending = deferredFetch();
+
+    const failed = fetchFavorites();
+    pending[0](new Response('{}', { status: 401 }));
+    await failed;
+
+    // 開始時に消すと、スピナーを出さないので取り直しの間に空の一覧が見える
+    const retried = fetchFavorites();
+    expect(state.error).toBe('ログインが必要です');
+    pending[1](ok([]));
+    await retried;
+  });
+
   it('取り直した一覧に処理中の操作を重ねる', async () => {
     const { state, fetchFavorites, pending: ops } = createFetcher();
     const pending = deferredFetch();
