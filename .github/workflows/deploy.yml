@@ -255,19 +255,91 @@ jobs:
           curl -fsS -o /dev/null -w "login: %{http_code}\n" "${BASE_URL}/login"
           # readiness は DB を見ない（#187）ので、壊れた DATABASE_URL でもロールアウトは
           # 緑で終わる。ここで1回だけ DB 到達性を確かめる。直前の migrate で compute は
-          # 起きており、1回きりなので Neon の autosuspend も妨げない
-          curl -fsS "${BASE_URL}/readyz" | tee /dev/stderr | grep -q '"database":"ok"'
+          # 起きており、1回きりなので Neon の autosuspend も妨げない。
+          # 本文は非ブロッキングのスモークが cache の状態を読むので残す（2回叩かない）
+          curl -fsS "${BASE_URL}/readyz" | tee "$RUNNER_TEMP/readyz.json" /dev/stderr | grep -q '"database":"ok"'
+          # 既定 deny（#129）が外れていたら、外部 API のクォータと DB が第三者に開く。
+          # 保護対象の API は代表の1本だけ見る。残りは非ブロッキングで記録する
+          code=$(curl -sS -o /dev/null -w '%{http_code}' "${BASE_URL}/api/ports")
+          echo "unauthenticated /api/ports: ${code}"
+          if [ "$code" != 401 ]; then
+            echo "::error::未認証の /api/ports が ${code} を返した（401 のはず）"
+            exit 1
+          fi
+          # AUTH_URL がずれると本番のログインが壊れ、Cookie の Secure も静かに外れる（#134）
+          expected="${BASE_URL}/api/auth/callback/google"
+          callback=$(curl -fsS "${BASE_URL}/api/auth/providers" | yq -p json '.google.callbackUrl')
+          echo "google callbackUrl: ${callback}"
+          if [ "$callback" != "$expected" ]; then
+            echo "::error::google の callbackUrl が ${callback}（${expected} のはず）"
+            exit 1
+          fi
 
+      # 壊れても画面は動く種類の退行を記録する。NG があれば warning を出す
       - name: Smoke test (non-blocking)
         continue-on-error: true
         run: |
+          # Actions の既定は bash -e。判定は row にコマンドで渡し、偽でもステップを止めない
+          set -o pipefail
+          ng=0
+          status() { curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}$1"; }
+          # $1: 見出し / $2: 実際の値 / 残り: OK なら真になるコマンド
+          row() {
+            local label=$1 value=$2
+            shift 2
+            if "$@"; then echo "- ${label} → ${value}"; else echo "- ${label} → ${value} **NG**"; ng=1; fi
+          }
           {
             echo "## 非ブロッキングスモーク"
             for p in / /dashboard; do
-              code=$(curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}${p}")
-              echo "- \`${p}\` → ${code}"
+              echo "- \`${p}\` → $(status "$p")"
+            done
+
+            echo "### 未認証の保護対象 API（401 のはず。#129）"
+            for p in /api/weather /api/scores /api/conditions/tide /api/locations/search /api/favorites; do
+              code=$(status "$p")
+              row "\`${p}\`" "$code" test "$code" = 401
+            done
+
+            # 除外パターンが境界で切れていないと、似た名前の別パスが proxy を素通りする。
+            # 素通りすると 404 になるので「200 以外」では見分けられない。proxy を通った
+            # 証拠（ページはログインへの 307、API は 401）で判定する
+            echo "### matcher の境界（proxy を通って 307 / 401 のはず）"
+            for p in /healthz-debug /_next/static-evil /faviconZico /api/authenticate; do
+              code=$(status "$p")
+              case "$p" in /api/*) want=401 ;; *) want=307 ;; esac
+              row "\`${p}\`" "$code" test "$code" = "$want"
+            done
+
+            echo "### セキュリティヘッダ（\`/login\`。#134）"
+            headers=$(curl -s -o /dev/null -D - "${BASE_URL}/login")
+            for h in Content-Security-Policy Strict-Transport-Security X-Content-Type-Options \
+                     X-Frame-Options Referrer-Policy Permissions-Policy Cross-Origin-Opener-Policy; do
+              grep -qi "^${h}:" <<<"$headers" && v=あり || v=無い
+              row "$h" "$v" test "$v" = あり
+            done
+
+            # degraded でも readiness は通る（意図的）ので、ここで気づけるようにする
+            echo "### /readyz"
+            cache=$(yq -p json '.checks.cache' < "$RUNNER_TEMP/readyz.json")
+            row cache "$cache" test "$cache" = ok
+
+            # #133。rollout undo の戻り先（履歴に残る ReplicaSet。現行のものを含む）が
+            # 参照する ConfigMap は消えていてはいけない。生成名にハッシュが付くことは
+            # ci.yml がレンダリング結果で見ている
+            echo "### ConfigMap（#133）"
+            refs=$(kubectl -n "$NAMESPACE" get rs -l app.kubernetes.io/name=fishing-app \
+              -o jsonpath='{range .items[*]}{.spec.template.spec.containers[*].envFrom[*].configMapRef.name}{"\n"}{end}' \
+              | sort -u) || refs=
+            row "ReplicaSet が参照する ConfigMap" "${refs//$'\n'/ }" test -n "$refs"
+            for cm in $refs; do
+              kubectl -n "$NAMESPACE" get configmap "$cm" -o name >/dev/null 2>&1 && v=ある || v=無い
+              row "\`${cm}\`" "$v" test "$v" = ある
             done
           } >> "$GITHUB_STEP_SUMMARY"
+          if [ "$ng" -ne 0 ]; then
+            echo "::warning::非ブロッキングスモークに NG がある（Summary を参照）"
+          fi
 
       # ログを先に吸い出す。undo すると手がかりが消える
       - name: Collect logs on failure
