@@ -2,6 +2,7 @@ import type { SetStateAction } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FavoriteLocation } from '@/types/favorites';
+import { overlayPending, type PendingFavoriteOps } from './useFavoritesFetch';
 import { useFavoritesOptimistic } from './useFavoritesOptimistic';
 
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }));
@@ -25,7 +26,8 @@ function createStore(initial: FavoriteLocation[]) {
   const setFavorites = (action: SetStateAction<FavoriteLocation[]>) => {
     state = typeof action === 'function' ? action(state) : action;
   };
-  return { get: () => state, setFavorites };
+  const pending: PendingFavoriteOps = { adds: new Map(), removes: new Set() };
+  return { get: () => state, setFavorites, pending };
 }
 
 /**
@@ -39,6 +41,7 @@ function renderHook(store: ReturnType<typeof createStore>, fetchFavorites = asyn
       favorites: store.get(),
       setFavorites: store.setFavorites,
       fetchFavorites,
+      pending: store.pending,
     });
     return null;
   }
@@ -178,5 +181,163 @@ describe('useFavoritesOptimistic', () => {
 
     pending[1](jsonResponse(200, { success: true, locationId: 'B' }));
     await expect(addB).resolves.toBe('B');
+  });
+
+  describe('取り直しで処理中の楽観操作が消えない（#217）', () => {
+    /** 取り直しの代わり。useFavoritesFetch と同じく、サーバの一覧に処理中の操作を重ねて置き換える */
+    const refetchWith =
+      (store: ReturnType<typeof createStore>, server: () => FavoriteLocation[]) => async () => {
+        store.setFavorites(overlayPending(server(), store.pending));
+      };
+
+    it('2件同時に追加して一方が成功した取り直しでも、処理中のもう一方の一時行は残る', async () => {
+      let server = [fav('X')];
+      const store = createStore([fav('X')]);
+      const refetch = refetchWith(store, () => server);
+      const pending = deferredFetch();
+
+      const addA = renderHook(store, refetch).addFavorite('A');
+      const addB = renderHook(store, refetch).addFavorite('B');
+
+      server = [fav('A'), fav('X')];
+      pending[0](jsonResponse(200, { success: true, locationId: 'A' }));
+      await expect(addA).resolves.toBe('A');
+
+      // 修正前は ['A', 'X'] に置き換わり、B の一時行が消えていた
+      expect(store.get().map((f) => f.locationId)).toEqual(['B', 'A', 'X']);
+      expect(store.get()[0].id).toMatch(/^temp-/);
+
+      server = [fav('A'), fav('B'), fav('X')];
+      pending[1](jsonResponse(200, { success: true, locationId: 'B' }));
+      await expect(addB).resolves.toBe('B');
+
+      // B の一時行はサーバの行に置き換わり、一時行は残らない
+      expect(store.get()).toEqual(server);
+    });
+
+    it('処理中の削除で消した行は、別の追加の取り直しで戻ってこない', async () => {
+      let server = [fav('X'), fav('Y')];
+      const store = createStore([fav('X'), fav('Y')]);
+      const refetch = refetchWith(store, () => server);
+      const pending = deferredFetch();
+
+      const removeX = renderHook(store, refetch).removeFavorite('X');
+      const addA = renderHook(store, refetch).addFavorite('A');
+
+      // X の DELETE はまだ返っていないので、サーバにはまだ X がある
+      server = [fav('A'), fav('X'), fav('Y')];
+      pending[1](jsonResponse(200, { success: true, locationId: 'A' }));
+      await addA;
+
+      expect(store.get().map((f) => f.locationId)).toEqual(['A', 'Y']);
+
+      pending[0](jsonResponse(200, { success: true }));
+      await removeX;
+      expect(store.pending.removes.size).toBe(0);
+    });
+
+    it('失敗した追加・削除は、以後の取り直しに残らない', async () => {
+      const server = [fav('X'), fav('Y')];
+      const store = createStore([fav('X'), fav('Y')]);
+      const refetch = refetchWith(store, () => server);
+      const pending = deferredFetch();
+
+      const addA = renderHook(store, refetch).addFavorite('A');
+      const removeX = renderHook(store, refetch).removeFavorite('X');
+      pending[0](jsonResponse(500, { error: 'boom' }));
+      await expect(addA).rejects.toThrow('boom');
+      pending[1](jsonResponse(500, { error: 'boom' }));
+      await expect(removeX).rejects.toThrow('boom');
+
+      await refetch();
+      expect(store.get()).toEqual(server);
+    });
+
+    it('通信エラーで失敗した追加も、以後の取り直しに残らない', async () => {
+      const server = [fav('X')];
+      const store = createStore([fav('X')]);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => Promise.reject(new TypeError('offline'))),
+      );
+
+      await expect(renderHook(store).addFavorite('A')).rejects.toThrow('offline');
+
+      await refetchWith(store, () => server)();
+      expect(store.get()).toEqual(server);
+    });
+
+    it('同じ地点を削除→追加と続けて押し、削除の応答が遅くても、追加の取り直しで行が隠れない', async () => {
+      let server = [fav('X'), fav('Y')];
+      const store = createStore([fav('X'), fav('Y')]);
+      const refetch = refetchWith(store, () => server);
+      const pending = deferredFetch();
+
+      const removeX = renderHook(store, refetch).removeFavorite('X');
+      const addX = renderHook(store, refetch).addFavorite('X');
+
+      // DELETE → POST の順にサーバで処理され、POST の応答が先に返った
+      server = [fav('X'), fav('Y')];
+      pending[1](jsonResponse(200, { success: true, locationId: 'X' }));
+      await expect(addX).resolves.toBe('X');
+
+      expect(store.get().map((f) => f.locationId)).toEqual(['X', 'Y']);
+
+      pending[0](jsonResponse(200, { success: true }));
+      await removeX;
+    });
+
+    it('追加の応答の本文を読んでいる間に別の取り直しが返っても、一時行は消えない', async () => {
+      const store = createStore([fav('X')]);
+      const refetch = refetchWith(store, () => [fav('X')]);
+      const pending = deferredFetch();
+
+      const addA = renderHook(store, refetch).addFavorite('A');
+      let resolveBody!: (body: unknown) => void;
+      const slowBody = {
+        ok: true,
+        status: 200,
+        json: () => new Promise((resolve) => (resolveBody = resolve)),
+      } as unknown as Response;
+      pending[0](slowBody);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      // 先に始まっていた別の操作の取り直し（サーバにはまだ A が無い）
+      await refetch();
+      expect(store.get().map((f) => f.locationId)).toEqual(['A', 'X']);
+
+      resolveBody({ success: true, locationId: 'A' });
+      await expect(addA).resolves.toBe('A');
+    });
+
+    it('港からの追加が成功した取り直しでは、自身の一時行を重ねない（locationId が仮でも）', async () => {
+      const server = [fav('A'), fav('X')];
+      const store = createStore([fav('X')]);
+      const pending = deferredFetch();
+
+      const addA = renderHook(
+        store,
+        refetchWith(store, () => server),
+      ).addFavorite(undefined, 'port-a');
+      pending[0](jsonResponse(200, { success: true, locationId: 'A' }));
+      await expect(addA).resolves.toBe('A');
+
+      expect(store.get()).toEqual(server);
+    });
+
+    it('409 の取り直しでは、その追加自身の一時行を重ねない', async () => {
+      const server = [fav('A'), fav('X')];
+      const store = createStore([fav('X')]);
+      const pending = deferredFetch();
+
+      const addA = renderHook(
+        store,
+        refetchWith(store, () => server),
+      ).addFavorite(undefined, 'port-a');
+      pending[0](jsonResponse(409, { error: 'dup', locationId: 'A' }));
+      await expect(addA).resolves.toBe('A');
+
+      expect(store.get()).toEqual(server);
+    });
   });
 });

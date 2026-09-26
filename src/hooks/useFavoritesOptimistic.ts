@@ -9,12 +9,15 @@ import type {
   FavoriteErrorResponse,
   FavoriteLocation,
 } from '@/types/favorites';
+import type { PendingFavoriteOps } from './useFavoritesFetch';
 import { buildFavoriteRequestBody } from './utils/favoriteRequestBuilder';
 
 interface UseFavoritesOptimisticProps {
   favorites: FavoriteLocation[];
   setFavorites: Dispatch<SetStateAction<FavoriteLocation[]>>;
   fetchFavorites: () => Promise<void>;
+  /** 取り直しで重ね直してもらうため、処理中の操作をここに登録する（#217） */
+  pending: PendingFavoriteOps;
 }
 
 // 楽観更新の一時行の id。一意でさえあればよいので連番で足りる
@@ -24,6 +27,7 @@ export function useFavoritesOptimistic({
   favorites,
   setFavorites,
   fetchFavorites,
+  pending,
 }: UseFavoritesOptimisticProps) {
   const addFavorite = useCallback(
     async (
@@ -45,6 +49,10 @@ export function useFavoritesOptimistic({
         createdAt: new Date().toISOString(),
       };
 
+      pending.adds.set(tempId, tempFavorite);
+      // 同じ地点の削除がまだ処理中でも、後から押した追加を優先する。
+      // 残すと、追加の取り直しでサーバに登録済みの行が隠れたままになる（#217）
+      if (locationId) pending.removes.delete(locationId);
       setFavorites((prev) => [tempFavorite, ...prev]);
 
       try {
@@ -63,6 +71,7 @@ export function useFavoritesOptimistic({
             // サーバ上では既に登録済み。ここでロールバックすると
             // 「登録済みなのにハートが灰色」という誤った表示に戻ってしまうので、
             // 一覧を取り直して UI を実態に合わせる（#78）
+            pending.adds.delete(tempId);
             await fetchFavorites();
 
             if (!errorData.locationId) {
@@ -82,20 +91,25 @@ export function useFavoritesOptimistic({
         }
 
         const data: FavoriteAddResponse = await response.json();
+        // 一時行を外すのは自身の取り直しの直前。早く外すと、response.json() を待つ間に
+        // 返った別の取り直しで一時行が一瞬消える。この後の取り直しでサーバの行に置き換わる
+        pending.adds.delete(tempId);
         await fetchFavorites();
         return data.locationId;
       } catch (err) {
         logger.error({ err, locationId, portId, lat, lng }, 'Failed to add favorite');
+        pending.adds.delete(tempId);
         setFavorites((prev) => prev.filter((fav) => fav.id !== tempId));
         throw err;
       }
     },
-    [setFavorites, fetchFavorites],
+    [setFavorites, fetchFavorites, pending],
   );
 
   const removeFavorite = useCallback(
     async (locationId: string) => {
       const removed = favorites.find((fav) => fav.locationId === locationId);
+      pending.removes.add(locationId);
       setFavorites((prev) => prev.filter((fav) => fav.locationId !== locationId));
 
       try {
@@ -130,9 +144,11 @@ export function useFavoritesOptimistic({
           });
         }
         throw err;
+      } finally {
+        pending.removes.delete(locationId);
       }
     },
-    [favorites, setFavorites],
+    [favorites, setFavorites, pending],
   );
 
   return { addFavorite, removeFavorite };

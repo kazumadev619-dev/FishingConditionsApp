@@ -33,11 +33,13 @@ const FavoritesContext = createContext<FavoritesContextValue | null>(null);
  * ついでに、同じ一覧の GET が画面あたり3回走っていたのも1回になる。
  */
 export function FavoritesProvider({ children }: { children: React.ReactNode }) {
-  const { favorites, setFavorites, isLoading, error, fetchFavorites } = useFavoritesFetch();
+  const { favorites, setFavorites, isLoading, error, fetchFavorites, pending } =
+    useFavoritesFetch();
   const { addFavorite, removeFavorite } = useFavoritesOptimistic({
     favorites,
     setFavorites,
     fetchFavorites,
+    pending,
   });
 
   const isFavorite = useCallback(
