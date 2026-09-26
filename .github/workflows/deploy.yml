@@ -192,38 +192,48 @@ jobs:
           kustomize build . > "$RUNNER_TEMP/rendered.yaml"
           grep -c "^kind:" "$RUNNER_TEMP/rendered.yaml"
 
-      # migrate は必ず rollout より先。失敗したらロールアウトしない
-      - name: Run migration job
+      # どちらも必ず rollout より先。失敗したらロールアウトせず、旧 Pod はそのまま残る。
+      # db-check: アプリが使う pooled 側の DATABASE_URL に繋がるか（#191）。readiness は
+      #   DB を見ない（#187）ので、ここで止めないと壊れた Secret のまま旧 Pod が消え、
+      #   rollout undo でも戻らない。migrate より先に流し、schema だけ進むこともなくす
+      # db-migrate: DATABASE_URL_DIRECT で prisma migrate deploy
+      - name: Run pre-rollout jobs
         run: |
           set -euo pipefail
-          kubectl -n "$NAMESPACE" delete job db-migrate --ignore-not-found
-          yq 'select(.kind == "Job" and .metadata.name == "db-migrate")' \
-            "$RUNNER_TEMP/rendered.yaml" | kubectl apply -f -
-          # `kubectl wait --for=condition=complete` は Failed を検知せず
-          # timeout まで待ち続ける。Job 側は backoffLimit: 0 /
-          # activeDeadlineSeconds: 600 で失敗が数十秒で確定するので、
-          # complete と failed の両方をポーリングして即座に打ち切る
-          deadline=$(( SECONDS + 660 ))
-          while [ "$SECONDS" -lt "$deadline" ]; do
-            conds=$(kubectl -n "$NAMESPACE" get job db-migrate \
-              -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || true)
-            case " $conds " in
-              *" Complete "*)
-                echo "migration completed"
-                kubectl -n "$NAMESPACE" logs job/db-migrate --tail=50
-                exit 0
-                ;;
-              *" Failed "*)
-                echo "migration failed (conditions: $conds)"
-                kubectl -n "$NAMESPACE" logs job/db-migrate --tail=200
-                exit 1
-                ;;
-            esac
-            sleep 5
-          done
-          echo "migration timed out after 660s"
-          kubectl -n "$NAMESPACE" logs job/db-migrate --tail=200
-          exit 1
+          # 引数: Job 名 / 待つ秒数（その Job の activeDeadlineSeconds + 60）
+          run_job() {
+            local job=$1 limit=$2 conds
+            local deadline=$(( SECONDS + limit ))
+            kubectl -n "$NAMESPACE" delete job "$job" --ignore-not-found
+            JOB="$job" yq 'select(.kind == "Job" and .metadata.name == strenv(JOB))' \
+              "$RUNNER_TEMP/rendered.yaml" | kubectl apply -f -
+            # `kubectl wait --for=condition=complete` は Failed を検知せず
+            # timeout まで待ち続ける。Job 側は backoffLimit: 0 /
+            # activeDeadlineSeconds で失敗が数十秒で確定するので、
+            # complete と failed の両方をポーリングして即座に打ち切る
+            while [ "$SECONDS" -lt "$deadline" ]; do
+              conds=$(kubectl -n "$NAMESPACE" get job "$job" \
+                -o jsonpath='{.status.conditions[?(@.status=="True")].type}' 2>/dev/null || true)
+              case " $conds " in
+                *" Complete "*)
+                  echo "$job completed"
+                  kubectl -n "$NAMESPACE" logs "job/$job" --tail=50
+                  return 0
+                  ;;
+                *" Failed "*)
+                  echo "$job failed (conditions: $conds)"
+                  kubectl -n "$NAMESPACE" logs "job/$job" --tail=200
+                  return 1
+                  ;;
+              esac
+              sleep 5
+            done
+            echo "$job timed out after ${limit}s"
+            kubectl -n "$NAMESPACE" logs "job/$job" --tail=200
+            return 1
+          }
+          run_job db-check 360
+          run_job db-migrate 660
 
       - name: Apply manifests
         id: apply
@@ -263,6 +273,7 @@ jobs:
       - name: Collect logs on failure
         if: failure()
         run: |
+          kubectl -n "$NAMESPACE" logs job/db-check --tail=100 || true
           kubectl -n "$NAMESPACE" logs job/db-migrate --tail=100 || true
           kubectl -n "$NAMESPACE" describe deploy/fishing-app || true
           kubectl -n "$NAMESPACE" logs deploy/fishing-app --tail=100 || true

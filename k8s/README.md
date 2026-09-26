@@ -44,6 +44,7 @@ ImagePullBackOff になる**。`fishing-infra` の RBAC は CI に
 | `config.env` | 非機密の環境変数。`kustomization.yaml` の `configMapGenerator` が ConfigMap を生成する（下記） |
 | `secret.enc.yaml` | SOPS/age 暗号化済みの機密。**kustomization には含めない** |
 | `job-db-migrate.yaml` | `prisma migrate deploy`。**毎回 delete してから apply する**（下記） |
+| `job-db-check.yaml` | pooled 側の `DATABASE_URL` に `SELECT 1` を1回投げる（#191）。db-migrate と同じく**毎回 delete してから apply する** |
 | `job-db-seed.yaml` | 初期データ投入。初回のみ手動。**kustomization には含めない** |
 
 ### probe がすべて `/healthz` を向く理由
@@ -78,14 +79,20 @@ startup / liveness / readiness の3つとも、依存ゼロの `/healthz` を叩
 DB に繋がらないと Ready にならず、`rollout status` が落ちて止まっていた。いまは
 `/healthz` が通るので、Secret の `DATABASE_URL`（アプリが使う pooled 側）を壊しても
 ロールアウトは完了する。migrate は `DATABASE_URL_DIRECT` しか読まないので、pooled 側
-だけ壊れた場合は migrate も通る。そのため `deploy.yml` のブロッキングスモークで
-`/readyz` を**デプロイごとに1回だけ**叩いて落とす（直前の migrate で compute は起きて
-おり、1回きりなので autosuspend も妨げない）。
+だけ壊れた場合は migrate も通る。
 
-**ただし `Rollback on failure` の `rollout undo` では Secret 起因の障害は直らない。**
-Pod テンプレートは戻るが、作り直された Pod も壊れた Secret を読むため。デプロイが
-赤くなったら Secret を直して再デプロイする。なお以前の構成でも、壊れた Secret が
-適用されたまま残るので、次に Pod が再起動した時点で全面停止していた。
+そこで `deploy.yml` は **Apply manifests の前に** `db-check` Job（アプリと同じイメージ・
+同じ `pg` ドライバで `DATABASE_URL` に `SELECT 1`）を流し、繋がらなければロールアウト
+せずに止める（#191）。旧 Pod はそのまま動き続ける。`rollout undo` では Secret 起因の
+障害は直らない（作り直された Pod も壊れた Secret を読む）ので、旧 Pod を消す前に
+止めるしかない。ログにはエラーコードだけを出し、接続文字列は出さない。
+
+加えてブロッキングスモークで `/readyz` を**デプロイごとに1回だけ**叩く（直前の migrate で
+compute は起きており、1回きりなので autosuspend も妨げない）。
+
+**Secret はロールアウトより前に適用済み**なので、db-check で止まっても壊れた Secret は
+クラスタに残る。旧 Pod は起動時に読んだ値で動き続けるが、次に再起動した時点で壊れた
+値を読む。デプロイが赤くなったら Secret を直して再デプロイする。
 
 ## ローカル検証
 
@@ -114,7 +121,8 @@ sops -d k8s/secret.enc.yaml | kubectl apply -f -
 #    ConfigMap → Service → Deployment → Job なので、
 #    Deployment だけ新イメージに変わってから Job が落ちる
 #    （＝マイグレーション未実行のまま新コードが出る）
-kubectl -n fishing delete job db-migrate --ignore-not-found --wait=true
+#    db-check も同じ（#191）
+kubectl -n fishing delete job db-migrate db-check --ignore-not-found --wait=true
 
 # 3. まとめて適用
 kustomize build k8s/ | kubectl apply -f -
