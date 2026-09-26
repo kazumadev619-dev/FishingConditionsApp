@@ -67,7 +67,7 @@ gh issue create --title 'E2E: docs の軽微な置換' --body "対象: $TARGET
 確認: 変更前文字列は対象ファイル内で1件"
 ```
 
-`rg -n`で対象行を確認し、`rg --count-matches`が`$TARGET:1`を返すこと、Issue本文に対象ファイルと正確な旧→新があることを確認する。同じ手順を最大3回繰り返し、対象ファイルを重複させない。この時点では各Issueに`agent:ready`を付けない。人が開始を判断した時だけ次を実行する。
+`rg -n`で対象行を確認し、`rg --count-matches`が`1`を返すこと、Issue本文に対象ファイルと正確な旧→新があることを確認する。同じ手順を最大3回繰り返し、対象ファイルを重複させない。この時点では各Issueに`agent:ready`を付けない。人が開始を判断した時だけ次を実行する。
 
 ```bash
 gh issue edit <A> <B> <C> --add-label agent:ready
