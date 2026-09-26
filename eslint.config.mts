@@ -1,6 +1,5 @@
 import js from '@eslint/js';
 import eslintPluginNext from '@next/eslint-plugin-next';
-import pluginReact from 'eslint-plugin-react';
 import eslintPluginReactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
@@ -36,21 +35,6 @@ export default [
     files: ['**/*.{ts,mts,cts,tsx}'],
   })),
 
-  // React configuration (JSX/TSXファイルにのみ適用)
-  {
-    files: ['**/*.{jsx,tsx}'],
-    name: 'eslint/recommended-react',
-    plugins: {
-      react: pluginReact,
-    },
-    rules: pluginReact.configs['jsx-runtime'].rules,
-    settings: {
-      react: {
-        version: 'detect',
-        runtime: 'automatic',
-      },
-    },
-  },
   {
     files: ['**/*.{jsx,tsx}'],
     name: 'react/hooks/recommended',
