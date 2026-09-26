@@ -70,6 +70,8 @@ async function run() {
   return process.exitCode;
 }
 
+const argv = process.argv;
+
 describe('update-port-coordinates の終了コード（#208, #218）', () => {
   beforeEach(() => {
     process.exitCode = undefined;
@@ -80,6 +82,7 @@ describe('update-port-coordinates の終了コード（#208, #218）', () => {
   });
 
   afterEach(() => {
+    process.argv = argv;
     process.exitCode = undefined;
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
@@ -114,6 +117,17 @@ describe('update-port-coordinates の終了コード（#208, #218）', () => {
     stubFetch(false);
     expect(await run()).toBe(1);
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it('--dry-run でも全港で失敗したら 1 で終わる（#218）', async () => {
+    process.argv = [...argv, '--dry-run'];
+    stubFetch(false);
+    expect(await run()).toBe(1);
+  });
+
+  it('対象の港が0件なら 0 のまま終わる（#218）', async () => {
+    findMany.mockResolvedValue([]);
+    expect(await run()).toBeUndefined();
   });
 
   // run() は pool.end() を待つので、後片付けが走らなければタイムアウトで落ちる
