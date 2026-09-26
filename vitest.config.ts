@@ -14,6 +14,7 @@ export default defineConfig({
       'src/**/*.test.ts',
       'src/**/*.test.tsx',
       '*.test.ts',
+      'scripts/*.test.ts',
       'scripts/ai-factory/**/*.test.ts',
     ],
     environment: 'node',

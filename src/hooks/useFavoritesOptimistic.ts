@@ -17,6 +17,9 @@ interface UseFavoritesOptimisticProps {
   fetchFavorites: () => Promise<void>;
 }
 
+// 楽観更新の一時行の id。一意でさえあればよいので連番で足りる
+let tempSeq = 0;
+
 export function useFavoritesOptimistic({
   favorites,
   setFavorites,
@@ -30,9 +33,12 @@ export function useFavoritesOptimistic({
       lng?: number,
       name?: string,
     ): Promise<string> => {
+      // 同時に複数追加したとき、失敗した1件だけを消せるよう毎回別の id にする。
+      // FavoriteTab は id を React の key に使うので、固定値だと key も衝突する（#152）
+      const tempId = `temp-${++tempSeq}`;
       const tempFavorite: FavoriteLocation = {
-        id: 'temp',
-        locationId: locationId || 'temp',
+        id: tempId,
+        locationId: locationId || tempId,
         name: name || '',
         latitude: lat || 0,
         longitude: lng || 0,
@@ -80,7 +86,7 @@ export function useFavoritesOptimistic({
         return data.locationId;
       } catch (err) {
         logger.error({ err, locationId, portId, lat, lng }, 'Failed to add favorite');
-        setFavorites((prev) => prev.filter((fav) => fav.id !== 'temp'));
+        setFavorites((prev) => prev.filter((fav) => fav.id !== tempId));
         throw err;
       }
     },
@@ -89,7 +95,7 @@ export function useFavoritesOptimistic({
 
   const removeFavorite = useCallback(
     async (locationId: string) => {
-      const previousFavorites = favorites;
+      const removed = favorites.find((fav) => fav.locationId === locationId);
       setFavorites((prev) => prev.filter((fav) => fav.locationId !== locationId));
 
       try {
@@ -110,7 +116,19 @@ export function useFavoritesOptimistic({
         }
       } catch (err) {
         logger.error({ err, locationId }, 'Failed to remove favorite');
-        setFavorites(previousFavorites);
+        // クリック時点の配列を丸ごと戻すと、その間に成功した別の操作まで巻き戻る。
+        // 消した1件だけを、サーバと同じ createdAt の新しい順の位置に戻す（#152）。
+        // index やクリック時点の前後の行で決めると、操作や失敗の順番で並びが入れ替わる。
+        // createdAt はどちらも toISOString() の文字列なので、文字列比較で新旧が決まる
+        if (removed) {
+          setFavorites((prev) => {
+            if (prev.some((fav) => fav.locationId === locationId)) return prev;
+            const at = prev.findIndex((fav) => fav.createdAt < removed.createdAt);
+            return at === -1
+              ? [...prev, removed]
+              : [...prev.slice(0, at), removed, ...prev.slice(at)];
+          });
+        }
         throw err;
       }
     },

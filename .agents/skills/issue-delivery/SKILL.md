@@ -112,6 +112,19 @@ GitHub が自動クローズするのは**デフォルトブランチ（main）�
 - **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する。issue の一部だけを扱う PR なら「この PR では閉じない」と書く（ステップ6で `Closes` と `Refs` を分けるときの手がかりになる）
 - **main 昇格 PR**: ステップ6の手順で書く
 
+### まず OCR（delegate モード）で diff を一通り読む
+
+PR を出す前に、自分で open-code-review の delegate レビューをかける（手順は CLAUDE.md / AGENTS.md の「コードレビュー」）。API キーは要らない。
+
+```bash
+ocr delegate preview --format json --from origin/develop --to HEAD
+ocr delegate rule --format json <reviewable_files のパス...>
+```
+
+- `reviewable_files` を全部 reviewed か skipped（理由つき）にする。狙いは**見落としたファイルを作らない**こと
+- Critical/High は PR 前に直す。確信が持てない指摘は直さずに、次の pr-verifier に「確かめてほしい点」として渡す
+- OCR は diff を読むだけで何も実行しない。**これで pr-verifier を省略しない**
+
 ### レビューは `pr-verifier` agent に worktree 隔離で投げる
 
 守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.codex/agents/pr-verifier.toml` に書いてある。Codex の subagent は親の cwd を共有するため、呼び出し側が先に `mcp__codex_app__create_worktree` でレビュー専用の worktree を作る。返された workspace の**絶対パス**、PR 番号、本文の主張、重点観点の4つを `collaboration.spawn_agent` の `agent_type: "pr-verifier"` に渡す。

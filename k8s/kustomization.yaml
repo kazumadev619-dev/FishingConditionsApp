@@ -13,6 +13,7 @@ resources:
   - ingress.yaml
   - deployment.yaml
   - job-db-migrate.yaml
+  - job-db-check.yaml
 
 # db-seed は初回手動実行なので resources に含めない
 
