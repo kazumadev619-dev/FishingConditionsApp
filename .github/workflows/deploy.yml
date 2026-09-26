@@ -282,7 +282,8 @@ jobs:
           # Actions の既定は bash -e。判定は row にコマンドで渡し、偽でもステップを止めない
           set -o pipefail
           ng=0
-          status() { curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}$1"; }
+          # 接続できないときも止めない（curl は 000 を出して非 0 で終わる）
+          status() { curl -s -o /dev/null -w "%{http_code}" "${BASE_URL}$1" || true; }
           # $1: 見出し / $2: 実際の値 / 残り: OK なら真になるコマンド
           row() {
             local label=$1 value=$2
@@ -312,7 +313,7 @@ jobs:
             done
 
             echo "### セキュリティヘッダ（\`/login\`。#134）"
-            headers=$(curl -s -o /dev/null -D - "${BASE_URL}/login")
+            headers=$(curl -s -o /dev/null -D - "${BASE_URL}/login" || true)
             for h in Content-Security-Policy Strict-Transport-Security X-Content-Type-Options \
                      X-Frame-Options Referrer-Policy Permissions-Policy Cross-Origin-Opener-Policy; do
               grep -qi "^${h}:" <<<"$headers" && v=あり || v=無い
@@ -333,7 +334,8 @@ jobs:
               | sort -u) || refs=
             row "ReplicaSet が参照する ConfigMap" "${refs//$'\n'/ }" test -n "$refs"
             for cm in $refs; do
-              kubectl -n "$NAMESPACE" get configmap "$cm" -o name >/dev/null 2>&1 && v=ある || v=無い
+              # stderr はログに残す（NotFound と Forbidden を見分けるため）
+              kubectl -n "$NAMESPACE" get configmap "$cm" -o name >/dev/null && v=ある || v=無い
               row "\`${cm}\`" "$v" test "$v" = ある
             done
           } >> "$GITHUB_STEP_SUMMARY"
