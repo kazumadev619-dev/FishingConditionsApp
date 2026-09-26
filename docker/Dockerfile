@@ -71,7 +71,7 @@ RUN AUTH_SECRET=build-time-placeholder-not-used-at-runtime \
 # prune をこの中間ステージで行うのは、migrator のステージで消しても
 # レイヤは加算のため実体がイメージに残るから（runner のコメントと同じ落とし穴）。
 #
-# Prisma CLI（と prisma.config.ts が読む dotenv）は package-lock.json 上で
+# Prisma CLI は package-lock.json 上で
 # devOptional 扱いのため --omit=dev でも残る。seed が使う tsx は
 # dependencies に置いている。prune の直後に prisma.config.ts を tsx で
 # 読み込み、どれかが消えていたらビルドの時点で落とす。
