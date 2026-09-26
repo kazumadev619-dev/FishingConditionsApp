@@ -118,7 +118,8 @@ async function main() {
     let successCount = 0;
     let failCount = 0;
     // DB 側の失敗は権限不足など設定の誤りなので、Job を失敗させる（#208）。
-    // 外部 API 側の失敗は一時的なものが多く、1港の失敗で全体をやり直させないよう数えるだけにする
+    // 外部 API 側の失敗は一時的なものが多く、1港の失敗で全体をやり直させないよう数えるだけにする。
+    // ただし全港で失敗したら API 自体が落ちているので、座標が NULL のまま成功扱いにしない（#218）
     let dbFailCount = 0;
     let skipCount = 0;
 
@@ -193,6 +194,9 @@ async function main() {
     if (dbFailCount > 0) {
       console.error(`\n❌ DB update failed for ${dbFailCount} port(s). Exiting with code 1.`);
       process.exitCode = 1;
+    } else if (failCount === targetPorts.length) {
+      console.error('\n❌ Coordinates fetch failed for every port. Exiting with code 1.');
+      process.exitCode = 1;
     } else if (!isDryRun && successCount > 0) {
       console.log('\n✨ Coordinates update completed!');
     } else if (isDryRun) {
@@ -200,7 +204,8 @@ async function main() {
     }
   } catch (error) {
     console.error('\n❌ Fatal error:', error);
-    process.exit(1);
+    // process.exit() だと finally の $disconnect / pool.end が走らない（#218）
+    process.exitCode = 1;
   } finally {
     await prisma.$disconnect();
     await pool.end();
