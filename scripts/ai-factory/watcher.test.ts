@@ -371,14 +371,36 @@ describe('daemon scheduler', () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-resume-quota-'));
     const command = recoveredRunCommand(root, []);
     const runRunner = vi.fn();
+    const readAccount = vi.fn()
+      .mockResolvedValueOnce({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } })
+      .mockResolvedValueOnce({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 81, resetsAt: 1_800_000_000 } } });
     const active = new Map();
     try {
       await runScheduledCycle({ active, command, runRunner, stateRoot: root,
         workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
-        readAccount: async () => ({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 81, resetsAt: 1_800_000_000 } } }),
+        readAccount,
       });
       await vi.waitFor(() => expect(active.size).toBe(0));
+      expect(readAccount).toHaveBeenCalledTimes(2);
       expect(runRunner).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('settles a recovered runner failure even when its error log cannot be written', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-recovery-log-'));
+    const active = new Map();
+    const readAccount = vi.fn()
+      .mockResolvedValueOnce({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } })
+      .mockRejectedValueOnce(new Error('account unavailable'));
+    try {
+      await mkdir(join(root, 'watcher.jsonl'));
+      await runScheduledCycle({ active, command: recoveredRunCommand(root, []), readAccount,
+        stateRoot: root, workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
+      });
+      await expect(active.get(42)?.promise).resolves.toMatchObject({ state: 'agent:failed' });
+      await vi.waitFor(() => expect(active.size).toBe(0));
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -422,7 +444,9 @@ describe('daemon scheduler', () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-blocked-'));
     const blocked = { number: 42, title: 'Blocked run', body: '', labels: [{ name: 'agent:blocked' }] };
     const ready = { number: 43, title: 'Ready', body: '', labels: [{ name: 'agent:ready' }] };
-    const command = vi.fn(async (_file: string, args: string[]) => {
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'git' && args[0] === 'worktree') return { stdout: `worktree ${join(root, 'worktrees', 'issue-42')}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
+      if (file === 'ps') return { stdout: 'codex exec resume 0199a213-81c0-7800-8aa1-bbab2a035a53\n' };
       if (args[0] === 'issue' && args[1] === 'list') {
         return { stdout: JSON.stringify(args.includes('agent:blocked') ? [blocked] : args.includes('agent:ready') ? [ready] : []) };
       }
@@ -446,7 +470,7 @@ describe('daemon scheduler', () => {
     try {
       for (let cycle = 0; cycle < 2; cycle += 1) {
         const result = await runScheduledCycle({
-          command, runIssue, stateRoot: root, env: { PATH: '/usr/bin', HOME: root },
+          command, runIssue, stateRoot: root, workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root },
           isPidAlive: () => true,
         });
         expect(result.recovered).toMatchObject([
@@ -454,6 +478,35 @@ describe('daemon scheduler', () => {
         ]);
         expect(runIssue).not.toHaveBeenCalled();
       }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not reserve a blocked run when its PID belongs to another process', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-reused-pid-'));
+    const blocked = { number: 42, title: 'Blocked run', body: '', labels: [{ name: 'agent:blocked' }] };
+    let processCommand = 'unrelated-service --listen';
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify(args.includes('agent:blocked') ? [blocked] : []) };
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (file === 'gh' && args[0] === 'api') return { stdout: JSON.stringify([[{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment({
+        issue: 42, status: 'running', branch: 'codex/issue-42', worktreeId: 'issue-42', model: 'gpt-5.6-terra',
+        attempt: 1, runnerPid: 1234, threadId: 'old-thread', heartbeatAt: '2026-09-22T00:00:00.000Z',
+      }) }]]) };
+      if (file === 'git' && args[0] === 'worktree') return { stdout: `worktree ${join(root, 'worktrees', 'issue-42')}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
+      if (file === 'ps') return { stdout: `${processCommand}\n` };
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+    try {
+      await expect(reconcileStartup({ command, stateRoot: root, workRoot: join(root, 'worktrees'),
+        includeBlocked: true, isPidAlive: () => true, env: { PATH: '/usr/bin', HOME: root },
+      })).resolves.toEqual([{ issue: 42, action: 'blocked' }]);
+      processCommand = '';
+      await expect(reconcileStartup({ command, stateRoot: root, workRoot: join(root, 'worktrees'),
+        includeBlocked: true, isPidAlive: () => true, env: { PATH: '/usr/bin', HOME: root },
+      })).resolves.toMatchObject([{ issue: 42, action: 'blocked', reserved: true }]);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

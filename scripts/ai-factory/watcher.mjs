@@ -581,7 +581,7 @@ async function recoverInfrastructureFailure(
 }
 
 /**
- * @param {{ command?: CommandAdapter, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean, now?: Date }} [options]
+ * @param {{ command?: CommandAdapter, runRunner?: (...args: any[]) => any, stateRoot?: string, workRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean, now?: Date, includeBlocked?: boolean }} [options]
  */
 export async function reconcileStartup({
   command: commandAdapter = command,
@@ -665,15 +665,39 @@ export async function reconcileStartup({
       const latestRun = comments.filter(
         (comment) => comment.user?.login === viewer && comment.body?.startsWith('<!-- ai-factory-run:v1 -->'),
       ).at(-1);
-      let runnerAlive = false;
+      let record;
       try {
-        runnerAlive = isPidAlive(parseRunComment(latestRun, { issue: number, viewer }).runnerPid);
+        record = parseRunComment(latestRun, { issue: number, viewer });
       } catch {
         // A blocked Issue without valid live-run evidence stays blocked, not runnable.
       }
-      results.push(runnerAlive
+      if (!record || !isPidAlive(record.runnerPid)) {
+        results.push({ issue: number, action: 'blocked' });
+        continue;
+      }
+      let matchingRunner = false;
+      let uncertain = false;
+      try {
+        const listed = parseWorktrees((await commandAdapter('git', ['worktree', 'list', '--porcelain'])).stdout);
+        const attached = listed.find((entry) => entry.path === worktree);
+        if (!attached || attached.branch !== identity.branch || (record.planHash && record.planHash !== planRecord?.inputHash)) {
+          uncertain = true;
+        } else {
+          const processCommand = (await commandAdapter('ps', ['-ww', '-p', String(record.runnerPid), '-o', 'command='])).stdout.trim();
+          uncertain = processCommand.length === 0;
+          matchingRunner = /(?:^|\/)codex exec /.test(processCommand) && (
+            processCommand.includes(`-C ${worktree}`) || processCommand.includes(`resume ${record.threadId}`)
+          );
+        }
+      } catch {
+        // If process evidence is unavailable, keep the exclusive reservation for safety.
+        uncertain = true;
+      }
+      results.push(matchingRunner
         ? { issue: number, action: 'monitor', reserved: true, plan: { plannedPaths: [], exclusive: true } }
-        : { issue: number, action: 'blocked' });
+        : uncertain
+          ? { issue: number, action: 'blocked', reserved: true, plan: { plannedPaths: [], exclusive: true } }
+          : { issue: number, action: 'blocked' });
       continue;
     }
     if (prepareRetry) {
@@ -875,6 +899,18 @@ export async function reconcileStartup({
     }
 
     if (record.threadId && record.attempt < 3) {
+      try {
+        await ensureQuota(readAccount, env);
+      } catch (error) {
+        if (!error?.usage) throw error;
+        results.push({
+          issue: number,
+          action: 'quota',
+          usage: error.usage,
+          plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
+        });
+        continue;
+      }
       if (deferRecovery) {
         results.push({
           issue: number,
@@ -892,18 +928,6 @@ export async function reconcileStartup({
               now,
               onlyIssues: [number],
             }),
-        });
-        continue;
-      }
-      try {
-        await ensureQuota(readAccount, env);
-      } catch (error) {
-        if (!error?.usage) throw error;
-        results.push({
-          issue: number,
-          action: 'quota',
-          usage: error.usage,
-          plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
         });
         continue;
       }
@@ -1633,16 +1657,20 @@ export async function runScheduledCycle({
       continue;
     }
     const promise = recovery.execute().catch(async (error) => {
-      await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
-        level: 'error',
-        event: 'recovered-runner-failed',
-        issue: recovery.issue,
-        reason: error.message,
-      });
+      try {
+        await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+          level: 'error',
+          event: 'recovered-runner-failed',
+          issue: recovery.issue,
+          reason: error.message,
+        });
+      } catch (logError) {
+        return { state: STATES.FAILED, reason: logError.message };
+      }
       return { state: STATES.FAILED, reason: error.message };
     });
     active.set(recovery.issue, { plan: recovery.plan, promise });
-    void promise.finally(() => active.delete(recovery.issue));
+    void promise.then(() => active.delete(recovery.issue), () => active.delete(recovery.issue));
   }
   await fillAvailableSlots(active, options, recovered);
   return { active, recovered };
