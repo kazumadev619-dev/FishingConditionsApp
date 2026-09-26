@@ -399,8 +399,7 @@ describe('run recovery record', () => {
   });
 
   it('accepts Phase 1 Terra records without a plan hash for recovery only', () => {
-    const legacyRecord = { ...record };
-    delete legacyRecord.planHash;
+    const legacyRecord = { ...record, planHash: undefined };
     expect(
       parseRunComment(
         {
