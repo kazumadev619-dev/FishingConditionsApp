@@ -52,7 +52,28 @@ npm run factory:status
 launchctl print gui/$(id -u)/com.kazuma-lab.fishing-conditions-ai-factory
 ```
 
-daemonはSol計画を直列に行い、workerは最大3件を並列実行する。依存Issueが未完了、または計画の対象パスが競合する場合は待機する。空き枠は次のサイクルで補充される。実Issueで試す場合は、互いに非競合な無害のdocs Issueを最大3件、人が明示的に`agent:ready`へ入れる。自動テストはIssueやPRを作成しない。
+daemonはSol計画を直列に行い、workerは最大3件を並列実行する。依存Issueが未完了、または計画の対象パスが競合する場合は待機する。空き枠は次のサイクルで補充される。自動テストはIssueやPRを作成しない。
+
+実Issueの手動E2Eは、人が承認してから行う。まず互いに異なるdocsファイルだけを対象にした無害のIssueを最大3件作成し、Issue番号を控える。この時点では`agent:ready`を付けない。
+
+```bash
+gh issue create --title 'E2E: docs guide A' --body 'docs/guides/development.md の誤字だけを修正する'
+gh issue create --title 'E2E: docs guide B' --body 'docs/guides/docker.md の誤字だけを修正する'
+gh issue create --title 'E2E: docs guide C' --body 'docs/README.md のリンク表記だけを修正する'
+gh issue view <A> --json number,title,labels
+gh issue view <B> --json number,title,labels
+gh issue view <C> --json number,title,labels
+```
+
+3件以下で、対象ファイルが重複せず、各Issueに`agent:ready`がないことを確認する。人が開始を判断した時だけ次を実行する。
+
+```bash
+gh issue edit <A> <B> <C> --add-label agent:ready
+launchctl kickstart -k gui/$(id -u)/com.kazuma-lab.fishing-conditions-ai-factory
+npm run factory:status
+```
+
+期待結果は、各Issueが`agent:running`または`agent:review`になり、同時worker数が3以下で、対象がdocsの各1ファイルに限られること。検証後は人がIssueとPRをcloseし、`agent:ready`を外す。
 
 停止とアンインストールは固定labelのLaunchAgentだけを対象にする。
 
@@ -74,7 +95,14 @@ git branch --list 'codex/issue-*'
 gh pr list --state all --base develop
 ```
 
-Issueの`<!-- ai-factory-plan:v1 -->` commentで計画、対象パス、依存Issue、入力hashを確認する。依存待ち・競合待ちはこのmarkerの依存Issueと対象パスを確認し、`agent:ready`に留める。範囲外の変更は`<!-- ai-factory-run:v1 -->` commentの計画hashとworktreeを照合して`agent:blocked`を確認する。復旧時は同markerのbranch、worktree ID、PID、thread ID、heartbeat、計画hashを確認してから`agent:recovery`を再開する。Watcherは既存PR、runner、resultの順に照合し、dirty worktreeを削除・resetしない。
+Issue commentを取得するには対象番号を指定する。
+
+```bash
+ISSUE=<番号>
+gh issue view "$ISSUE" --comments --json number,labels,comments --jq '.comments[] | select(.body | contains("<!-- ai-factory-plan:v1 -->") or contains("<!-- ai-factory-run:v1 -->") or contains("changed paths are outside the planned paths")) | .body'
+```
+
+依存待ちは`<!-- ai-factory-plan:v1 -->`の`dependencies`に未closeのIssueがあり、競合待ちは同markerの`plannedPaths`または`exclusive`が稼働中Issueの計画と重なることを確認して、どちらも`agent:ready`に留める。範囲外の変更では`<!-- ai-factory-run:v1 -->`の`planHash`とworktreeを照合し、`changed paths are outside the planned paths`と`agent:blocked`を確認する。復旧時は同markerのbranch、worktree ID、PID、thread ID、heartbeat、計画hashを確認し、plan markerの入力hashと一致する場合だけ`agent:recovery`を再開する。Watcherは既存PR、runner、resultの順に照合し、dirty worktreeを削除・resetしない。
 
 `agent:blocked`と`agent:failed`は人が原因とworktreeを確認する。安全に再開できる場合だけ、他の状態ラベルを外して`agent:ready`へ戻す。
 
