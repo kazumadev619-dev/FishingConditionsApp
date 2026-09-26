@@ -54,18 +54,20 @@ launchctl print gui/$(id -u)/com.kazuma-lab.fishing-conditions-ai-factory
 
 daemonはSol計画を直列に行い、workerは最大3件を並列実行する。依存Issueが未完了、または計画の対象パスが競合する場合は待機する。空き枠は次のサイクルで補充される。自動テストはIssueやPRを作成しない。
 
-実Issueの手動E2Eは、人が承認してから行う。まず互いに異なるdocsファイルだけを対象にした無害のIssueを最大3件作成し、Issue番号を控える。この時点では`agent:ready`を付けない。
+実Issueの手動E2Eは、人が承認してから行う。まず互いに異なるdocsファイルから、実在する軽微な置換を人が1件ずつ選ぶ。架空の誤字を指定しない。各候補は、変更前の文字列が対象ファイルにちょうど1件あることを確認する。
 
 ```bash
-gh issue create --title 'E2E: docs guide A' --body 'docs/guides/development.md の誤字だけを修正する'
-gh issue create --title 'E2E: docs guide B' --body 'docs/guides/docker.md の誤字だけを修正する'
-gh issue create --title 'E2E: docs guide C' --body 'docs/README.md のリンク表記だけを修正する'
-gh issue view <A> --json number,title,labels
-gh issue view <B> --json number,title,labels
-gh issue view <C> --json number,title,labels
+TARGET='docs/guides/development.md' # docs/guides/docker.md や docs/README.md と重複させない
+OLD='人が確認した変更前の正確な文字列'
+NEW='変更後の正確な文字列'
+rg -n --fixed-strings "$OLD" "$TARGET"
+rg --count-matches --fixed-strings "$OLD" "$TARGET"
+gh issue create --title 'E2E: docs の軽微な置換' --body "対象: $TARGET
+変更: \`$OLD\` → \`$NEW\`
+確認: 変更前文字列は対象ファイル内で1件"
 ```
 
-3件以下で、対象ファイルが重複せず、各Issueに`agent:ready`がないことを確認する。人が開始を判断した時だけ次を実行する。
+`rg -n`で対象行を確認し、`rg --count-matches`が`$TARGET:1`を返すこと、Issue本文に対象ファイルと正確な旧→新があることを確認する。同じ手順を最大3回繰り返し、対象ファイルを重複させない。この時点では各Issueに`agent:ready`を付けない。人が開始を判断した時だけ次を実行する。
 
 ```bash
 gh issue edit <A> <B> <C> --add-label agent:ready
