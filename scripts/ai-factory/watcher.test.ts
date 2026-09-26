@@ -1,4 +1,5 @@
 import { EventEmitter } from 'node:events';
+import { spawn } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -299,6 +300,165 @@ describe('watcher dry-run', () => {
 });
 
 describe('daemon scheduler', () => {
+  function recoveredRunCommand(root: string, ready: Array<{ number: number; title: string; body: string; labels: Array<{ name: string }> }>) {
+    const recovering = { number: 42, title: 'Resume docs', body: '', labels: [{ name: 'agent:recovery' }] };
+    const plan = { outcome: 'planned', workerModel: 'gpt-5.6-luna', plannedPaths: ['docs'], dependencies: [], exclusive: false, reason: 'docs' };
+    const worktree = join(root, 'worktrees', 'issue-42');
+    let state = 'agent:recovery';
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') {
+        return { stdout: JSON.stringify(args.includes('agent:recovery') && state === 'agent:recovery' ? [recovering] : args.includes('agent:ready') ? ready : []) };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) {
+        const number = Number(args[1].match(/issues\/(\d+)\/comments/)?.[1]);
+        const issue = number === 42 ? recovering : ready.find((candidate) => candidate.number === number);
+        if (!issue) throw new Error(`missing Issue ${number}`);
+        const comments = [{ id: number, user: { login: 'factory-bot' }, body: renderPlanComment({
+          issue: number, inputHash: planInputHash(issue), model: 'gpt-5.6-sol',
+          plan: number === 42 ? plan : { ...plan, plannedPaths: number === 43 ? ['docs/README.md'] : [`src/${number}`] },
+          plannedAt: '2026-09-23T00:00:00.000Z',
+        }) }];
+        if (number === 42) comments.push({ id: 77, user: { login: 'factory-bot' }, body: renderRunComment({
+          issue: 42, status: 'running', branch: 'codex/issue-42', worktreeId: 'issue-42',
+          model: 'gpt-5.6-luna', attempt: 1, runnerPid: 1234,
+          threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+          heartbeatAt: '2026-09-22T00:00:00.000Z', planHash: planInputHash(recovering),
+        }) });
+        return { stdout: JSON.stringify([comments]) };
+      }
+      if (file === 'gh' && args[0] === 'pr') return { stdout: '[]' };
+      if (file === 'git' && args[0] === 'worktree') return { stdout: `worktree ${worktree}\nHEAD abc123\nbranch refs/heads/codex/issue-42\n` };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
+        state = args[args.indexOf('--add-label') + 1];
+        return { stdout: '' };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'comment') return { stdout: '' };
+      if (file === 'gh' && args[0] === 'api') return { stdout: '{}' };
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+    return command;
+  }
+
+  it('registers a deferred resume in the pool and fills unrelated slots', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-resume-pool-'));
+    const ready = [43, 44, 45].map((number) => ({ number, title: `Issue ${number}`, body: '', labels: [{ name: 'agent:ready' }] }));
+    const command = recoveredRunCommand(root, ready);
+    const started: number[] = [];
+    let releaseResume: (value: unknown) => void = () => {};
+    const runRunner = vi.fn(() => new Promise((resolve) => { releaseResume = resolve; }));
+    const runIssue = vi.fn((issue: { number: number }) => { started.push(issue.number); return new Promise(() => {}); });
+    const active = new Map();
+    try {
+      const result = await runScheduledCycle({ active, command, runRunner, runIssue, stateRoot: root,
+        workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
+        readAccount: async () => ({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } }),
+      });
+      await vi.waitFor(() => expect(runRunner).toHaveBeenCalledOnce());
+      expect(result.recovered).toMatchObject([{ issue: 42, action: 'launch', plan: { plannedPaths: ['docs'] } }]);
+      expect(Array.from(active.keys())).toEqual([42, 44, 45]);
+      expect(started).toEqual([44, 45]);
+      releaseResume({ result: { outcome: 'blocked', reason: 'stop', commitType: 'fix', summary: 'Stop' }, threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53', runnerPid: 1234 });
+      await vi.waitFor(() => expect(active.has(42)).toBe(false));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('checks quota again immediately before a deferred recovered runner', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-resume-quota-'));
+    const command = recoveredRunCommand(root, []);
+    const runRunner = vi.fn();
+    const active = new Map();
+    try {
+      await runScheduledCycle({ active, command, runRunner, stateRoot: root,
+        workRoot: join(root, 'worktrees'), env: { PATH: '/usr/bin', HOME: root }, isPidAlive: () => false,
+        readAccount: async () => ({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 81, resetsAt: 1_800_000_000 } } }),
+      });
+      await vi.waitFor(() => expect(active.size).toBe(0));
+      expect(runRunner).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('plans ready Issues with Sol one at a time', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-sol-serial-'));
+    const ready = [1, 2].map((number) => ({ number, title: `Issue ${number}`, body: '', labels: [{ name: 'agent:ready' }] }));
+    const command = vi.fn(async (file: string, args: string[]) => {
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'list') return { stdout: JSON.stringify(args.includes('agent:ready') ? ready : []) };
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (file === 'gh' && args[0] === 'api' && args.includes('--paginate')) return { stdout: '[[]]' };
+      if (file === 'gh' && args[0] === 'api' && args.includes('POST')) return { stdout: '{"id":77}' };
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+    let releaseFirst: (value: unknown) => void = () => {};
+    let planning = 0;
+    const runRunner = vi.fn(() => {
+      planning += 1;
+      const result = { result: { outcome: 'planned', workerModel: 'gpt-5.6-luna', plannedPaths: [`src/${planning}`], dependencies: [], exclusive: false, reason: 'independent' } };
+      return planning === 1 ? new Promise((resolve) => { releaseFirst = () => resolve(result); }) : Promise.resolve(result);
+    });
+    const runIssue = vi.fn(() => new Promise(() => {}));
+    try {
+      const cycle = runScheduledCycle({ command, runRunner, runIssue, stateRoot: root,
+        env: { PATH: '/usr/bin', HOME: root },
+        readAccount: async () => ({ account: { type: 'chatgpt' }, ordinaryUsageAllowed: true, rateLimits: { primary: { usedPercent: 25, resetsAt: 1_800_000_000 } } }),
+      });
+      await vi.waitFor(() => expect(runRunner).toHaveBeenCalledOnce());
+      expect(runIssue).not.toHaveBeenCalled();
+      releaseFirst(undefined);
+      await cycle;
+      expect(runRunner).toHaveBeenCalledTimes(2);
+      expect(runIssue).toHaveBeenCalledTimes(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('keeps a blocked Issue with a live runner reserved across cycles', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-blocked-'));
+    const blocked = { number: 42, title: 'Blocked run', body: '', labels: [{ name: 'agent:blocked' }] };
+    const ready = { number: 43, title: 'Ready', body: '', labels: [{ name: 'agent:ready' }] };
+    const command = vi.fn(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'list') {
+        return { stdout: JSON.stringify(args.includes('agent:blocked') ? [blocked] : args.includes('agent:ready') ? [ready] : []) };
+      }
+      if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (args[0] === 'api' && args[1] === 'user') return { stdout: 'factory-bot\n' };
+      if (args[0] === 'api' && args.includes('--paginate')) {
+        if (args[1].includes('/43/')) return { stdout: JSON.stringify([[{ id: 78, user: { login: 'factory-bot' }, body: renderPlanComment({
+          issue: 43, inputHash: planInputHash(ready), model: 'gpt-5.6-sol',
+          plan: { outcome: 'planned', workerModel: 'gpt-5.6-luna', plannedPaths: ['docs'], dependencies: [], exclusive: false, reason: 'docs' },
+          plannedAt: '2026-09-23T00:00:00.000Z',
+        }) }]]) };
+        return { stdout: JSON.stringify([[{ id: 77, user: { login: 'factory-bot' }, body: renderRunComment({
+          issue: 42, status: 'running', branch: 'codex/issue-42', worktreeId: 'issue-42',
+          model: 'gpt-5.6-terra', attempt: 1, runnerPid: 1234,
+          threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53', heartbeatAt: '2026-09-22T00:00:00.000Z',
+        }) }]]) };
+      }
+      throw new Error(`unexpected command: ${args.join(' ')}`);
+    });
+    const runIssue = vi.fn();
+    try {
+      for (let cycle = 0; cycle < 2; cycle += 1) {
+        const result = await runScheduledCycle({
+          command, runIssue, stateRoot: root, env: { PATH: '/usr/bin', HOME: root },
+          isPidAlive: () => true,
+        });
+        expect(result.recovered).toMatchObject([
+          { issue: 42, action: 'monitor', reserved: true, plan: { exclusive: true } },
+        ]);
+        expect(runIssue).not.toHaveBeenCalled();
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('does not reconcile this process active issues before filling the remaining slot', async () => {
     const active = new Map([
       [1, { plan: { plannedPaths: ['docs/1'], exclusive: false }, promise: new Promise(() => {}) }],
@@ -413,7 +573,7 @@ describe('daemon scheduler', () => {
       expect(started).toEqual([1, 2, 3, 4]);
       expect(active).toHaveLength(3);
     } finally {
-      for (const release of releases.values()) release();
+      for (const release of Array.from(releases.values())) release();
       await vi.waitFor(() => expect(active).toHaveLength(0));
       await rm(root, { recursive: true, force: true });
     }
@@ -486,6 +646,27 @@ describe('daemon scheduler', () => {
 });
 
 describe('watcher lock', () => {
+  it('holds the daemon lock while its scheduling cycle is alive', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-daemon-lock-'));
+    const child = spawn(process.execPath, ['--input-type=module', '-e',
+      `import { watch } from ${JSON.stringify(new URL('./watcher.mjs', import.meta.url).href)}; await watch({ stateRoot: ${JSON.stringify(root)}, command: () => new Promise(() => { setInterval(() => {}, 1000); }) });`],
+      { stdio: ['ignore', 'ignore', 'pipe'] });
+    const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+    try {
+      await vi.waitFor(async () => {
+        if (child.exitCode !== null) throw new Error(`daemon exited: ${stderr}`);
+        expect(await readFile(join(root, 'watcher.lock'), 'utf8')).toBe(`${child.pid}\n`);
+      });
+      await expect(acquireLock(root)).resolves.toMatchObject({ acquired: false });
+      await expect(readFile(join(root, 'watcher.lock'), 'utf8')).resolves.toBe(`${child.pid}\n`);
+    } finally {
+      child.kill('SIGTERM');
+      await exited;
+      await rm(root, { recursive: true, force: true });
+    }
+  });
   it('rejects a duplicate live lock and replaces a stale lock', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-lock-'));
     try {

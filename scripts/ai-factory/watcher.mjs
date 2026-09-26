@@ -588,6 +588,9 @@ export async function reconcileStartup({
   runRunner = startRunner,
   readAccount,
   active = new Map(),
+  deferRecovery = false,
+  includeBlocked = false,
+  onlyIssues,
   stateRoot = FACTORY_ROOT,
   workRoot = join(FACTORY_ROOT, 'worktrees'),
   env = process.env,
@@ -595,10 +598,15 @@ export async function reconcileStartup({
   now = new Date(),
 } = {}) {
   safeRunnerEnv(env);
-  const issues = [
+  const issues = [...new Map([
     ...(await listIssuesForState(STATES.RUNNING, commandAdapter)),
     ...(await listIssuesForState(STATES.RECOVERY, commandAdapter)),
-  ].filter((issue) => !active.has(validateIssueNumber(issue.number)));
+    ...(includeBlocked ? await listIssuesForState(STATES.BLOCKED, commandAdapter) : []),
+  ].map((issue) => [validateIssueNumber(issue.number), issue])).values()].filter(
+    (issue) =>
+      !active.has(validateIssueNumber(issue.number)) &&
+      (!onlyIssues || onlyIssues.includes(validateIssueNumber(issue.number))),
+  );
   if (issues.length === 0) return [];
 
   const repo = (
@@ -653,6 +661,21 @@ export async function reconcileStartup({
         // Comments are untrusted cache entries; only a fully valid plan can be reused.
       }
     }
+    if (state === STATES.BLOCKED) {
+      const latestRun = comments.filter(
+        (comment) => comment.user?.login === viewer && comment.body?.startsWith('<!-- ai-factory-run:v1 -->'),
+      ).at(-1);
+      let runnerAlive = false;
+      try {
+        runnerAlive = isPidAlive(parseRunComment(latestRun, { issue: number, viewer }).runnerPid);
+      } catch {
+        // A blocked Issue without valid live-run evidence stays blocked, not runnable.
+      }
+      results.push(runnerAlive
+        ? { issue: number, action: 'monitor', reserved: true, plan: { plannedPaths: [], exclusive: true } }
+        : { issue: number, action: 'blocked' });
+      continue;
+    }
     if (prepareRetry) {
       const ownRunComments = comments.filter(
         (comment) =>
@@ -673,16 +696,21 @@ export async function reconcileStartup({
           continue;
         }
       }
-      results.push(
-        await executeIssue(issue, {
+      const execute = () =>
+        executeIssue(issue, {
           command: commandAdapter,
+          readAccount,
           runRunner,
           stateRoot,
           workRoot,
           env,
           fromState: STATES.RECOVERY,
           plan: planRecord?.plan,
-        }),
+        });
+      results.push(
+        deferRecovery
+          ? { issue: number, action: 'launch', plan: planRecord?.plan ?? { plannedPaths: [], exclusive: true }, execute }
+          : await execute(),
       );
       continue;
     }
@@ -692,16 +720,21 @@ export async function reconcileStartup({
     );
     if (state === STATES.RECOVERY && ownRunComments.length === 0) {
       if (infraRetry) {
-        results.push(
-          await executeIssue(issue, {
+        const execute = () =>
+          executeIssue(issue, {
             command: commandAdapter,
+            readAccount,
             runRunner,
             stateRoot,
             workRoot,
             env,
             fromState: STATES.RECOVERY,
             plan: planRecord?.plan,
-          }),
+          });
+        results.push(
+          deferRecovery
+            ? { issue: number, action: 'launch', plan: planRecord?.plan ?? { plannedPaths: [], exclusive: true }, execute }
+            : await execute(),
         );
         continue;
       }
@@ -765,6 +798,13 @@ export async function reconcileStartup({
           action: 'recovery',
           reserved: true,
           plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
+        });
+      } else if (state === STATES.BLOCKED) {
+        results.push({
+          issue: number,
+          action: 'monitor',
+          reserved: true,
+          plan: { plannedPaths: [], exclusive: true },
         });
       } else {
         results.push({
@@ -835,6 +875,26 @@ export async function reconcileStartup({
     }
 
     if (record.threadId && record.attempt < 3) {
+      if (deferRecovery) {
+        results.push({
+          issue: number,
+          action: 'launch',
+          plan: recoveryPlan ?? { plannedPaths: [], exclusive: true },
+          execute: () =>
+            reconcileStartup({
+              command: commandAdapter,
+              readAccount,
+              runRunner,
+              stateRoot,
+              workRoot,
+              env,
+              isPidAlive,
+              now,
+              onlyIssues: [number],
+            }),
+        });
+        continue;
+      }
       try {
         await ensureQuota(readAccount, env);
       } catch (error) {
@@ -1534,7 +1594,7 @@ async function fillAvailableSlots(active, options, recovered = []) {
   }
 }
 
-/** @param {{ active?: Map<number, { plan: any, promise: Promise<any> }>, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, runIssue?: typeof executeIssue, stateRoot?: string, workRoot?: string, repoRoot?: string, env?: Record<string, string | undefined> }} [options] */
+/** @param {{ active?: Map<number, { plan: any, promise: Promise<any> }>, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, runIssue?: (...args: any[]) => Promise<any>, stateRoot?: string, workRoot?: string, repoRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean, now?: Date }} [options] */
 export async function runScheduledCycle({
   active = new Map(),
   command: commandAdapter = command,
@@ -1545,6 +1605,8 @@ export async function runScheduledCycle({
   workRoot = join(FACTORY_ROOT, 'worktrees'),
   repoRoot = process.cwd(),
   env = process.env,
+  isPidAlive = pidIsAlive,
+  now = new Date(),
 } = {}) {
   safeRunnerEnv(env);
   const options = {
@@ -1556,8 +1618,32 @@ export async function runScheduledCycle({
     workRoot,
     repoRoot,
     env,
+    isPidAlive,
+    now,
   };
-  const recovered = await reconcileStartup({ ...options, active });
+  const recovered = await reconcileStartup({ ...options, active, deferRecovery: true, includeBlocked: true });
+  const occupied = recovered.filter((result) => result.reserved);
+  for (const recovery of recovered.filter((result) => result.action === 'launch')) {
+    const candidate = { issue: { number: recovery.issue }, plan: recovery.plan };
+    if (
+      active.size + occupied.length >= 3 ||
+      selectRunnablePlans([candidate], [...active.values(), ...occupied], 1).length === 0
+    ) {
+      recovery.action = 'deferred';
+      continue;
+    }
+    const promise = recovery.execute().catch(async (error) => {
+      await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+        level: 'error',
+        event: 'recovered-runner-failed',
+        issue: recovery.issue,
+        reason: error.message,
+      });
+      return { state: STATES.FAILED, reason: error.message };
+    });
+    active.set(recovery.issue, { plan: recovery.plan, promise });
+    void promise.finally(() => active.delete(recovery.issue));
+  }
   await fillAvailableSlots(active, options, recovered);
   return { active, recovered };
 }
