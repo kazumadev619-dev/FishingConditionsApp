@@ -24,6 +24,8 @@ describe('FishingLocationMap（#237）', () => {
     const element = FishingLocationMap({ latitude: 35, longitude: 139, locationName: '芝浦' });
 
     expect(isValidElement(element) && element.type).toBe(MapErrorBoundary);
+    // 地点が変わると作り直され、前の地点の失敗を引き継がない
+    expect(isValidElement(element) && element.key).toBe('35,139');
   });
 
   it('地図の中で例外が出たら、地図の代わりに代替表示を出す', async () => {
