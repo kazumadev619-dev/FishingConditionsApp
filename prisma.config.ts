@@ -1,5 +1,10 @@
-import 'dotenv/config';
+import { existsSync } from 'node:fs';
 import { defineConfig, env } from 'prisma/config';
+
+// Docker のビルドと CI が置く .env を読む（既存の環境変数は上書きしない）。
+// dotenv 18 は dotenv-cli と同じ `dotenv` コマンドを持ち込み、package.json の
+// `dotenv -e .env.local --` を壊すため、dotenv ではなく Node 標準で読む（#110）。
+if (existsSync('.env')) process.loadEnvFile('.env');
 
 export default defineConfig({
   schema: 'prisma/schema.prisma',

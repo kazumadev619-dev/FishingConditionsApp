@@ -43,7 +43,7 @@ export function calculateTideScore(tideData: FormattedTideData, currentTime: Dat
     minDiff = Math.min(minDiff, diff);
   }
 
-  let timingScore = 0;
+  let timingScore: number;
   const hoursFromExtreme = minDiff / 60;
 
   if (hoursFromExtreme <= 2) {
@@ -68,7 +68,7 @@ export function calculateTideScore(tideData: FormattedTideData, currentTime: Dat
 
   const tideRange = (nearestFlood.height - nearestEdd.height) / 100;
 
-  let sizeScore = 0;
+  let sizeScore: number;
   if (tideRange >= 1.5) sizeScore = 15;
   else if (tideRange >= 1.0) sizeScore = 12;
   else if (tideRange >= 0.5) sizeScore = 8;

@@ -24,7 +24,7 @@ for i in $(seq 1 60); do curl -fsS -o /dev/null http://localhost:3000/healthz &&
 curl -s http://localhost:3000/readyz    # {"status":"ready","checks":{"database":"ok","cache":"ok"}}
 ```
 
-**Claude が `next dev` を起動すると、Next.js がリポジトリの `CLAUDE.md` にブロックを書き足す**（`<!-- BEGIN:nextjs-agent-rules -->`）。`CLAUDECODE`・`AI_AGENT`・`CURSOR_TRACE_ID` などの環境変数で AI エージェントを検出したときだけ動き、それらが無い端末で人が起動したときは起きない。止めるには `next.config` の `agentRules: false`。入れるか止めるかはプロジェクトの判断なので、勝手に決めない。**終わったら `git diff CLAUDE.md` を見て、自分の起動で増えた追記なら戻し、ユーザーに伝える。**
+**Claude が `next dev` を起動すると、Next.js がリポジトリの `AGENTS.md` にブロックを書き足す**（`<!-- BEGIN:nextjs-agent-rules -->`）。書き足す先は `AGENTS.md` があればそちら、無ければ `CLAUDE.md`（next 16.3 の `generate-agent-files.js`）で、このリポジトリには両方あるので `AGENTS.md` に入る。`CLAUDECODE`・`AI_AGENT`・`CURSOR_TRACE_ID` などの環境変数で AI エージェントを検出したときだけ動き、それらが無い端末で人が起動したときは起きない。止めるには `next.config` の `agentRules: false`。入れるか止めるかはプロジェクトの判断なので、勝手に決めない。**終わったら `git diff AGENTS.md CLAUDE.md` を見て、自分の起動で増えた追記なら戻し、ユーザーに伝える。**
 
 ポート 3000 が使われていたら、`lsof -nP -iTCP:3000 -sTCP:LISTEN` で誰のプロセスか確かめる。**自分が起動していないプロセスは止めない。** 別のポート（`npm run dev -- -p 3100`）で起動してよいが、下の表の違いがある。
 
@@ -33,6 +33,7 @@ curl -s http://localhost:3000/readyz    # {"status":"ready","checks":{"database"
 | Cookie を付けた curl（API、ページ） | 動く |
 | 未ログイン時のリダイレクト先 | `:3000` の `/login` に向く |
 | Google ログイン | コールバックが `:3000` に向くので通らない |
+| Google Maps（ダッシュボードの地図） | API キーのリファラ制限で `RefererNotAllowedMapError` になる。この状態でハートを押すとダッシュボード全体がエラー画面に落ちる（#237）ので、ブラウザで操作するときは `maps.googleapis.com` を遮断しておく |
 
 ## 3. ログインした状態で確かめる
 
@@ -78,5 +79,5 @@ docker compose rm -sf app
 ## 6. 片付け
 
 - 起動したサーバーのタスクを止め、`lsof -nP -iTCP:<使ったポート> -sTCP:LISTEN` が何も返さないことを確かめる。`pgrep -f "next dev"` は親の node しか当たらず、実際に listen している `next-server` が残っていても見逃す
-- `git status`。`CLAUDE.md` の追記（2.を参照）以外に変わったファイルが無いこと
+- `git status`。`AGENTS.md` の追記（2.を参照）以外に変わったファイルが無いこと
 - DB と Redis のコンテナは、自分が起動したのでなければ止めない

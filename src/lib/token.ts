@@ -38,7 +38,7 @@ export async function createVerificationToken(email: string): Promise<string> {
     return token;
   } catch (error) {
     logger.error({ err: error, email: maskEmail(email) }, 'Failed to create verification token');
-    throw new Error('Failed to create verification token');
+    throw new Error('Failed to create verification token', { cause: error });
   }
 }
 
