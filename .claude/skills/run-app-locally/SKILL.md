@@ -33,7 +33,7 @@ curl -s http://localhost:3000/readyz    # {"status":"ready","checks":{"database"
 | Cookie を付けた curl（API、ページ） | 動く |
 | 未ログイン時のリダイレクト先 | `:3000` の `/login` に向く |
 | Google ログイン | コールバックが `:3000` に向くので通らない |
-| Google Maps（ダッシュボードの地図） | API キーのリファラ制限で `RefererNotAllowedMapError` になり、地図の枠は「マップを表示できませんでした。」になる（ほかの操作には影響しない。#237） |
+| Google Maps（ダッシュボードの地図） | API キーのリファラ制限で `RefererNotAllowedMapError` になり、地図の枠には Google のエラー表示が出る。ハートなどで再描画されると地図の枠は「マップを表示できませんでした。」に切り替わる。ダッシュボードのほかの部分には影響しない（#237） |
 
 ## 3. ログインした状態で確かめる
 
