@@ -28,12 +28,9 @@ export function renderPlist({ nodePath, watcherPath, workingDirectory, path }) {
   if (![nodePath, watcherPath, workingDirectory].every(isAbsolute) || !path) {
     throw new Error('launchd paths must be absolute');
   }
-  const [node, watcher, cwd, executablePath] = [
-    nodePath,
-    watcherPath,
-    workingDirectory,
-    path,
-  ].map(escapeXml);
+  const [node, watcher, cwd, executablePath] = [nodePath, watcherPath, workingDirectory, path].map(
+    escapeXml,
+  );
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -86,7 +83,6 @@ export async function install(options = {}) {
     await bootout(values.uid, commandAdapter);
     await rename(temporaryPath, values.plistPath);
     await commandAdapter('launchctl', ['bootstrap', `gui/${values.uid}`, values.plistPath]);
-    await commandAdapter('launchctl', ['kickstart', '-k', `gui/${values.uid}/${LABEL}`]);
   } catch (error) {
     await unlink(temporaryPath).catch((cleanupError) => {
       if (cleanupError?.code !== 'ENOENT') {
