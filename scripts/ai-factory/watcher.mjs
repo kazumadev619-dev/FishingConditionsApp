@@ -1851,7 +1851,12 @@ export async function runOnce({
     if (!cached) return { ...plan, reason: 'planning-required' };
     const active = await inspectActivePlans(commandAdapter);
     const conflicts = active
-      .filter((entry) => plansConflict(cached.plan.plannedPaths, entry.plan.plannedPaths))
+      .filter(
+        (entry) =>
+          cached.plan.exclusive ||
+          entry.plan.exclusive ||
+          plansConflict(cached.plan.plannedPaths, entry.plan.plannedPaths),
+      )
       .map((entry) => entry.issue);
     const runnable =
       active.length < 3 &&

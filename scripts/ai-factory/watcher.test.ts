@@ -314,7 +314,7 @@ describe('watcher dry-run', () => {
           workerModel: 'gpt-5.6-luna',
           plannedPaths: ['docs'],
           dependencies: [],
-          exclusive: false,
+          exclusive: true,
           reason: 'active docs',
         },
       ],
@@ -323,7 +323,7 @@ describe('watcher dry-run', () => {
         {
           outcome: 'planned',
           workerModel: 'gpt-5.6-luna',
-          plannedPaths: ['docs/README.md'],
+          plannedPaths: ['src/app'],
           dependencies: [],
           exclusive: false,
           reason: 'ready docs',
