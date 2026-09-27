@@ -743,7 +743,7 @@ export async function reconcileStartup({
         continue;
       }
       let matchingRunner = false;
-      let uncertain = false;
+      let uncertain;
       try {
         const listed = parseWorktrees(
           (await commandAdapter('git', ['worktree', 'list', '--porcelain'])).stdout,
@@ -1367,7 +1367,8 @@ export async function startRunner({
   try {
     resultText = await readFile(resultPath, 'utf8');
   } catch (error) {
-    if (exitCode !== 0 && error?.code === 'ENOENT') throw new Error('runner exited without result', { cause: error });
+    if (exitCode !== 0 && error?.code === 'ENOENT')
+      throw new Error('runner exited without result', { cause: error });
     throw error;
   }
   const events = (await readFile(stdoutPath, 'utf8'))
