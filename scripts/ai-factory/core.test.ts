@@ -3,25 +3,162 @@ import {
   buildCommitMessage,
   buildPrBody,
   canRetryRunner,
+  changesWithinPlan,
   evaluateUsage,
   isRunStale,
   parseChangedPaths,
+  parsePlanComment,
   parseRunComment,
+  planInputHash,
+  plansConflict,
   RUNNER_RESULT_SCHEMA,
   readState,
+  renderPlanComment,
   renderRunComment,
   runIdentity,
   runnerPrompt,
   selectReadyIssue,
+  selectRunnablePlans,
   transitionAllowed,
   validateChangedPaths,
   validateIssueNumber,
+  validatePlan,
+  WORKER_MODELS,
 } from './core.mjs';
+
+const plannedIssue = {
+  number: 42,
+  title: 'Update guide',
+  body: 'Update docs only',
+  labels: [{ name: 'agent:ready' }, { name: 'docs' }],
+};
+
+describe('plan validation', () => {
+  it('ignores state labels but invalidates the plan when requirements change', () => {
+    const ready = planInputHash(plannedIssue);
+    const running = planInputHash({
+      ...plannedIssue,
+      labels: [{ name: 'agent:running' }, { name: 'docs' }],
+    });
+    expect(running).toBe(ready);
+    expect(planInputHash({ ...plannedIssue, body: 'Different requirement' })).not.toBe(ready);
+  });
+
+  it('accepts only Luna and Terra worker models', () => {
+    expect(WORKER_MODELS).toEqual(['gpt-5.6-luna', 'gpt-5.6-terra']);
+    expect(() =>
+      validatePlan(
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-sol',
+          plannedPaths: ['docs'],
+          dependencies: [],
+          exclusive: false,
+          reason: 'wrong model',
+        },
+        42,
+      ),
+    ).toThrow('invalid worker model');
+  });
+
+  it('detects directory ancestry but not similar prefixes', () => {
+    expect(plansConflict(['src/app'], ['src/app/page.tsx'])).toBe(true);
+    expect(plansConflict(['src/app'], ['src/application'])).toBe(false);
+    expect(plansConflict([], ['docs'])).toBe(true);
+  });
+
+  it('selects at most three non-conflicting plans in issue order', () => {
+    const candidates = [
+      { issue: { number: 1 }, plan: { plannedPaths: ['docs/a'], exclusive: false } },
+      { issue: { number: 2 }, plan: { plannedPaths: ['src/app'], exclusive: false } },
+      { issue: { number: 3 }, plan: { plannedPaths: ['docs/b'], exclusive: false } },
+      { issue: { number: 4 }, plan: { plannedPaths: ['src/app/page.tsx'], exclusive: false } },
+    ];
+
+    expect(selectRunnablePlans(candidates, [], 3).map(({ issue }) => issue.number)).toEqual([
+      1, 2, 3,
+    ]);
+    expect(() => selectRunnablePlans(candidates, [], 4)).toThrow(
+      'runner limit must be between 1 and 3',
+    );
+  });
+
+  it('runs an exclusive plan only when no runner is active', () => {
+    const exclusive = [{ issue: { number: 2 }, plan: { plannedPaths: [], exclusive: true } }];
+
+    expect(selectRunnablePlans(exclusive, [{ plannedPaths: ['docs'] }], 3)).toEqual([]);
+    expect(selectRunnablePlans(exclusive, [], 3)).toHaveLength(1);
+  });
+
+  it('rejects non-canonical path segments that could bypass conflict detection', () => {
+    expect(() => plansConflict(['src/app'], ['src/./app'])).toThrow('unsafe changed path');
+    expect(() => plansConflict(['src/app'], ['src//app'])).toThrow('unsafe changed path');
+  });
+
+  it('rejects changes outside a bounded plan and allows an exclusive repo-wide plan', () => {
+    expect(changesWithinPlan(['docs/README.md'], ['docs'])).toBe(true);
+    expect(changesWithinPlan(['src/app/page.tsx'], ['docs'])).toBe(false);
+    expect(changesWithinPlan(['src/app/page.tsx'], [])).toBe(true);
+  });
+
+  it('rejects unsafe paths and self dependencies', () => {
+    expect(() =>
+      validatePlan(
+        {
+          outcome: 'planned',
+          workerModel: 'gpt-5.6-terra',
+          plannedPaths: ['../outside'],
+          dependencies: [42],
+          exclusive: false,
+          reason: 'unsafe',
+        },
+        42,
+      ),
+    ).toThrow();
+  });
+
+  it('accepts only the viewer-owned exact plan marker and current hash', () => {
+    const plan = validatePlan(
+      {
+        outcome: 'planned',
+        workerModel: 'gpt-5.6-luna',
+        plannedPaths: ['docs'],
+        dependencies: [],
+        exclusive: false,
+        reason: 'docs only',
+      },
+      42,
+    );
+    const record = {
+      issue: 42,
+      inputHash: planInputHash(plannedIssue),
+      model: 'gpt-5.6-sol',
+      plan,
+      plannedAt: '2026-09-23T00:00:00.000Z',
+    };
+    const comment = { id: 7, user: { login: 'factory-bot' }, body: renderPlanComment(record) };
+    expect(parsePlanComment(comment, { issue: plannedIssue, viewer: 'factory-bot' })).toMatchObject(
+      {
+        ...record,
+        commentId: 7,
+      },
+    );
+    expect(() =>
+      parsePlanComment(comment, {
+        issue: { ...plannedIssue, body: 'changed' },
+        viewer: 'factory-bot',
+      }),
+    ).toThrow('plan input hash mismatch');
+  });
+});
 
 describe('state machine', () => {
   it('allows the Phase 1 success path but not a review bypass', () => {
     expect(transitionAllowed('agent:ready', 'agent:running')).toBe(true);
+    expect(transitionAllowed('agent:ready', 'agent:blocked')).toBe(true);
+    expect(transitionAllowed('agent:ready', 'agent:failed')).toBe(true);
     expect(transitionAllowed('agent:running', 'agent:review')).toBe(true);
+    expect(transitionAllowed('agent:running', 'agent:ready')).toBe(true);
     expect(transitionAllowed('agent:review', 'done')).toBe(false);
   });
 
@@ -152,6 +289,7 @@ describe('runner boundary', () => {
     expect(body).toContain('`npm run check-code`');
     expect(body).toContain('Human review is required');
     expect(body).not.toContain(issue.body);
+    expect(body).not.toContain('Terra');
   });
 
   it('derives branch and worktree identifiers only from the issue number', () => {
@@ -183,12 +321,14 @@ describe('runner boundary', () => {
 });
 
 describe('run recovery record', () => {
+  const planHash = 'a'.repeat(64);
   const record = {
     issue: 42,
     status: 'running',
     branch: 'codex/issue-42',
     worktreeId: 'issue-42',
     model: 'gpt-5.6-terra',
+    planHash,
     attempt: 1,
     runnerPid: 1234,
     threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
@@ -240,6 +380,44 @@ describe('run recovery record', () => {
         { issue: 42, viewer: 'factory-bot' },
       ),
     ).toThrow('invalid run heartbeat');
+  });
+
+  it('accepts only planned Luna or Terra records with a lowercase plan hash', () => {
+    const comment = { id: 9, user: { login: 'factory-bot' }, body: '' };
+    for (const model of WORKER_MODELS) {
+      expect(
+        parseRunComment(
+          { ...comment, body: renderRunComment({ ...record, model }) },
+          { issue: 42, viewer: 'factory-bot' },
+        ),
+      ).toMatchObject({ model, planHash });
+    }
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, model: 'gpt-5.6-sol' }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('run identity mismatch');
+    expect(() =>
+      parseRunComment(
+        { ...comment, body: renderRunComment({ ...record, planHash: 'A'.repeat(64) }) },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toThrow('invalid run plan hash');
+  });
+
+  it('accepts Phase 1 Terra records without a plan hash for recovery only', () => {
+    const legacyRecord = { ...record, planHash: undefined };
+    expect(
+      parseRunComment(
+        {
+          id: 9,
+          user: { login: 'factory-bot' },
+          body: renderRunComment(legacyRecord),
+        },
+        { issue: 42, viewer: 'factory-bot' },
+      ),
+    ).toMatchObject({ model: 'gpt-5.6-terra' });
   });
 
   it('becomes stale at exactly 30 minutes and retries at most three attempts', () => {
