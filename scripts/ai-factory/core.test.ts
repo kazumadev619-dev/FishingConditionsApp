@@ -324,6 +324,12 @@ describe('runner boundary', () => {
       'invalid commit summary',
     );
   });
+
+  it('keeps issue references in worker summaries from breaking commitlint', () => {
+    expect(
+      buildCommitMessage({ commitType: 'docs', summary: 'Issue #251 を完了しました。' }, 251),
+    ).toBe('📝 docs: Issue ＃251 を完了しました。 #251');
+  });
 });
 
 describe('run recovery record', () => {

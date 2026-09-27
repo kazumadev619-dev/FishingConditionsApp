@@ -311,8 +311,9 @@ export function buildCommitMessage(result, issue) {
   }
   const prefix = `${emoji} ${result.commitType}: `;
   const suffix = ` #${number}`;
+  const summary = result.summary.replaceAll('#', '＃');
   const budget = 100 - [...prefix, ...suffix].length;
-  return `${prefix}${[...result.summary].slice(0, budget).join('')}${suffix}`;
+  return `${prefix}${[...summary].slice(0, budget).join('')}${suffix}`;
 }
 
 const RUN_COMMENT_MARKER = '<!-- ai-factory-run:v1 -->';
