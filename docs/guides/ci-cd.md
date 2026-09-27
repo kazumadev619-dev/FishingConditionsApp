@@ -228,7 +228,7 @@ npm run prisma:generate
 ## 🔮 今後の拡張予定
 
 ### Phase 2: テスト自動化
-- [ ] Vitestセットアップ
+- [x] Vitestセットアップ
 - [ ] ユニットテスト実行CI追加
 - [ ] コードカバレッジ計測
 - [ ] E2Eテスト（Playwright）
