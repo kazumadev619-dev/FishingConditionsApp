@@ -54,8 +54,8 @@ export const PLANNER_RESULT_SCHEMA = Object.freeze({
   properties: {
     outcome: { enum: ['planned', 'blocked'] },
     workerModel: { enum: WORKER_MODELS },
-    plannedPaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
-    dependencies: { type: 'array', items: { type: 'integer', minimum: 1 }, uniqueItems: true },
+    plannedPaths: { type: 'array', items: { type: 'string' } },
+    dependencies: { type: 'array', items: { type: 'integer', minimum: 1 } },
     exclusive: { type: 'boolean' },
     reason: { type: 'string', minLength: 1, maxLength: 500 },
   },

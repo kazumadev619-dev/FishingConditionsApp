@@ -6,6 +6,7 @@ import {
   changesWithinPlan,
   evaluateUsage,
   isRunStale,
+  PLANNER_RESULT_SCHEMA,
   parseChangedPaths,
   parsePlanComment,
   parseRunComment,
@@ -34,6 +35,11 @@ const plannedIssue = {
 };
 
 describe('plan validation', () => {
+  it('emits a planner schema accepted by Codex structured output', () => {
+    expect(PLANNER_RESULT_SCHEMA.properties.plannedPaths).not.toHaveProperty('uniqueItems');
+    expect(PLANNER_RESULT_SCHEMA.properties.dependencies).not.toHaveProperty('uniqueItems');
+  });
+
   it('ignores state labels but invalidates the plan when requirements change', () => {
     const ready = planInputHash(plannedIssue);
     const running = planInputHash({
