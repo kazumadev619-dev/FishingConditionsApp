@@ -1,5 +1,8 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { renderPlist } from './launchd.mjs';
+import { install, renderPlist } from './launchd.mjs';
 
 describe('launchd plist', () => {
   it('renders KeepAlive with fixed absolute program arguments', () => {
@@ -40,5 +43,30 @@ describe('launchd plist', () => {
         path: '/usr/bin:/bin',
       }),
     ).toThrow('launchd paths must be absolute');
+  });
+
+  it('does not restart the daemon immediately after bootstrap', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-launchd-'));
+    const calls: string[][] = [];
+    try {
+      await install({
+        nodePath: '/opt/homebrew/bin/node',
+        watcherPath: '/repo/scripts/ai-factory/watcher.mjs',
+        workingDirectory: '/repo',
+        path: '/usr/bin:/bin',
+        plistPath: join(root, 'factory.plist'),
+        uid: 501,
+        command: async (file: string, args: string[]) => {
+          calls.push([file, ...args]);
+          return { stdout: '' };
+        },
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+
+    expect(calls.some(([file, action]) => file === 'launchctl' && action === 'kickstart')).toBe(
+      false,
+    );
   });
 });

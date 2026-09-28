@@ -54,8 +54,8 @@ export const PLANNER_RESULT_SCHEMA = Object.freeze({
   properties: {
     outcome: { enum: ['planned', 'blocked'] },
     workerModel: { enum: WORKER_MODELS },
-    plannedPaths: { type: 'array', items: { type: 'string' }, uniqueItems: true },
-    dependencies: { type: 'array', items: { type: 'integer', minimum: 1 }, uniqueItems: true },
+    plannedPaths: { type: 'array', items: { type: 'string' } },
+    dependencies: { type: 'array', items: { type: 'integer', minimum: 1 } },
     exclusive: { type: 'boolean' },
     reason: { type: 'string', minLength: 1, maxLength: 500 },
   },
@@ -311,8 +311,9 @@ export function buildCommitMessage(result, issue) {
   }
   const prefix = `${emoji} ${result.commitType}: `;
   const suffix = ` #${number}`;
+  const summary = result.summary.replaceAll('#', '＃');
   const budget = 100 - [...prefix, ...suffix].length;
-  return `${prefix}${[...result.summary].slice(0, budget).join('')}${suffix}`;
+  return `${prefix}${[...summary].slice(0, budget).join('')}${suffix}`;
 }
 
 const RUN_COMMENT_MARKER = '<!-- ai-factory-run:v1 -->';
