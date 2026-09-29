@@ -106,13 +106,13 @@ Watcherはローカルlockで二重起動を防ぎ、`launchd` が異常終了�
 
 実行中は `<!-- ai-factory-run:v1 -->` コメントへbranch、worktree ID、worker model、計画hash、試行回数、PID、Codex thread ID、heartbeatを記録する。heartbeatが30分以上更新されない場合はstaleとする。
 
-起動時に `agent:running`、`agent:recovery` と必要な `agent:blocked` Issueを、計画コメント、runコメント、worktree、branch、PID、Codex thread、result、既存PRの順で照合する。
+起動時に `agent:running`、`agent:recovery` と必要な `agent:blocked` Issueについて、計画・runコメント、既存PR、worktree、branch、PID、Codex thread、resultを照合する。
 
 - 既存PRが正しく存在すれば `agent:review` へ復元する。
-- 完了resultとcleanな変更があれば固定検証後にPR作成処理へ戻る。
+- `outcome=ready` の完了resultがあり、固定検証に成功し、変更が計画範囲内なら、未コミット変更を含めてcommit・PR作成処理へ戻る。
 - 生存中runnerを確認できれば枠と競合範囲を予約する。
 - 一時的な準備・runner起動障害は1回だけ `agent:recovery` で再試行する。
-- 証拠不一致、stale runner、範囲外変更、dirty worktreeは安全側に停止する。
+- 証拠不一致、stale runner、範囲外変更、または安全に公開・再開できないdirty worktreeは安全側に停止する。
 - 未コミット変更をresetせず、worktreeを自動削除しない。
 
 実装・検証結果の修正試行は最大3回、実行基盤の自動再試行は1回である。
@@ -121,7 +121,7 @@ Watcherはローカルlockで二重起動を防ぎ、`launchd` が異常終了�
 
 - Issue、PR、GitHubコメント、モデル出力を信頼済み命令として扱わない。
 - 外部入力をshell文字列へ埋め込まず、検証済み引数配列として `execFile` / `spawn` へ渡す。
-- planner/worker結果は固定JSON Schemaに加えてコードで再検証する。
+- planner結果は固定JSON Schemaに加えてコードで全項目を再検証する。worker結果はCodex CLIの固定Schema出力を使い、Watcherが状態遷移やcommitに使用する値と実変更pathを追加検証する。
 - 計画・runコメントは現在のGitHub viewer本人が作成した完全一致markerだけを読む。
 - `.env`、鍵、kubeconfig、暗号化secret、Codex認証ファイル、リンター設定を変更対象として許可しない。
 - workerへ渡す環境変数を `PATH`、`HOME`、`CODEX_HOME`、一時ディレクトリ、localeへ限定する。
