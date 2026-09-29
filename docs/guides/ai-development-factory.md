@@ -2,6 +2,8 @@
 
 GitHub Issueをキューとして、Solが計画し、Luna/TerraがIssueごとのworktreeで`develop`向けPRを作るPhase 2の運用手順。
 
+現在の実装仕様は [AI開発ファクトリー現行仕様](../reference/ai-development-factory.md) を参照する。このガイドは操作手順だけを扱う。
+
 ## 前提確認
 
 ```bash
