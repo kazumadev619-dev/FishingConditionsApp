@@ -32,6 +32,7 @@ import {
   PLANNER_RESULT_SCHEMA,
   parseChangedPaths,
   parsePlanComment,
+  parseReviewComment,
   parseRunComment,
   planInputHash,
   plansConflict,
@@ -529,6 +530,7 @@ export async function inspectReviewCandidate(
     headSha: pull.headRefOid,
     claims: pull.body,
     changedPaths,
+    labels: issue.labels ?? [],
     checks,
     ciFingerprint,
     model,
@@ -1426,7 +1428,7 @@ function reviewerArguments(candidate, model, worktree, schemaPath, resultPath) {
   ];
 }
 
-/** @param {any} candidate @param {{ command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => Promise<any>, prepareWorktree?: (...args: any[]) => Promise<string>, stateRoot?: string, env?: Record<string, string | undefined>, now?: Date }} [options] */
+/** @param {any} candidate @param {{ command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => Promise<any>, prepareWorktree?: (...args: any[]) => Promise<string>, reinspectCandidate?: (...args: any[]) => Promise<any>, stateRoot?: string, env?: Record<string, string | undefined>, now?: Date }} [options] */
 export async function reviewIssue(
   candidate,
   {
@@ -1434,6 +1436,7 @@ export async function reviewIssue(
     readAccount = readCodexAccount,
     runRunner = startRunner,
     prepareWorktree: prepare = prepareReviewWorktree,
+    reinspectCandidate,
     stateRoot = FACTORY_ROOT,
     env = process.env,
     now = new Date(),
@@ -1549,6 +1552,24 @@ export async function reviewIssue(
       },
       { command: commandAdapter },
     );
+    if (reinspectCandidate) {
+      const current = await reinspectCandidate(
+        { number, labels: candidate.labels ?? [] },
+        { command: commandAdapter, now },
+      );
+      if (
+        current.state !== 'ready' ||
+        current.headSha !== candidate.headSha ||
+        current.ciFingerprint !== candidate.ciFingerprint
+      ) {
+        return {
+          state: current.state === 'blocked' ? STATES.BLOCKED : STATES.REVIEW,
+          reason: 'review-evidence-stale',
+          worktree,
+          commentId,
+        };
+      }
+    }
     if (result.outcome === 'escalate') {
       model = REVIEW_MODELS.ASTRA;
       continue;
@@ -2088,6 +2109,209 @@ async function fillAvailableSlots(active, options, recovered = []) {
   }
 }
 
+function reviewWorktreePath(stateRoot, candidate) {
+  return join(stateRoot, 'reviews', `issue-${candidate.issue}-${candidate.headSha.slice(0, 12)}`);
+}
+
+async function loadReviewRecord(issue, candidate, commandAdapter) {
+  const { repo, viewer } = await planContext(commandAdapter);
+  const pages = parseJson(
+    (
+      await commandAdapter('gh', [
+        'api',
+        `repos/${repo}/issues/${validateIssueNumber(issue.number)}/comments`,
+        '--paginate',
+        '--slurp',
+      ])
+    ).stdout,
+    'review comments',
+  );
+  if (!Array.isArray(pages) || pages.some((page) => !Array.isArray(page))) {
+    throw new Error('invalid review comments JSON');
+  }
+  let record = null;
+  for (const comment of pages.flat()) {
+    try {
+      record = parseReviewComment(comment, {
+        issue: candidate.issue,
+        pullRequest: candidate.pullRequest,
+        headSha: candidate.headSha,
+        ciFingerprint: candidate.ciFingerprint,
+        viewer,
+      });
+    } catch {
+      // Review comments are untrusted evidence; only a fully current record is reusable.
+    }
+  }
+  return record;
+}
+
+async function cleanupReviewWorktree(
+  candidate,
+  currentState,
+  worktree,
+  { command: commandAdapter, stateRoot },
+) {
+  const status = await commandAdapter('git', ['status', '--porcelain=v1'], { cwd: worktree });
+  if (status.stdout) {
+    let state = currentState;
+    if ([STATES.REVIEW, STATES.APPROVAL].includes(state)) {
+      await transitionIssue(candidate.issue, state, STATES.BLOCKED, {
+        command: commandAdapter,
+      });
+      state = STATES.BLOCKED;
+    }
+    const runDir = join(stateRoot, 'review-runs', `issue-${candidate.issue}-cleanup`);
+    await mkdir(runDir, { recursive: true });
+    await commentIssue(
+      candidate.issue,
+      `dirty verification worktree preserved: ${worktree}`,
+      runDir,
+      commandAdapter,
+    );
+    return { state, worktree, reason: 'dirty-review-worktree' };
+  }
+  await commandAdapter('git', ['worktree', 'remove', worktree]);
+  return { state: currentState };
+}
+
+async function applyRecoveredReview(candidate, record, options) {
+  const next = record.result.outcome === 'approved' ? STATES.APPROVAL : STATES.BLOCKED;
+  await transitionIssue(candidate.issue, STATES.REVIEW, next, { command: options.command });
+  return cleanupReviewWorktree(
+    candidate,
+    next,
+    reviewWorktreePath(options.stateRoot, candidate),
+    options,
+  );
+}
+
+function currentReviewRecord(record, candidate) {
+  return (
+    record?.issue === candidate.issue &&
+    record.pullRequest === candidate.pullRequest &&
+    record.headSha === candidate.headSha &&
+    record.ciFingerprint === candidate.ciFingerprint
+  );
+}
+
+async function reviewerIdentityMatches(record, { stateRoot, isPidAlive }) {
+  if (!isPidAlive(record.reviewerPid)) return false;
+  const runDir = join(
+    stateRoot,
+    'review-runs',
+    `issue-${record.issue}-${record.headSha.slice(0, 12)}-${record.model}`,
+  );
+  let output;
+  try {
+    output = await readFile(join(runDir, 'codex.jsonl'), 'utf8');
+  } catch {
+    return false;
+  }
+  return output
+    .split('\n')
+    .filter(Boolean)
+    .some((line) => {
+      try {
+        const event = JSON.parse(line);
+        const started = event.type === 'thread.started' ? event : event.thread?.started;
+        return (started?.thread_id ?? event.thread_id) === record.threadId;
+      } catch {
+        return false;
+      }
+    });
+}
+
+/** @param {{ activeReview?: any, command?: CommandAdapter, listReviewIssues?: (...args: any[]) => Promise<any[]>, inspectCandidate?: (...args: any[]) => Promise<any>, loadReviewRecord?: (...args: any[]) => Promise<any>, runReview?: (...args: any[]) => Promise<any>, reviewerIdentityMatches?: (...args: any[]) => Promise<boolean>, stateRoot?: string, env?: Record<string, string | undefined>, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => Promise<any>, isPidAlive?: (pid: number) => boolean, now?: Date }} [options] */
+export async function runReviewCycle({
+  activeReview = null,
+  command: commandAdapter = command,
+  listReviewIssues = (adapter) => listIssuesForState(STATES.REVIEW, adapter),
+  inspectCandidate = inspectReviewCandidate,
+  loadReviewRecord: loadRecord = loadReviewRecord,
+  runReview = reviewIssue,
+  reviewerIdentityMatches: identityMatches = reviewerIdentityMatches,
+  stateRoot = FACTORY_ROOT,
+  env = process.env,
+  readAccount = readCodexAccount,
+  runRunner = startRunner,
+  isPidAlive = pidIsAlive,
+  now = new Date(),
+} = {}) {
+  if (activeReview && !activeReview.settled && !activeReview.reserved) {
+    return { activeReview };
+  }
+  activeReview = null;
+  const issues = [...(await listReviewIssues(commandAdapter))].sort(
+    (left, right) => validateIssueNumber(left.number) - validateIssueNumber(right.number),
+  );
+  for (const issue of issues) {
+    const candidate = await inspectCandidate(issue, { command: commandAdapter, now });
+    if (candidate.state !== 'ready') continue;
+    let record = await loadRecord(issue, candidate, commandAdapter);
+    if (!currentReviewRecord(record, candidate)) record = null;
+    if (record?.status === 'running') {
+      if (!isRunStale(record, now) && (await identityMatches(record, { stateRoot, isPidAlive }))) {
+        return {
+          activeReview: {
+            issue: candidate.issue,
+            headSha: candidate.headSha,
+            reserved: true,
+            settled: false,
+            promise: new Promise(() => {}),
+          },
+        };
+      }
+      await transitionIssue(candidate.issue, STATES.REVIEW, STATES.BLOCKED, {
+        command: commandAdapter,
+      });
+      return { activeReview: null };
+    }
+    if (record?.status === 'completed') {
+      if (record.result.outcome !== 'escalate') {
+        await applyRecoveredReview(candidate, record, {
+          command: commandAdapter,
+          stateRoot,
+        });
+        return { activeReview: null };
+      }
+      candidate.model = REVIEW_MODELS.ASTRA;
+      candidate.riskReason = 'Sol escalation';
+    }
+    const tracker = {
+      issue: candidate.issue,
+      headSha: candidate.headSha,
+      settled: false,
+      promise: null,
+    };
+    tracker.promise = runReview(candidate, {
+      command: commandAdapter,
+      stateRoot,
+      env,
+      readAccount,
+      runRunner,
+      reinspectCandidate: inspectCandidate,
+    })
+      .then(async (result) => {
+        if (
+          !result.worktree ||
+          ![STATES.REVIEW, STATES.APPROVAL, STATES.BLOCKED, STATES.FAILED].includes(result.state)
+        ) {
+          return result;
+        }
+        return cleanupReviewWorktree(candidate, result.state, result.worktree, {
+          command: commandAdapter,
+          stateRoot,
+        });
+      })
+      .finally(() => {
+        tracker.settled = true;
+      });
+    return { activeReview: tracker };
+  }
+  return { activeReview: null };
+}
+
 /** @param {{ active?: Map<number, { plan: any, promise: Promise<any> }>, command?: CommandAdapter, readAccount?: (...args: any[]) => any, runRunner?: (...args: any[]) => any, runIssue?: (...args: any[]) => Promise<any>, stateRoot?: string, workRoot?: string, repoRoot?: string, env?: Record<string, string | undefined>, isPidAlive?: (pid: number) => boolean, now?: Date }} [options] */
 export async function runScheduledCycle({
   active = new Map(),
@@ -2289,10 +2513,16 @@ export async function watch({ pollMs = 30_000, ...options } = {}) {
   const lock = await acquireLock(stateRoot);
   if (!lock.acquired) return { reason: lock.reason };
   const active = new Map();
+  let activeReview = null;
   try {
     for (;;) {
       try {
         await runScheduledCycle({ ...options, stateRoot, active });
+        ({ activeReview } = await runReviewCycle({
+          ...options,
+          stateRoot,
+          activeReview,
+        }));
       } catch (error) {
         await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
           level: 'error',
@@ -2300,9 +2530,10 @@ export async function watch({ pollMs = 30_000, ...options } = {}) {
           reason: error.message,
         });
       }
-      if (active.size > 0) {
+      if (active.size > 0 || activeReview) {
         await Promise.race([
           ...[...active.values()].map(({ promise }) => promise),
+          ...(activeReview ? [activeReview.promise] : []),
           new Promise((resolve) => setTimeout(resolve, pollMs)),
         ]);
       } else {

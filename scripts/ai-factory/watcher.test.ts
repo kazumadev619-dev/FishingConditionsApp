@@ -19,6 +19,7 @@ import {
   reconcileStartup,
   reviewIssue,
   runOnce,
+  runReviewCycle,
   runScheduledCycle,
   syncRunComment,
   transitionIssue,
@@ -1636,11 +1637,13 @@ describe('review outcomes', () => {
     results = [approved],
     runError = false,
     usedPercent = 10,
+    reinspectCandidate,
   }: {
     initialModel?: string;
     results?: unknown[];
     runError?: boolean;
     usedPercent?: number;
+    reinspectCandidate?: () => Promise<unknown>;
   }) {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-review-outcome-'));
     let state = 'agent:review';
@@ -1697,6 +1700,7 @@ describe('review outcomes', () => {
           rateLimitsByLimitId: null,
         }),
         runRunner,
+        reinspectCandidate,
         now: new Date('2026-09-28T00:10:00.000Z'),
       },
     );
@@ -1748,6 +1752,222 @@ describe('review outcomes', () => {
     expect(result.state).toBe('agent:review');
     expect(state).toBe('agent:review');
     expect(runRunner).not.toHaveBeenCalled();
+  });
+
+  it('discards a completed result when the PR head changes during review', async () => {
+    const { result, state } = await runReview({
+      reinspectCandidate: async () => ({
+        state: 'ready',
+        headSha: 'c'.repeat(40),
+        ciFingerprint: 'b'.repeat(64),
+      }),
+    });
+    expect(result.state).toBe('agent:review');
+    expect(result.reason).toBe('review-evidence-stale');
+    expect(state).toBe('agent:review');
+  });
+});
+
+describe('review scheduler and review recovery', () => {
+  const candidate = {
+    state: 'ready',
+    issue: 42,
+    pullRequest: 321,
+    base: 'develop',
+    branch: 'codex/issue-42',
+    headSha: 'a'.repeat(40),
+    claims: 'Verified claim',
+    changedPaths: ['src/lib/scoring.ts'],
+    checks: [],
+    ciFingerprint: 'b'.repeat(64),
+    model: 'gpt-5.6-sol',
+    riskReason: 'ordinary change',
+  };
+  const completed = {
+    issue: 42,
+    pullRequest: 321,
+    headSha: candidate.headSha,
+    model: 'gpt-5.6-sol',
+    ciFingerprint: candidate.ciFingerprint,
+    status: 'completed',
+    reviewedAt: '2026-09-28T00:10:00.000Z',
+    result: {
+      outcome: 'approved',
+      summary: 'Approved',
+      findings: [],
+      verifiedCommands: ['npm test'],
+      documentationCurrent: true,
+    },
+  };
+
+  function reviewStateCommand(initialState = 'agent:review', status = '') {
+    let state = initialState;
+    const calls: Array<{ file: string; args: string[]; cwd?: string }> = [];
+    const command = vi.fn(async (file: string, args: string[], options?: { cwd?: string }) => {
+      calls.push({ file, args, cwd: options?.cwd });
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'edit') {
+        state = args[args.indexOf('--add-label') + 1];
+        return { stdout: '' };
+      }
+      if (file === 'gh' && args[0] === 'issue' && args[1] === 'comment') return { stdout: '' };
+      if (file === 'git' && args[0] === 'status') return { stdout: status };
+      if (file === 'git' && args[0] === 'worktree' && args[1] === 'remove') return { stdout: '' };
+      throw new Error(`unexpected command: ${file} ${args.join(' ')}`);
+    });
+    return { command, calls, getState: () => state };
+  }
+
+  it('runs one reviewer beside three workers and never starts a second reviewer', async () => {
+    let resolveReview: (value: unknown) => void = () => {};
+    const pending = new Promise((resolve) => {
+      resolveReview = resolve;
+    });
+    const runReview = vi.fn(async () => pending);
+    const common = {
+      activeWorkers: new Map([
+        [1, {}],
+        [2, {}],
+        [3, {}],
+      ]),
+      listReviewIssues: async () => [{ number: 42 }],
+      inspectCandidate: async () => candidate,
+      loadReviewRecord: async () => null,
+      runReview,
+    };
+
+    const first = await runReviewCycle({ ...common, activeReview: null });
+    expect(first.activeReview).toMatchObject({ issue: 42, headSha: candidate.headSha });
+    expect(runReview).toHaveBeenCalledTimes(1);
+    const second = await runReviewCycle({ ...common, activeReview: first.activeReview });
+    expect(second.activeReview).toBe(first.activeReview);
+    expect(runReview).toHaveBeenCalledTimes(1);
+    resolveReview({ state: 'human:approval' });
+    await first.activeReview?.promise;
+  });
+
+  it('recovers a matching completed result and removes only a clean worktree', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-review-recovery-'));
+    const state = reviewStateCommand();
+    const runReview = vi.fn();
+    try {
+      const result = await runReviewCycle({
+        activeReview: null,
+        stateRoot: root,
+        command: state.command,
+        listReviewIssues: async () => [{ number: 42 }],
+        inspectCandidate: async () => candidate,
+        loadReviewRecord: async () => completed,
+        runReview,
+      });
+      expect(result.activeReview).toBeNull();
+      expect(state.getState()).toBe('human:approval');
+      expect(runReview).not.toHaveBeenCalled();
+      expect(
+        state.calls.some(
+          ({ file, args }) => file === 'git' && args[0] === 'worktree' && args[1] === 'remove',
+        ),
+      ).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('reserves a live running reviewer without launching another', async () => {
+    const runReview = vi.fn();
+    const result = await runReviewCycle({
+      activeReview: null,
+      listReviewIssues: async () => [{ number: 42 }],
+      inspectCandidate: async () => candidate,
+      loadReviewRecord: async () => ({
+        ...completed,
+        status: 'running',
+        reviewerPid: 1234,
+        threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+        heartbeatAt: '2026-09-28T00:29:59.000Z',
+        reviewedAt: undefined,
+        result: undefined,
+      }),
+      isPidAlive: () => true,
+      reviewerIdentityMatches: async () => true,
+      now: new Date('2026-09-28T00:30:00.000Z'),
+      runReview,
+    });
+    expect(result.activeReview).toMatchObject({ issue: 42, reserved: true });
+    expect(runReview).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['mismatched PID identity', '2026-09-28T00:29:59.000Z', false],
+    ['stale heartbeat', '2026-09-28T00:00:00.000Z', true],
+  ])('blocks a running review with %s', async (_name, heartbeatAt, identityMatches) => {
+    const state = reviewStateCommand();
+    const result = await runReviewCycle({
+      activeReview: null,
+      command: state.command,
+      listReviewIssues: async () => [{ number: 42 }],
+      inspectCandidate: async () => candidate,
+      loadReviewRecord: async () => ({
+        ...completed,
+        status: 'running',
+        reviewerPid: 1234,
+        threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+        heartbeatAt,
+        reviewedAt: undefined,
+        result: undefined,
+      }),
+      isPidAlive: () => true,
+      reviewerIdentityMatches: async () => identityMatches,
+      now: new Date('2026-09-28T00:30:00.000Z'),
+      runReview: vi.fn(),
+    });
+    expect(result.activeReview).toBeNull();
+    expect(state.getState()).toBe('agent:blocked');
+  });
+
+  it('invalidates completed evidence from an old head and starts the current review', async () => {
+    const runReview = vi.fn(async () => new Promise(() => {}));
+    const result = await runReviewCycle({
+      activeReview: null,
+      listReviewIssues: async () => [{ number: 42 }],
+      inspectCandidate: async () => candidate,
+      loadReviewRecord: async () => ({ ...completed, headSha: 'c'.repeat(40) }),
+      runReview,
+    });
+    expect(result.activeReview).toMatchObject({ issue: 42, headSha: candidate.headSha });
+    expect(runReview).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves a dirty review worktree and blocks with its absolute path', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-review-dirty-'));
+    const state = reviewStateCommand('agent:review', ' M scripts/ai-factory/watcher.mjs\n');
+    try {
+      await runReviewCycle({
+        activeReview: null,
+        stateRoot: root,
+        command: state.command,
+        listReviewIssues: async () => [{ number: 42 }],
+        inspectCandidate: async () => candidate,
+        loadReviewRecord: async () => completed,
+        runReview: vi.fn(),
+      });
+      expect(state.getState()).toBe('agent:blocked');
+      expect(
+        state.calls.some(
+          ({ file, args }) => file === 'git' && args[0] === 'worktree' && args[1] === 'remove',
+        ),
+      ).toBe(false);
+      const commentCall = state.calls.find(
+        ({ file, args }) => file === 'gh' && args[0] === 'issue' && args[1] === 'comment',
+      );
+      expect(commentCall).toBeDefined();
+      const bodyPath = commentCall?.args.at(-1) ?? '';
+      expect(await readFile(bodyPath, 'utf8')).toContain(join(root, 'reviews'));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });
 
