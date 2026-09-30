@@ -502,6 +502,14 @@ export async function inspectReviewCandidate(
     ).stdout,
     'pull request checks',
   );
+  const currentPull = parseJson(
+    (await commandAdapter('gh', ['pr', 'view', String(pull.number), '--json', 'headRefOid']))
+      .stdout,
+    'pull request head',
+  );
+  if (currentPull?.headRefOid !== pull.headRefOid) {
+    return blockReviewCandidate(number, 'pull-request-head-changed', commandAdapter);
+  }
   let checkState;
   try {
     checkState = evaluatePrChecks(checks, pull.createdAt, now);
@@ -2241,7 +2249,6 @@ export async function runReviewCycle({
   if (activeReview && !activeReview.settled && !activeReview.reserved) {
     return { activeReview };
   }
-  activeReview = null;
   const issues = [...(await listReviewIssues(commandAdapter))].sort(
     (left, right) => validateIssueNumber(left.number) - validateIssueNumber(right.number),
   );

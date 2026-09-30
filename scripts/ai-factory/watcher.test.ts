@@ -1358,7 +1358,7 @@ describe('review candidate', () => {
     },
   ];
 
-  function reviewCommand(pulls: unknown[], checks: unknown[]) {
+  function reviewCommand(pulls: unknown[], checks: unknown[], viewHead = pull.headRefOid) {
     let state = 'agent:review';
     return vi.fn(async (file: string, args: string[]) => {
       if (file === 'gh' && args[0] === 'pr' && args[1] === 'list') {
@@ -1366,6 +1366,9 @@ describe('review candidate', () => {
       }
       if (file === 'gh' && args[0] === 'pr' && args[1] === 'checks') {
         return { stdout: JSON.stringify(checks) };
+      }
+      if (file === 'gh' && args[0] === 'pr' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ headRefOid: viewHead }) };
       }
       if (file === 'gh' && args[0] === 'issue' && args[1] === 'view') {
         return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
@@ -1415,6 +1418,15 @@ describe('review candidate', () => {
         changedPaths: ['docs/README.md'],
       });
     }
+  });
+
+  it('blocks when the PR head changes between listing and reading checks', async () => {
+    const command = reviewCommand([pull], passed, 'c'.repeat(40));
+    const result = await inspectReviewCandidate(
+      { number: 42, labels: [{ name: 'agent:review' }] },
+      { command, now: new Date('2026-09-28T00:10:00.000Z') },
+    );
+    expect(result).toMatchObject({ state: 'blocked', reason: 'pull-request-head-changed' });
   });
 });
 
@@ -1738,6 +1750,14 @@ describe('review outcomes', () => {
     expect(result.state).toBe('agent:blocked');
     expect(state).toBe('agent:blocked');
     expect(models).toEqual(['gpt-6-astra']);
+  });
+
+  it('blocks approved output when documentation is stale', async () => {
+    const { result, state } = await runReview({
+      results: [{ ...approved, documentationCurrent: false }],
+    });
+    expect(result.state).toBe('agent:blocked');
+    expect(state).toBe('agent:blocked');
   });
 
   it('fails after one reviewer infrastructure retry', async () => {
