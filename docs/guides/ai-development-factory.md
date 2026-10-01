@@ -111,7 +111,7 @@ find "$FACTORY_ROOT/review-runs" -maxdepth 2 -type f -print
 git worktree list --porcelain
 ```
 
-running recordでは`model`、`headSha`、`ciFingerprint`、`reviewerPid`、`threadId`、`heartbeatAt`を照合する。PIDは値を表示せず引数として使える。
+running recordでは`model`、`headSha`、`ciFingerprint`、`reviewerPid`、`threadId`、`heartbeatAt`を照合する。現在のidentityに一致するrecordが壊れている場合も二重起動せず `agent:blocked` になる。verification worktreeの依存導入は隔離HOMEでlifecycle scriptを無効化した `npm ci --ignore-scripts` を使う。PIDは値を表示せず引数として使える。
 
 ```bash
 REVIEWER_PID=<reviewerPid>

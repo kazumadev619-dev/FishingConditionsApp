@@ -5,7 +5,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import { describe, expect, it, vi } from 'vitest';
-import { parseRunComment, planInputHash, renderPlanComment, renderRunComment } from './core.mjs';
+import {
+  parseRunComment,
+  planInputHash,
+  renderPlanComment,
+  renderReviewComment,
+  renderRunComment,
+} from './core.mjs';
 import {
   acquireLock,
   dependenciesClosed,
@@ -1428,6 +1434,33 @@ describe('review candidate', () => {
     );
     expect(result).toMatchObject({ state: 'blocked', reason: 'pull-request-head-changed' });
   });
+
+  it('treats the gh no-checks exit as an empty check list', async () => {
+    const command = reviewCommand([pull], []);
+    command.mockImplementationOnce(async () => ({ stdout: JSON.stringify([pull]) }));
+    command.mockImplementationOnce(async () => {
+      throw Object.assign(new Error('no checks'), {
+        code: 1,
+        stderr: "no checks reported on the 'codex/issue-42' branch\n",
+      });
+    });
+    command.mockImplementationOnce(async () => ({
+      stdout: JSON.stringify({ headRefOid: pull.headRefOid }),
+    }));
+    command.mockImplementationOnce(async (_file: string, args: string[]) => {
+      if (args[0] === 'issue' && args[1] === 'view') {
+        return { stdout: JSON.stringify({ labels: [{ name: 'agent:review' }] }) };
+      }
+      return { stdout: '' };
+    });
+
+    const result = await inspectReviewCandidate(
+      { number: 42, labels: [{ name: 'agent:review' }] },
+      { command, now: new Date('2026-09-28T00:30:00.000Z') },
+    );
+
+    expect(result).toMatchObject({ state: 'blocked', reason: 'checks-missing' });
+  });
 });
 
 describe('review worktree', () => {
@@ -1439,15 +1472,24 @@ describe('review worktree', () => {
   it('fetches and verifies the exact head before creating a detached worktree', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-review-worktree-'));
     const calls: Array<{ file: string; args: string[]; cwd?: string }> = [];
-    const command = vi.fn(async (file: string, args: string[], options?: { cwd?: string }) => {
-      calls.push({ file, args, cwd: options?.cwd });
-      if (file === 'git' && args[0] === 'worktree' && args[1] === 'list') return { stdout: '' };
-      if (file === 'git' && args[0] === 'rev-parse') return { stdout: `${candidate.headSha}\n` };
-      if (file === 'git' && args[0] === 'status') return { stdout: '' };
-      return { stdout: '' };
-    });
+    const env = { PATH: '/usr/bin', HOME: '/Users/example', GH_TOKEN: 'forbidden' };
+    let installEnv: Record<string, string | undefined> | undefined;
+    const command = vi.fn(
+      async (
+        file: string,
+        args: string[],
+        options?: { cwd?: string; env?: Record<string, string | undefined> },
+      ) => {
+        calls.push({ file, args, cwd: options?.cwd });
+        if (file === 'npm') installEnv = options?.env;
+        if (file === 'git' && args[0] === 'worktree' && args[1] === 'list') return { stdout: '' };
+        if (file === 'git' && args[0] === 'rev-parse') return { stdout: `${candidate.headSha}\n` };
+        if (file === 'git' && args[0] === 'status') return { stdout: '' };
+        return { stdout: '' };
+      },
+    );
     try {
-      const result = await prepareReviewWorktree(candidate, { command, stateRoot: root });
+      const result = await prepareReviewWorktree(candidate, { command, stateRoot: root, env });
       const path = join(root, 'reviews', `issue-42-${candidate.headSha.slice(0, 12)}`);
       expect(result).toEqual(path);
       expect(calls).toEqual([
@@ -1461,8 +1503,11 @@ describe('review worktree', () => {
         },
         { file: 'git', args: ['rev-parse', 'HEAD'], cwd: path },
         { file: 'git', args: ['status', '--porcelain=v1'], cwd: path },
-        { file: 'npm', args: ['ci'], cwd: path },
+        { file: 'npm', args: ['ci', '--ignore-scripts'], cwd: path },
       ]);
+      expect(Object.keys(installEnv ?? {}).sort()).toEqual(['HOME', 'PATH']);
+      expect(installEnv?.HOME).not.toBe(env.HOME);
+      expect(JSON.stringify(installEnv)).not.toContain('forbidden');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
@@ -1916,6 +1961,42 @@ describe('review scheduler and review recovery', () => {
       runReview,
     });
     expect(result.activeReview).toMatchObject({ issue: 42, reserved: true });
+    expect(runReview).not.toHaveBeenCalled();
+  });
+
+  it('blocks a current malformed running review instead of launching another', async () => {
+    const state = reviewStateCommand();
+    const runReview = vi.fn();
+    const body = renderReviewComment({
+      ...completed,
+      status: 'running',
+      reviewerPid: 1234,
+      threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+      heartbeatAt: 'corrupt',
+      reviewedAt: undefined,
+      result: undefined,
+    });
+    const command = vi.fn(async (file: string, args: string[], options?: { cwd?: string }) => {
+      if (file === 'gh' && args[0] === 'api' && args[1] === 'user') {
+        return { stdout: 'factory-bot\n' };
+      }
+      if (file === 'gh' && args[0] === 'repo') return { stdout: 'owner/repo\n' };
+      if (file === 'gh' && args[0] === 'api') {
+        return {
+          stdout: JSON.stringify([[{ id: 77, user: { login: 'factory-bot' }, body }]]),
+        };
+      }
+      return state.command(file, args, options);
+    });
+    const result = await runReviewCycle({
+      activeReview: null,
+      command,
+      listReviewIssues: async () => [{ number: 42 }],
+      inspectCandidate: async () => candidate,
+      runReview,
+    });
+    expect(result.activeReview).toBeNull();
+    expect(state.getState()).toBe('agent:blocked');
     expect(runReview).not.toHaveBeenCalled();
   });
 

@@ -490,18 +490,24 @@ export async function inspectReviewCandidate(
   ) {
     return blockReviewCandidate(number, 'pull-request-mismatch', commandAdapter);
   }
-  const checks = parseJson(
-    (
-      await commandAdapter('gh', [
-        'pr',
-        'checks',
-        String(pull.number),
-        '--json',
-        'name,workflow,bucket,completedAt',
-      ])
-    ).stdout,
-    'pull request checks',
-  );
+  let checks;
+  try {
+    checks = parseJson(
+      (
+        await commandAdapter('gh', [
+          'pr',
+          'checks',
+          String(pull.number),
+          '--json',
+          'name,workflow,bucket,completedAt',
+        ])
+      ).stdout,
+      'pull request checks',
+    );
+  } catch (error) {
+    if (error?.code !== 1 || !error.stderr?.startsWith('no checks reported on the ')) throw error;
+    checks = [];
+  }
   const currentPull = parseJson(
     (await commandAdapter('gh', ['pr', 'view', String(pull.number), '--json', 'headRefOid']))
       .stdout,
@@ -1363,9 +1369,10 @@ async function localBranchExists(branch, commandAdapter) {
   }
 }
 
+/** @param {any} candidate @param {{ command?: CommandAdapter, stateRoot?: string, env?: Record<string, string | undefined> }} [options] */
 export async function prepareReviewWorktree(
   candidate,
-  { command: commandAdapter = command, stateRoot = FACTORY_ROOT } = {},
+  { command: commandAdapter = command, stateRoot = FACTORY_ROOT, env = process.env } = {},
 ) {
   const number = validateIssueNumber(candidate.issue);
   const headSha = candidate.headSha;
@@ -1389,7 +1396,18 @@ export async function prepareReviewWorktree(
   if (actualHead !== headSha) throw new Error('review worktree head mismatch');
   const status = await commandAdapter('git', ['status', '--porcelain=v1'], { cwd: worktree });
   if (status.stdout) throw new Error('review worktree is dirty');
-  await commandAdapter('npm', ['ci'], { cwd: worktree });
+  const home = await mkdtemp(join(tmpdir(), 'ai-factory-review-install-home-'));
+  try {
+    const installEnv = Object.fromEntries([
+      ...['PATH', 'TMPDIR', 'LANG', 'LC_ALL']
+        .filter((name) => env[name] !== undefined)
+        .map((name) => [name, env[name]]),
+      ['HOME', home],
+    ]);
+    await commandAdapter('npm', ['ci', '--ignore-scripts'], { cwd: worktree, env: installEnv });
+  } finally {
+    await rm(home, { recursive: true, force: true });
+  }
   return worktree;
 }
 
@@ -1451,7 +1469,7 @@ export async function reviewIssue(
   } = {},
 ) {
   const number = validateIssueNumber(candidate.issue);
-  const worktree = await prepare(candidate, { command: commandAdapter, stateRoot });
+  const worktree = await prepare(candidate, { command: commandAdapter, stateRoot, env });
   const { repo } = await planContext(commandAdapter);
   let commentId;
   let model = candidate.model;
@@ -2148,7 +2166,25 @@ async function loadReviewRecord(issue, candidate, commandAdapter) {
         viewer,
       });
     } catch {
-      // Review comments are untrusted evidence; only a fully current record is reusable.
+      const match = comment?.body?.match(
+        /^<!-- ai-factory-review:v1 -->\n```json\n([^\n]+)\n```\n?$/,
+      );
+      let untrusted;
+      try {
+        untrusted = match ? JSON.parse(match[1]) : null;
+      } catch {
+        untrusted = null;
+      }
+      if (
+        comment?.user?.login === viewer &&
+        untrusted?.status === 'running' &&
+        untrusted.issue === candidate.issue &&
+        untrusted.pullRequest === candidate.pullRequest &&
+        untrusted.headSha === candidate.headSha &&
+        untrusted.ciFingerprint === candidate.ciFingerprint
+      ) {
+        record = { status: 'invalid' };
+      }
     }
   }
   return record;
@@ -2256,7 +2292,13 @@ export async function runReviewCycle({
     const candidate = await inspectCandidate(issue, { command: commandAdapter, now });
     if (candidate.state !== 'ready') continue;
     let record = await loadRecord(issue, candidate, commandAdapter);
-    if (!currentReviewRecord(record, candidate)) record = null;
+    if (record?.status !== 'invalid' && !currentReviewRecord(record, candidate)) record = null;
+    if (record?.status === 'invalid') {
+      await transitionIssue(candidate.issue, STATES.REVIEW, STATES.BLOCKED, {
+        command: commandAdapter,
+      });
+      return { activeReview: null };
+    }
     if (record?.status === 'running') {
       if (!isRunStale(record, now) && (await identityMatches(record, { stateRoot, isPidAlive }))) {
         return {

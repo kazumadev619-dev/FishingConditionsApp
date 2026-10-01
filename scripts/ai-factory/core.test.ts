@@ -215,6 +215,22 @@ describe('PR checks', () => {
     });
   });
 
+  it('accepts GitHub timestamps without fractional seconds', () => {
+    expect(
+      evaluatePrChecks([], '2026-09-28T00:00:00Z', new Date('2026-09-28T00:29:59.000Z')),
+    ).toEqual({ state: 'pending', reason: 'checks-not-started' });
+    expect(
+      reviewFingerprint('a'.repeat(40), [
+        {
+          name: 'test',
+          workflow: 'CI',
+          bucket: 'pass',
+          completedAt: '2026-09-28T00:05:00Z',
+        },
+      ]),
+    ).toMatch(/^[0-9a-f]{64}$/);
+  });
+
   it.each(['fail', 'cancel', 'skipping'])('blocks a non-passing check bucket: %s', (bucket) => {
     expect(evaluatePrChecks([{ name: 'CI', bucket }], '2026-09-28T00:00:00.000Z')).toMatchObject({
       state: 'failed',

@@ -101,12 +101,7 @@ export function transitionAllowed(from, to) {
 
 export function evaluatePrChecks(checks, createdAt, now = new Date()) {
   if (!Array.isArray(checks)) throw new Error('invalid PR checks');
-  if (
-    typeof createdAt !== 'string' ||
-    Number.isNaN(Date.parse(createdAt)) ||
-    new Date(createdAt).toISOString() !== createdAt ||
-    Number.isNaN(new Date(now).getTime())
-  ) {
+  if (!isoTimestamp(createdAt) || Number.isNaN(new Date(now).getTime())) {
     throw new Error('invalid PR timestamp');
   }
   if (
@@ -249,11 +244,11 @@ function boundedString(value, minimum, maximum) {
 }
 
 function isoTimestamp(value) {
-  return (
-    typeof value === 'string' &&
-    !Number.isNaN(Date.parse(value)) &&
-    new Date(value).toISOString() === value
-  );
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$/);
+  if (!match || Number.isNaN(Date.parse(value))) return false;
+  const milliseconds = (match[2] ?? '').padEnd(3, '0').slice(0, 3);
+  return new Date(value).toISOString() === `${match[1]}.${milliseconds}Z`;
 }
 
 export function validateReviewResult(result, model) {

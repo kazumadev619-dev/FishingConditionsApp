@@ -130,7 +130,7 @@ checks取得直後にPRを再読し、先に取得したhead SHAと一致する�
 
 Solだけが同じhead SHAをAstraへ1回昇格できる。Astraの再昇格は不正結果として `agent:blocked` にする。固定Schemaは `outcome`、短いsummary、最大20件のbounded findings、最大30件のverified commands、`documentationCurrent` を返す。`approved` は `documentationCurrent=true` の場合だけ受理し、それ以外は修正必須として停止する。
 
-Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、`npm ci` とHEAD一致を確認する。Reviewerへ渡す環境はfreshな `HOME` と `PATH`、`CODEX_HOME`、一時ディレクトリ、localeだけで、GitHub token、Slack Webhook、API key、`.env.local`、本番資格情報を渡さない。
+Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、HEAD一致を確認してからfreshな `HOME` と秘密を除いた環境で `npm ci --ignore-scripts` を実行する。Reviewerへ渡す環境は別のfreshな `HOME` と `PATH`、`CODEX_HOME`、一時ディレクトリ、localeだけで、GitHub token、Slack Webhook、API key、`.env.local`、本番資格情報を渡さない。
 
 Reviewerは `.codex/agents/pr-verifier.toml` の `mode=watcher` 契約に従い、`gh`、fetch、checkout、秘密依存の検証、commit、push、GitHub書き込み、自動修正を行わない。秘密が必要な検証は確認不能として `changes-required` を返す。
 
@@ -138,7 +138,7 @@ Reviewerは `.codex/agents/pr-verifier.toml` の `mode=watcher` 契約に従い�
 
 Watcherは現在のGitHub viewer本人が投稿した `<!-- ai-factory-review:v1 -->` コメントだけを読む。running recordにはIssue、PR、head SHA、model、CI fingerprint、reviewer PID、Codex thread ID、heartbeatを保存し、completed recordではboundedな結果とreview日時へ同じコメントを更新する。自由文のモデル出力やコマンド出力全文は保存しない。
 
-再起動時は現在のPR/CIとreviewコメントを照合する。completed証拠が一致すれば状態遷移を再開する。running証拠はheartbeatが30分未満、PIDが生存し、review runのCodex JSONLに同じthread IDがある場合だけreviewer枠を予約する。stale、dead、PID/thread不一致は `agent:blocked` にして二重起動しない。Reviewer起動障害は同じIssue・head SHA・modelに対して1回だけ再試行し、再失敗は `agent:failed` とする。
+再起動時は現在のPR/CIとreviewコメントを照合する。completed証拠が一致すれば状態遷移を再開する。running証拠はheartbeatが30分未満、PIDが生存し、review runのCodex JSONLに同じthread IDがある場合だけreviewer枠を予約する。現在のIssue、PR、head SHA、CI fingerprintに一致するrunning証拠が壊れている場合を含め、stale、dead、PID/thread不一致は `agent:blocked` にして二重起動しない。Reviewer起動障害は同じIssue・head SHA・modelに対して1回だけ再試行し、再失敗は `agent:failed` とする。
 
 状態遷移を保存した後、verification worktreeがcleanな場合だけ `git worktree remove` する。dirtyならresetも削除もせず絶対パスをIssueコメントへ残し、必要なら `agent:blocked` へ移す。
 
