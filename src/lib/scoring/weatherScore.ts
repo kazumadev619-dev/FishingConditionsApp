@@ -1,7 +1,7 @@
 import type { FormattedWeatherData } from '../openWeatherService';
 
 export function calculateWeatherScore(weatherData: FormattedWeatherData): number {
-  let windScore = 0;
+  let windScore: number;
   if (weatherData.windSpeed <= 3) {
     windScore = 15;
   } else if (weatherData.windSpeed <= 6) {
@@ -12,7 +12,7 @@ export function calculateWeatherScore(weatherData: FormattedWeatherData): number
     windScore = 0;
   }
 
-  let conditionScore = 0;
+  let conditionScore: number;
   const weatherMain = weatherData.weather.main;
 
   if (weatherMain === 'Clear' || weatherMain === 'Sunny' || weatherMain === '晴れ') {

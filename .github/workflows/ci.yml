@@ -64,6 +64,24 @@ jobs:
       - name: Run unit tests
         run: npm run test
 
+      # 8. ワークフローの静的検査（actionlint）
+      # 消した step id や書き間違えた式はエラーにならず空文字に評価され、
+      # deploy.yml は main に上がるまで走らないので本番で初めて表に出る（#199）。
+      # ランナーの shellcheck で run: の中身も検査される。ただし shellcheck が
+      # 無いと actionlint はその規則を黙って外して exit 0 になり、検知が半分に
+      # 落ちる。版をログに出すついでに、消えたらここで落とす。
+      - name: Lint workflows (actionlint)
+        env:
+          ACTIONLINT_VERSION: 1.7.12
+          ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
+        run: |
+          set -euo pipefail
+          shellcheck --version
+          curl -fsSL "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz" -o /tmp/actionlint.tar.gz
+          echo "${ACTIONLINT_SHA256}  /tmp/actionlint.tar.gz" | sha256sum -c -
+          tar xzf /tmp/actionlint.tar.gz -C /tmp actionlint
+          /tmp/actionlint
+
   # ============================================
   # ビルド検証
   # ============================================
@@ -122,6 +140,8 @@ jobs:
       # バージョンは固定する。master / latest 参照だと上流の更新だけで
       # CI が赤にも緑にも変わり、失敗の原因を差分から追えなくなる。
       # curl は -f を付ける（付けないと 404 本文を取得して exit 0 になる）。
+      # *_SHA256 は各リリースが公開しているチェックサムファイルの linux amd64 の値で、
+      # 展開前に照合する。版を上げるときは一緒に書き換える（#164）。
       #
       # 上流の install_kustomize.sh は使わない。あれはダウンロード URL を
       # 解決するために GitHub の releases API を未認証で引くため、ランナーの
@@ -131,18 +151,24 @@ jobs:
       - name: Install kustomize
         env:
           KUSTOMIZE_VERSION: v5.8.1
+          KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
         run: |
-          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" \
-            | tar xz -C /tmp
+          set -euo pipefail
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F${KUSTOMIZE_VERSION}/kustomize_${KUSTOMIZE_VERSION}_linux_amd64.tar.gz" -o /tmp/kustomize.tar.gz
+          echo "${KUSTOMIZE_SHA256}  /tmp/kustomize.tar.gz" | sha256sum -c -
+          tar xzf /tmp/kustomize.tar.gz -C /tmp kustomize
           sudo install -m 0755 /tmp/kustomize /usr/local/bin/kustomize
           kustomize version
 
       - name: Install kubeconform
         env:
           KUBECONFORM_VERSION: v0.8.0
+          KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
         run: |
-          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" \
-            | tar xz -C /tmp
+          set -euo pipefail
+          curl -fsSL "https://github.com/yannh/kubeconform/releases/download/${KUBECONFORM_VERSION}/kubeconform-linux-amd64.tar.gz" -o /tmp/kubeconform.tar.gz
+          echo "${KUBECONFORM_SHA256}  /tmp/kubeconform.tar.gz" | sha256sum -c -
+          tar xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
           sudo mv /tmp/kubeconform /usr/local/bin/
 
       # -kubernetes-version を付けないと上流 master のスキーマで検証してしまい、
@@ -213,6 +239,26 @@ jobs:
             exit 1
           fi
 
+      # probe は /healthz だけを指すこと。DB を叩く probe は Neon の autosuspend を
+      # 永久にリセットし、無料枠を使い切って本番を落とす（#187、経緯は k8s/README.md）。
+      - name: Ensure probes only hit /healthz
+        run: |
+          # 各 probe のブロックの中だけを見る。ファイル全体だと Ingress の path にも一致する。
+          # 行数でなくインデントで切る。kustomize はキーを辞書順に並べるので、httpHeaders や
+          # host があると path が後ろにずれ、固定の行数では取りこぼす。
+          # 1行にまとめる。::error:: は改行で切れるので、複数行だと犯人の path が表示されない
+          paths=$(awk '
+            /^ +(startup|liveness|readiness)Probe:$/ { ind = match($0, /[^ ]/); inp = 1; next }
+            inp && match($0, /[^ ]/) <= ind { inp = 0 }
+            inp && /^ +path: / { print $2 }
+          ' /tmp/rendered.yaml | sort -u | paste -sd, -)
+
+          # 禁止リストではなく許可リスト。DB を叩く新しいエンドポイントを足しても自動で落ちる
+          if [ "$paths" != "/healthz" ]; then
+            echo "::error::probe は /healthz だけを指すこと（#187）。見つかった path: ${paths:-なし}"
+            exit 1
+          fi
+
       - name: Ensure no Secret is rendered
         run: |
           if grep -q "^kind: Secret" /tmp/rendered.yaml; then
@@ -232,9 +278,40 @@ jobs:
           plain=$(awk '/^stringData:/{f=1;next} /^[a-z]/{f=0} f && /: / && !/ENC\[AES256_GCM/' k8s/secret.enc.yaml)
           if [ -n "$plain" ]; then
             echo "::error::k8s/secret.enc.yaml の stringData に暗号化されていない値がある"
+            # 行ごとに伏せる。${plain//:*/} だと * が改行をまたいで2行目以降のキー名まで消える
+            # shellcheck disable=SC2001
             echo "$plain" | sed 's/:.*/: <伏せ字>/'
             exit 1
           fi
+
+  # ============================================
+  # Docker イメージのビルド検証
+  # ============================================
+  # イメージをビルドするのは deploy.yml だけで、main への push でしか走らない。
+  # そのため Dockerfile のビルド時チェック（migrator の import 解決 #201、
+  # prune 後の prisma.config.ts 読み込み、`# check=error=true`）が main に
+  # マージしたあとの deploy で初めて働いていた（#207）。PR の時点でビルドだけする。
+  #
+  # push しないのでレジストリの権限も secrets も要らない。NEXT_PUBLIC_* の
+  # build-arg は空のまま（埋め込まれるだけでビルドの成否には関わらない）。
+  # ランナーは本番と同じ arm64（public リポジトリでは無料）。alpine 上の
+  # ネイティブモジュール（bcrypt など）の取得はアーキテクチャごとに違う。
+  # runner は builder ステージを migrator と共有するので、続けてビルドすれば
+  # ほぼキャッシュで済む。
+  docker:
+    name: Docker Images
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Build migrator image
+        run: docker build --file docker/Dockerfile --target migrator .
+
+      - name: Build runner image
+        run: docker build --file docker/Dockerfile --target runner .
 
   # ============================================
   # CIサマリー
@@ -242,26 +319,30 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-latest
-    needs: [quality-check, build, manifests]
+    needs: [quality-check, build, manifests, docker]
     if: always() # 失敗してもサマリーは表示
 
     steps:
       - name: Check CI results
         run: |
-          echo "## CI Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## CI Results"
+            echo ""
 
-          if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ]; then
-            echo "🟢 All checks passed!" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- 🟢 Code Quality Check" >> $GITHUB_STEP_SUMMARY
-            echo "- 🟢 Build Verification" >> $GITHUB_STEP_SUMMARY
-            echo "- 🟢 Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ Some checks failed" >> $GITHUB_STEP_SUMMARY
-            echo "" >> $GITHUB_STEP_SUMMARY
-            echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check" >> $GITHUB_STEP_SUMMARY
-            echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification" >> $GITHUB_STEP_SUMMARY
-            echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests" >> $GITHUB_STEP_SUMMARY
-            exit 1
-          fi
+            if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ] && [ "${{ needs.docker.result }}" == "success" ]; then
+              echo "🟢 All checks passed!"
+              echo ""
+              echo "- 🟢 Code Quality Check"
+              echo "- 🟢 Build Verification"
+              echo "- 🟢 Kubernetes Manifests"
+              echo "- 🟢 Docker Images"
+            else
+              echo "❌ Some checks failed"
+              echo ""
+              echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check"
+              echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification"
+              echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests"
+              echo "- ${{ needs.docker.result == 'success' && '🟢' || '❌' }} Docker Images"
+              exit 1
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

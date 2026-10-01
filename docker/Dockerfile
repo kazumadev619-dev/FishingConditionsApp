@@ -62,7 +62,30 @@ RUN AUTH_SECRET=build-time-placeholder-not-used-at-runtime \
     npm run build
 
 # ============================================
-# Stage 3: Migrator (db-migrate / db-seed Job 用)
+# Stage 3: Migrator 用の依存
+# ============================================
+# deps の node_modules は next build のために dev 依存を含む。migrator が
+# それを丸ごとコピーすると eslint / vitest / biome まで載って 1.85GB になって
+# いたため、ここで dev 依存を落としてから migrator に渡す。
+#
+# prune をこの中間ステージで行うのは、migrator のステージで消しても
+# レイヤは加算のため実体がイメージに残るから（runner のコメントと同じ落とし穴）。
+#
+# Prisma CLI は package-lock.json 上で
+# devOptional 扱いのため --omit=dev でも残る。seed が使う tsx は
+# dependencies に置いている。prune の直後に prisma.config.ts を tsx で
+# 読み込み、どれかが消えていたらビルドの時点で落とす。
+#
+# typescript も @prisma/client の optional peer のため devOptional になり
+# --omit=dev では残る。migrate も seed（tsx は esbuild で変換する）も
+# 使わないので明示的に消す。
+FROM deps AS migrator-deps
+RUN npm prune --omit=dev && \
+    rm -rf node_modules/typescript node_modules/.bin/tsc node_modules/.bin/tsserver && \
+    node --import tsx/esm prisma.config.ts
+
+# ============================================
+# Stage 4: Migrator (db-migrate / db-seed Job 用)
 # ============================================
 # Prisma CLI と tsx を必要とするのはマイグレーションと seed だけなので、
 # Web 用イメージから切り離す。
@@ -82,21 +105,34 @@ RUN addgroup --system --gid 1001 nodejs && \
 ENV HOME=/tmp
 ENV NODE_ENV=production
 
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=migrator-deps /app/node_modules ./node_modules
 COPY --from=deps /app/prisma.config.ts ./
 COPY --from=deps /app/prisma ./prisma
 COPY --from=builder --chown=nextjs:nodejs /app/package.json ./package.json
 COPY --from=builder --chown=nextjs:nodejs /app/tsconfig.json ./
 COPY --from=builder --chown=nextjs:nodejs /app/scripts ./scripts
 COPY --from=builder --chown=nextjs:nodejs /app/src/generated ./src/generated
+COPY --from=builder --chown=nextjs:nodejs /app/src/lib/validators/coordinateValidator.ts ./src/lib/validators/
 COPY --from=builder --chown=nextjs:nodejs /app/code.csv ./code.csv
+
+# db-seed Job が流す2本の import が、このイメージの中で解決できるかをビルド時に
+# 確かめる。src/ は必要なファイルだけを拾ってコピーしているため、スクリプトに
+# import を1つ足すと実行時に ERR_MODULE_NOT_FOUND で落ちる（#201）。
+# esbuild は tsx の依存として入っている。import type は解決しないので src/types は要らない。
+# パッケージも外部扱いにせず解決させる。--packages=external だと tsconfig の @/ や
+# prune で消えた dev 依存を素通りさせる。--format=esm は top-level await を通すため。
+# Job の command にスクリプトを足したら、この行にも足すこと。
+RUN node_modules/.bin/esbuild prisma/seed.ts scripts/update-port-coordinates.ts \
+      --bundle --platform=node --format=esm --log-level=warning \
+      --outdir=/tmp/import-check && \
+    rm -rf /tmp/import-check
 
 USER nextjs
 
 CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 
 # ============================================
-# Stage 4: Runner (Production)
+# Stage 5: Runner (Production)
 # ============================================
 # **このステージは必ずファイル末尾に置くこと。** docker は --target 省略時に
 # 最後のステージをビルドするため、順序を変えると `docker build` や

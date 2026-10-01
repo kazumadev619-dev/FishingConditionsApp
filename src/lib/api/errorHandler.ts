@@ -20,7 +20,7 @@ export async function parseErrorResponse(response: Response): Promise<string> {
 
 export function createApiError(statusCode: number, message: string): ApiError {
   let type: ApiErrorType;
-  let retryable = false;
+  let retryable: boolean;
 
   if (statusCode === 429) {
     type = ApiErrorType.RATE_LIMITED;

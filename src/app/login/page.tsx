@@ -2,7 +2,6 @@
 
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { signIn } from 'next-auth/react';
 import { useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
@@ -10,19 +9,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { authenticate } from '@/lib/actions';
+import { signInWithGoogle } from '@/lib/googleSignIn';
 
 export default function LoginPage() {
   const [errorMessage, dispatch] = useActionState(authenticate, undefined);
   const [googleError, setGoogleError] = useState<string | undefined>(undefined);
 
-  const handleGoogleSignIn = async () => {
-    try {
-      setGoogleError(undefined);
-      await signIn('google', { callbackUrl: '/dashboard' });
-    } catch {
-      setGoogleError('Googleログインに失敗しました。時間をおいて再度お試しください。');
-    }
-  };
+  const handleGoogleSignIn = () => signInWithGoogle(setGoogleError);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">

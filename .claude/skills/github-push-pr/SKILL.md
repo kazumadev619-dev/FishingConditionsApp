@@ -25,6 +25,7 @@ git log --oneline -10
    - `git add <specific-files>` のように**明示的にパスを指定**する。`git add -A` / `git add .` は使わない。
    - 理由: このリポジトリのワーキングツリーには、無関係な未追跡ファイル（`.claude/`、`docs/_archive/` など）が混ざっていることがある。一括 add すると意図しないファイルまでコミットに入ってしまう。
    - **シークレットは絶対にステージしない**（CLAUDE.md 安全ルール）: `.env` / `*.key` / `kubeconfig` / `*_rsa`。誤って add した場合は即 `git restore --staged <file>`。
+   - **`git add -N`（`--intent-to-add`）だけでコミットしない。** lint-staged 17.5.0 以降は intent-to-add のファイルがステージにあると `lint-staged refused to run with files staged with "--intent-to-add"` で実行を拒否し、pre-commit フックが落ちる（git stash が intent-to-add を扱えないため）。16 系では素通りしていた。`git add <path>` で本ステージすれば通る。
 3. `git diff --cached --name-only` でステージ対象が意図通りか、`git diff --staged` で内容を最終確認
 
 ## ステップ2: コミットメッセージの作成

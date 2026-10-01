@@ -38,23 +38,61 @@ ImagePullBackOff になる**。`fishing-infra` の RBAC は CI に
 | ファイル | 内容 |
 |---------|------|
 | `kustomization.yaml` | 全リソースを束ねる。CI が `kustomize edit set image` でタグを差し替える |
-| `deployment.yaml` | アプリ本体。liveness は `/healthz`、readiness は `/readyz` |
+| `deployment.yaml` | アプリ本体。probe はすべて `/healthz`（下記） |
 | `service.yaml` | ClusterIP |
 | `ingress.yaml` | Traefik Ingress（`fishing.kazuma-lab.com`）。TLS は Cloudflare で終端するため `spec.tls` は持たない |
 | `config.env` | 非機密の環境変数。`kustomization.yaml` の `configMapGenerator` が ConfigMap を生成する（下記） |
 | `secret.enc.yaml` | SOPS/age 暗号化済みの機密。**kustomization には含めない** |
 | `job-db-migrate.yaml` | `prisma migrate deploy`。**毎回 delete してから apply する**（下記） |
+| `job-db-check.yaml` | pooled 側の `DATABASE_URL` に `SELECT 1` を1回投げる（#191）。db-migrate と同じく**毎回 delete してから apply する** |
 | `job-db-seed.yaml` | 初期データ投入。初回のみ手動。**kustomization には含めない** |
 
-### probe を役割で分けている理由
+### probe がすべて `/healthz` を向く理由
 
-- **liveness = `/healthz`**: 依存ゼロで「プロセスが生きているか」だけを見る。
-  `/` は潮汐・天気の外部 API に依存するため、外部要因の障害で健全な Pod が
-  再起動ループに入る。
-- **readiness = `/readyz`**: DB 到達性を見る。`/healthz` だと DB 未接続の Pod も
-  Ready になり、Service が流したトラフィックが全て 500 になる。
-  Redis は判定に含めない（落ちてもキャッシュ素通しで動くため。含めると
-  クラスタ全体の Redis 障害で全 Pod が NotReady になる）。
+startup / liveness / readiness の3つとも、依存ゼロの `/healthz` を叩く。
+
+- **`/` を使わない**: 潮汐・天気の外部 API に依存するため、外部要因の障害で健全な
+  Pod が再起動ループに入る。
+- **readiness で DB を見ない**: 以前は DB に `SELECT 1` を投げる `/readyz` を向けて
+  いたが、#187 でやめた。理由は2つ。
+  1. **可用性が上がらない。** `replicas: 1` で DB は全 Pod 共通の外部サービスなので、
+     DB が落ちれば全 Pod が同時に NotReady になる。逃がす先が無く、endpoints が空に
+     なって Traefik が全パスに `503 no available server` を返す。`/healthz` にも
+     届かず、エラーページすら出せない。
+  2. **Neon の無料枠を使い切る。** 10秒ごとの `SELECT 1` が autosuspend（無料枠は
+     5分固定で変更不可）を永久にリセットし、compute が24時間起きたままになる。
+     0.25 CU なら月 180 CU-hrs で、無料枠 100 CU-hrs を約16.7日で使い切る。
+     2026-09-18 に実際に枯渇して、本番が3日以上落ちた。
+
+  **probe の間隔を延ばしても解決しない。** 5分以下の間隔では稼働率が100%のまま
+  変わらない。意味のある削減には10〜30分が要り、それは probe として機能しない。
+
+**DB が落ちたときの挙動**: Pod は Ready のまま動き続ける。`/dashboard` は
+`resolveLocation.ts` が DB エラーを catch して既定の地点に逃がすので描画され、
+天気・潮汐・スコアは外部 API から取れる。お気に入りと港マスタの API は 500 を返す。
+
+**`/readyz` は人が叩く診断用として残している。** DB と Redis の到達性を返す。
+監視や probe など、定期ポーリングは向けないこと。CI の
+`Ensure probes only hit /healthz` が、probe が `/healthz` 以外を向いたら落とす。
+
+**代わりに失ったもの: ロールアウトで壊れた DB 設定を止める網。** 以前は新しい Pod が
+DB に繋がらないと Ready にならず、`rollout status` が落ちて止まっていた。いまは
+`/healthz` が通るので、Secret の `DATABASE_URL`（アプリが使う pooled 側）を壊しても
+ロールアウトは完了する。migrate は `DATABASE_URL_DIRECT` しか読まないので、pooled 側
+だけ壊れた場合は migrate も通る。
+
+そこで `deploy.yml` は **Apply manifests の前に** `db-check` Job（アプリと同じイメージ・
+同じ `pg` ドライバで `DATABASE_URL` に `SELECT 1`）を流し、繋がらなければロールアウト
+せずに止める（#191）。旧 Pod はそのまま動き続ける。`rollout undo` では Secret 起因の
+障害は直らない（作り直された Pod も壊れた Secret を読む）ので、旧 Pod を消す前に
+止めるしかない。ログにはエラーコードだけを出し、接続文字列は出さない。
+
+加えてブロッキングスモークで `/readyz` を**デプロイごとに1回だけ**叩く（直前の migrate で
+compute は起きており、1回きりなので autosuspend も妨げない）。
+
+**Secret はロールアウトより前に適用済み**なので、db-check で止まっても壊れた Secret は
+クラスタに残る。旧 Pod は起動時に読んだ値で動き続けるが、次に再起動した時点で壊れた
+値を読む。デプロイが赤くなったら Secret を直して再デプロイする。
 
 ## ローカル検証
 
@@ -83,7 +121,8 @@ sops -d k8s/secret.enc.yaml | kubectl apply -f -
 #    ConfigMap → Service → Deployment → Job なので、
 #    Deployment だけ新イメージに変わってから Job が落ちる
 #    （＝マイグレーション未実行のまま新コードが出る）
-kubectl -n fishing delete job db-migrate --ignore-not-found --wait=true
+#    db-check も同じ（#191）
+kubectl -n fishing delete job db-migrate db-check --ignore-not-found --wait=true
 
 # 3. まとめて適用
 kustomize build k8s/ | kubectl apply -f -
@@ -141,6 +180,11 @@ kubectl -n fishing get deploy fishing-app \
 `:latest` に解決されて必ず ImagePullBackOff になる（`:latest` は GHCR に push しない）。
 **タグを明示して流すこと。**
 
+接続にはオーナー（`DATABASE_URL_DIRECT`）ではなく、Secret の `DATABASE_URL_RW_DIRECT`
+（アプリロール `fishing_app_rw` の **direct** 接続。pooled の `DATABASE_URL` のホスト名から
+`-pooler` を外したもの）を使う。seed に DDL は無く DML だけなので、オーナーは要らない（#135）。
+このキーが Secret に無いと Pod は `CreateContainerConfigError` で止まる。
+
 ```bash
 TAG=sha-$(git rev-parse --short HEAD)   # デプロイしたイメージのタグに合わせる
 sed "s|\(fishing-app-migrator\)$|\1:${TAG}|" k8s/job-db-seed.yaml | kubectl apply -f -
@@ -149,6 +193,10 @@ kubectl -n fishing logs -f job/db-seed
 # 再実行する場合は先に削除
 kubectl -n fishing delete job db-seed
 ```
+
+再実行しても港の id と座標は保たれ、`locations.port_id` の紐づけも切れない（seed は
+`(prefecture_code, port_code)` で upsert し、更新するのは港名と都道府県名だけ。#146）。
+CSV から消えた港は削除されずに残る。2段目は全港の座標を tide736.net から取り直す。
 
 ## Secret の編集
 

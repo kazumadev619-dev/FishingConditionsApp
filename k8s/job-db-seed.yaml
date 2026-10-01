@@ -44,20 +44,17 @@ spec:
               node --import tsx/esm scripts/update-port-coordinates.ts
               echo "完了"
           # prisma/seed.ts と scripts/update-port-coordinates.ts は Prisma CLI を
-          # 通さず process.env.DATABASE_URL から自前で pg.Pool を作る。
-          # そのため DATABASE_URL にも direct の値を入れる（pooled では
-          # seed の一括投入が PgBouncer 経由で詰まる）。
+          # 通さず process.env.DATABASE_URL から自前で pg.Pool を作る。読むのは
+          # DATABASE_URL だけ（DDL は無く、ports への INSERT ... ON CONFLICT DO UPDATE
+          # と UPDATE のみ）なので、アプリロール fishing_app_rw の direct 接続を渡す。
+          # オーナー（DATABASE_URL_DIRECT）は渡さない（#135）。
+          # direct なのは pooled では seed の一括投入が PgBouncer 経由で詰まるため。
           env:
-            - name: DATABASE_URL_DIRECT
-              valueFrom:
-                secretKeyRef:
-                  name: fishing-app-secret
-                  key: DATABASE_URL_DIRECT
             - name: DATABASE_URL
               valueFrom:
                 secretKeyRef:
                   name: fishing-app-secret
-                  key: DATABASE_URL_DIRECT
+                  key: DATABASE_URL_RW_DIRECT
             - name: HOME
               value: /tmp
           securityContext:
