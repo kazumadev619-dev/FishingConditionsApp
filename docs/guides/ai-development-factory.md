@@ -15,7 +15,7 @@ node -e "const names=['OPENAI_API_KEY','CODEX_API_KEY'].filter((name)=>Object.ha
 ```
 
 - Node.js 24を使う。
-- Codex CLI 0.157.1以上を使い、ChatGPTでログインする。
+- Codex CLI 0.159.3以上を使い、ChatGPTでログインする。
 - `OPENAI_API_KEY`と`CODEX_API_KEY`は設定しない。存在するとWatcherは停止する。
 - `gh`は対象リポジトリを読み書きできるアカウントで認証する。
 
@@ -111,7 +111,9 @@ find "$FACTORY_ROOT/review-runs" -maxdepth 2 -type f -print
 git worktree list --porcelain
 ```
 
-running recordでは`model`、`headSha`、`ciFingerprint`、`reviewerPid`、`threadId`、`heartbeatAt`を照合する。現在のidentityに一致するrecordが壊れている場合も二重起動せず `agent:blocked` になる。verification worktreeの依存導入は隔離HOMEでlifecycle scriptを無効化した `npm ci --ignore-scripts` を使う。PIDは値を表示せず引数として使える。
+新規起動前に `agent:review` と `agent:blocked` の全Issueのrunning証拠を調べる。後続IssueやCI pending、head更新済みでも、生存Reviewerがあれば1枠を予約する。checks取得中のhead更新はblockedにせず新SHAのCI待機になる。blockedのReviewerはPID死亡を確認できれば後続Issueを進める。生存中または記録不正で確認できない場合は、人が確認するまで新規起動を止める。準備のfetch/npm ci失敗はCLI起動と共通の上限で1回再試行し、再失敗で `agent:failed` になる。dirty/SHA不整合は即blockedである。結果保存・後処理などの未処理失敗はWatcherログの `scheduled-reviewer-failed` を確認し、保存されたworktreeを調べる。
+
+running recordでは`model`、`headSha`、`ciFingerprint`、`reviewerPid`、`threadId`、`heartbeatAt`を照合する。現在のidentityに一致するrecordが壊れている場合も二重起動せず `agent:blocked` になる。verification worktreeの依存導入は隔離HOMEでlifecycle scriptを無効化した `npm ci --ignore-scripts` を使う。Reviewer本体はfresh HOMEでも認証できるよう `CODEX_HOME`（未設定時はWatcherホームの `.codex`）を保持する。実行コマンドには固定permission profileでホストroot・共有tmp・認証ディレクトリへのアクセスを拒否し、private HOME・専用worktreeと必要なruntime/Git metadataだけを許可する。ユーザー設定・rulesの権限上書きを無効にし、networkも無効にする。CLIがこのpermission profileに対応していることを運用前に確認する。PIDは値を表示せず引数として使える。
 
 ```bash
 REVIEWER_PID=<reviewerPid>

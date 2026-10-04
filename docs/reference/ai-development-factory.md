@@ -113,7 +113,7 @@ Watcherは `gh pr checks` のbucketを対象PRの現在head SHAに結び付け�
 - `fail`、`cancel`、`skipping` が1件以上: `agent:blocked`
 - 1件以上あり、すべて `pass`: 最終Reviewerを起動可能
 
-checks取得直後にPRを再読し、先に取得したhead SHAと一致する場合だけReviewerを起動する。head SHAと、checkのname・workflow・bucket・completedAtを安定順にしたSHA-256 fingerprintをレビュー証拠へ保存する。review完了後にもPRとCIを再読し、head SHAまたはfingerprintが変わっていれば古い結果を破棄して `agent:review` に留める。
+checks取得直後にPRを再読し、先に取得したhead SHAと一致する場合だけReviewerを起動する。checks取得中にheadが更新された場合は `agent:review` のまま新SHAのCIを待つ。head SHAと、checkのname・workflow・bucket・completedAtを安定順にしたSHA-256 fingerprintをレビュー証拠へ保存する。review完了後にもPRとCIを再読し、head SHAまたはfingerprintが変わっていれば古い結果を破棄して `agent:review` に留める。
 
 ## Sol/Astra最終レビュー
 
@@ -130,15 +130,17 @@ checks取得直後にPRを再読し、先に取得したhead SHAと一致する�
 
 Solだけが同じhead SHAをAstraへ1回昇格できる。Astraの再昇格は不正結果として `agent:blocked` にする。固定Schemaは `outcome`、短いsummary、最大20件のbounded findings、最大30件のverified commands、`documentationCurrent` を返す。`approved` は `documentationCurrent=true` の場合だけ受理し、それ以外は修正必須として停止する。
 
-Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、HEAD一致を確認してからfreshな `HOME` と秘密を除いた環境で `npm ci --ignore-scripts` を実行する。Reviewerへ渡す環境は別のfreshな `HOME` と `PATH`、`CODEX_HOME`、一時ディレクトリ、localeだけで、GitHub token、Slack Webhook、API key、`.env.local`、本番資格情報を渡さない。
+Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、HEAD一致を確認してからfreshな `HOME` と秘密を除いた環境で `npm ci --ignore-scripts` を実行する。Reviewerへ渡す環境は別のfreshな `HOME` と `PATH`、`CODEX_HOME`、localeだけに限定し、`TMPDIR` はprivate HOMEへ固定し、npmのscript shellは `/bin/sh` に固定する。共有tmpのdenyにはWatcher側で取得した絶対パスを使い、private HOMEへ解決される `:tmpdir` トークンとの衝突を避ける。`CODEX_HOME` が未設定ならWatcherのホーム配下の `.codex` を明示し、ChatGPT認証を維持する。GitHub token、Slack Webhook、API key、本番資格情報を渡さない。
+
+Reviewerは `--no-daemon --ignore-user-config --ignore-rules` と固定の `factory-review` permission profileを使う。approvalはnever、networkは無効、filesystemのrootと共有tmpはdenyにし、OS最小runtime、Node/Codex runtime（Homebrewのbin/Cellar/Caskroom/opt、起動中Nodeの配置先とOpenSSL既定設定ファイル）、Command Line Tools、Git共通管理ディレクトリはread、private HOMEと専用verification worktreeだけをwrite許可する。worktreeの `.git` と `.codex` はreadに限定する。CLI本体は認証用 `CODEX_HOME` を使うが、実行コマンドからのアクセスはdenyにする。これによりホストの `.env.local` や認証ディレクトリをコマンドから読ませない。
 
 Reviewerは `.codex/agents/pr-verifier.toml` の `mode=watcher` 契約に従い、`gh`、fetch、checkout、秘密依存の検証、commit、push、GitHub書き込み、自動修正を行わない。秘密が必要な検証は確認不能として `changes-required` を返す。
 
 ## レビュー証拠と1枠復旧
 
-Watcherは現在のGitHub viewer本人が投稿した `<!-- ai-factory-review:v1 -->` コメントだけを読む。running recordにはIssue、PR、head SHA、model、CI fingerprint、reviewer PID、Codex thread ID、heartbeatを保存し、completed recordではboundedな結果とreview日時へ同じコメントを更新する。自由文のモデル出力やコマンド出力全文は保存しない。
+Watcherは現在のGitHub viewer本人が投稿した `<!-- ai-factory-review:v1 -->` コメントだけを読む。running recordにはIssue、PR、head SHA、model、CI fingerprint、reviewer PID、Codex thread ID、heartbeatを保存し、completed recordではboundedな結果とreview日時へ同じコメントを更新する。自由文のモデル出力やコマンド出力全文は保存しない。runner終了時は進行中heartbeatの保存完了を待ち、遅延したrunning更新でcompleted証拠が上書きされるのを防ぐ。
 
-再起動時は現在のPR/CIとreviewコメントを照合する。completed証拠が一致すれば状態遷移を再開する。running証拠はheartbeatが30分未満、PIDが生存し、review runのCodex JSONLに同じthread IDがある場合だけreviewer枠を予約する。現在のIssue、PR、head SHA、CI fingerprintに一致するrunning証拠が壊れている場合を含め、stale、dead、PID/thread不一致は `agent:blocked` にして二重起動しない。Reviewer起動障害は同じIssue・head SHA・modelに対して1回だけ再試行し、再失敗は `agent:failed` とする。
+各cycleでは候補のCI判定や新規Reviewer起動より前に、`agent:review` と `agent:blocked` の全待ち行列からrunning証拠を照合する。PR headが更新済み、CIがpending、または後続Issueの場合も、既存の生存Reviewerがあれば旧SHAのまま枠を予約する。blocked Issueは新規Reviewer候補にしない。再起動時は現在のPR/CIとreviewコメントを照合する。completed証拠が一致すれば状態遷移を再開する。running証拠はheartbeatが30分未満、PIDが生存し、review runのCodex JSONLに同じthread IDがある場合だけreviewer枠を予約する。現在のIssue、PR、head SHA、CI fingerprintに一致するrunning証拠が壊れている場合を含め、stale、dead、PID/thread不一致は `agent:blocked` にして二重起動しない。blockedのrunning記録でPIDの死亡を確認できた場合は、そのIssueを新規候補から除外したまま後続の走査を続ける。PIDが生存している、または記録が壊れて生存確認できない場合は新規起動を停止して人の確認を待つ。Reviewer準備のfetch/npm ciなどの一時障害とCLI起動障害は、同じIssue・head SHA・modelに対して共通の上限で1回だけ再試行し、再失敗は `agent:failed` とする。準備時のdirtyやSHA不整合は再試行せず `agent:blocked` にする。結果保存・後処理で未処理の失敗が発生した場合はWatcherログへ記録し、review/approval状態のIssueを `agent:blocked` にして監視を継続する。worktreeは保存する。
 
 状態遷移を保存した後、verification worktreeがcleanな場合だけ `git worktree remove` する。dirtyならresetも削除もせず絶対パスをIssueコメントへ残し、必要なら `agent:blocked` へ移す。
 

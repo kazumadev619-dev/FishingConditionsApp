@@ -514,7 +514,7 @@ export async function inspectReviewCandidate(
     'pull request head',
   );
   if (currentPull?.headRefOid !== pull.headRefOid) {
-    return blockReviewCandidate(number, 'pull-request-head-changed', commandAdapter);
+    return { state: 'pending', reason: 'pull-request-head-changed' };
   }
   let checkState;
   try {
@@ -1377,7 +1377,7 @@ export async function prepareReviewWorktree(
   const number = validateIssueNumber(candidate.issue);
   const headSha = candidate.headSha;
   if (typeof headSha !== 'string' || !/^[0-9a-f]{40}$/.test(headSha)) {
-    throw new Error('invalid review head SHA');
+    throw Object.assign(new Error('invalid review head SHA'), { reviewPreparationInvalid: true });
   }
   const reviewRoot = join(stateRoot, 'reviews');
   const worktree = join(reviewRoot, `issue-${number}-${headSha.slice(0, 12)}`);
@@ -1393,9 +1393,13 @@ export async function prepareReviewWorktree(
   const actualHead = (
     await commandAdapter('git', ['rev-parse', 'HEAD'], { cwd: worktree })
   ).stdout.trim();
-  if (actualHead !== headSha) throw new Error('review worktree head mismatch');
+  if (actualHead !== headSha)
+    throw Object.assign(new Error('review worktree head mismatch'), {
+      reviewPreparationInvalid: true,
+    });
   const status = await commandAdapter('git', ['status', '--porcelain=v1'], { cwd: worktree });
-  if (status.stdout) throw new Error('review worktree is dirty');
+  if (status.stdout)
+    throw Object.assign(new Error('review worktree is dirty'), { reviewPreparationInvalid: true });
   const home = await mkdtemp(join(tmpdir(), 'ai-factory-review-install-home-'));
   try {
     const installEnv = Object.fromEntries([
@@ -1429,22 +1433,65 @@ ${JSON.stringify({ claims: candidate.claims, changedPaths: candidate.changedPath
 
 function reviewerEnv(env, home) {
   return Object.fromEntries([
-    ...['PATH', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL']
+    ...['PATH', 'LANG', 'LC_ALL']
       .filter((name) => env[name] !== undefined)
       .map((name) => [name, env[name]]),
+    ['CODEX_HOME', env.CODEX_HOME ?? join(homedir(), '.codex')],
+    ['TMPDIR', home],
+    ['npm_config_script_shell', '/bin/sh'],
     ['HOME', home],
   ]);
 }
 
-function reviewerArguments(candidate, model, worktree, schemaPath, resultPath) {
+function reviewerArguments(
+  candidate,
+  model,
+  worktree,
+  schemaPath,
+  resultPath,
+  home,
+  codexHome,
+  commonGitDir,
+) {
+  const filesystem = Object.entries({
+    ':root': 'deny',
+    ':minimal': 'read',
+    [tmpdir()]: 'deny',
+    ':slash_tmp': 'deny',
+    '/private/tmp': 'deny',
+    '/opt/homebrew/bin': 'read',
+    '/opt/homebrew/Cellar': 'read',
+    '/opt/homebrew/opt': 'read',
+    '/opt/homebrew/etc/openssl@3/openssl.cnf': 'read',
+    '/Library/Developer/CommandLineTools': 'read',
+    '/opt/homebrew/Caskroom': 'read',
+    [dirname(dirname(process.execPath))]: 'read',
+    [codexHome]: 'deny',
+    [home]: 'write',
+    [worktree]: 'write',
+    [join(worktree, '.git')]: 'read',
+    [join(worktree, '.codex')]: 'read',
+    [commonGitDir]: 'read',
+  })
+    .map(([path, access]) => `${JSON.stringify(path)}=${JSON.stringify(access)}`)
+    .join(',');
   return [
+    '--no-daemon',
     'exec',
     '-m',
     model,
     '-C',
     worktree,
-    '--sandbox',
-    'workspace-write',
+    '--ignore-user-config',
+    '--ignore-rules',
+    '-c',
+    'default_permissions="factory-review"',
+    '-c',
+    'approval_policy="never"',
+    '-c',
+    `permissions.factory-review.filesystem={${filesystem}}`,
+    '-c',
+    'permissions.factory-review.network.enabled=false',
     '--json',
     '--output-schema',
     schemaPath,
@@ -1469,7 +1516,8 @@ export async function reviewIssue(
   } = {},
 ) {
   const number = validateIssueNumber(candidate.issue);
-  const worktree = await prepare(candidate, { command: commandAdapter, stateRoot, env });
+  let worktree;
+  let commonGitDir;
   const { repo } = await planContext(commandAdapter);
   let commentId;
   let model = candidate.model;
@@ -1493,12 +1541,35 @@ export async function reviewIssue(
       let home;
       try {
         await ensureQuota(readAccount, env);
+        if (!worktree) {
+          const prepared = await prepare(candidate, { command: commandAdapter, stateRoot, env });
+          commonGitDir = (
+            await commandAdapter(
+              'git',
+              ['rev-parse', '--path-format=absolute', '--git-common-dir'],
+              {
+                cwd: prepared,
+              },
+            )
+          ).stdout.trim();
+          worktree = prepared;
+        }
         home = await mkdtemp(join(tmpdir(), 'ai-factory-review-home-'));
+        const isolatedEnv = reviewerEnv(env, home);
         runner = await runRunner({
-          args: reviewerArguments(candidate, model, worktree, schemaPath, resultPath),
+          args: reviewerArguments(
+            candidate,
+            model,
+            worktree,
+            schemaPath,
+            resultPath,
+            home,
+            isolatedEnv.CODEX_HOME,
+            commonGitDir,
+          ),
           runDir,
           resultPath,
-          env: reviewerEnv(env, home),
+          env: isolatedEnv,
           cwd: worktree,
           onHeartbeat: async ({ runnerPid, threadId, heartbeatAt }) => {
             commentId = await syncReviewComment(
@@ -1527,6 +1598,10 @@ export async function reviewIssue(
       } catch (error) {
         if (error?.usage) {
           return { state: STATES.REVIEW, reason: error.message, usage: error.usage };
+        }
+        if (error?.reviewPreparationInvalid) {
+          await transitionIssue(number, STATES.REVIEW, STATES.BLOCKED, { command: commandAdapter });
+          return { state: STATES.BLOCKED, reason: error.message };
         }
         if (attempt === 0) {
           try {
@@ -1645,11 +1720,12 @@ function safeRunnerEnv(env) {
   if ('OPENAI_API_KEY' in env || 'CODEX_API_KEY' in env) {
     throw new Error('API key environment is forbidden');
   }
-  return Object.fromEntries(
-    ['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL']
+  return Object.fromEntries([
+    ...['PATH', 'HOME', 'CODEX_HOME', 'TMPDIR', 'LANG', 'LC_ALL']
       .filter((name) => env[name] !== undefined)
       .map((name) => [name, env[name]]),
-  );
+    ...(env.npm_config_script_shell === '/bin/sh' ? [['npm_config_script_shell', '/bin/sh']] : []),
+  ]);
 }
 
 function workerModel(model) {
@@ -1704,37 +1780,43 @@ export async function startRunner({
   });
   const runnerPid = child.pid;
   let lastHeartbeat = 0;
-  let heartbeatPending = false;
+  let heartbeatPending;
+  let heartbeatError;
   const heartbeat = onHeartbeat
     ? setInterval(
-        async () => {
+        () => {
           if (heartbeatPending) return;
-          heartbeatPending = true;
-          try {
-            const lines = (await readFile(stdoutPath, 'utf8')).split('\n').filter(Boolean);
-            const started = lines
-              .map((line) => {
-                try {
-                  return JSON.parse(line);
-                } catch {
-                  return null;
-                }
-              })
-              .find((event) => event?.type === 'thread.started' || event?.thread?.started);
-            const threadId = started?.thread_id ?? started?.thread?.started?.thread_id;
-            if (threadId && Date.now() - lastHeartbeat >= heartbeatMs) {
-              lastHeartbeat = Date.now();
-              await onHeartbeat({ runnerPid, threadId, heartbeatAt: new Date().toISOString() });
+          heartbeatPending = (async () => {
+            try {
+              const lines = (await readFile(stdoutPath, 'utf8')).split('\n').filter(Boolean);
+              const started = lines
+                .map((line) => {
+                  try {
+                    return JSON.parse(line);
+                  } catch {
+                    return null;
+                  }
+                })
+                .find((event) => event?.type === 'thread.started' || event?.thread?.started);
+              const threadId = started?.thread_id ?? started?.thread?.started?.thread_id;
+              if (threadId && Date.now() - lastHeartbeat >= heartbeatMs) {
+                lastHeartbeat = Date.now();
+                await onHeartbeat({ runnerPid, threadId, heartbeatAt: new Date().toISOString() });
+              }
+            } catch (error) {
+              await writeFactoryLog(join(runDir, 'runner.jsonl'), {
+                level: 'error',
+                event: 'heartbeat-failed',
+                reason: error.message,
+              });
             }
-          } catch (error) {
-            await writeFactoryLog(join(runDir, 'runner.jsonl'), {
-              level: 'error',
-              event: 'heartbeat-failed',
-              reason: error.message,
+          })()
+            .catch((error) => {
+              heartbeatError = error;
+            })
+            .finally(() => {
+              heartbeatPending = undefined;
             });
-          } finally {
-            heartbeatPending = false;
-          }
         },
         Math.min(1_000, heartbeatMs),
       )
@@ -1744,7 +1826,9 @@ export async function startRunner({
     child.once('exit', resolve);
   }).finally(async () => {
     if (heartbeat) clearInterval(heartbeat);
+    await heartbeatPending;
     await Promise.all([stdout.close(), stderr.close()]);
+    if (heartbeatError) throw heartbeatError;
   });
   let resultText;
   try {
@@ -2157,6 +2241,35 @@ async function loadReviewRecord(issue, candidate, commandAdapter) {
   }
   let record = null;
   for (const comment of pages.flat()) {
+    if (candidate.headSha === undefined) {
+      if (
+        comment?.user?.login !== viewer ||
+        !comment.body?.startsWith('<!-- ai-factory-review:v1 -->')
+      )
+        continue;
+      const match = comment.body.match(
+        /^<!-- ai-factory-review:v1 -->\n```json\n([^\n]+)\n```\n?$/,
+      );
+      try {
+        const raw = match ? JSON.parse(match[1]) : null;
+        if (raw?.status === 'completed') {
+          record = null;
+          continue;
+        }
+        if (
+          raw?.issue !== candidate.issue ||
+          !Number.isSafeInteger(raw.pullRequest) ||
+          raw.pullRequest <= 0 ||
+          !/^[0-9a-f]{40}$/.test(raw.headSha) ||
+          !/^[0-9a-f]{64}$/.test(raw.ciFingerprint)
+        )
+          throw new Error('invalid running review identity');
+        record = parseReviewComment(comment, { ...raw, viewer });
+      } catch {
+        record = { status: 'invalid' };
+      }
+      continue;
+    }
     try {
       record = parseReviewComment(comment, {
         issue: candidate.issue,
@@ -2270,7 +2383,10 @@ async function reviewerIdentityMatches(record, { stateRoot, isPidAlive }) {
 export async function runReviewCycle({
   activeReview = null,
   command: commandAdapter = command,
-  listReviewIssues = (adapter) => listIssuesForState(STATES.REVIEW, adapter),
+  listReviewIssues = async (adapter) => [
+    ...(await listIssuesForState(STATES.REVIEW, adapter)),
+    ...(await listIssuesForState(STATES.BLOCKED, adapter)),
+  ],
   inspectCandidate = inspectReviewCandidate,
   loadReviewRecord: loadRecord = loadReviewRecord,
   runReview = reviewIssue,
@@ -2288,7 +2404,44 @@ export async function runReviewCycle({
   const issues = [...(await listReviewIssues(commandAdapter))].sort(
     (left, right) => validateIssueNumber(left.number) - validateIssueNumber(right.number),
   );
+  const waiting = [];
   for (const issue of issues) {
+    const record = await loadRecord(issue, { issue: issue.number }, commandAdapter);
+    if (!['running', 'invalid'].includes(record?.status)) continue;
+    if (
+      record.status === 'running' &&
+      !isRunStale(record, now) &&
+      (await identityMatches(record, { stateRoot, isPidAlive }))
+    ) {
+      return {
+        activeReview: {
+          issue: issue.number,
+          headSha: record.headSha,
+          reserved: true,
+          settled: false,
+          promise: new Promise(() => {}),
+        },
+      };
+    }
+    const blocked = issue.labels?.some(
+      (label) => (typeof label === 'string' ? label : label.name) === STATES.BLOCKED,
+    );
+    // A confirmed dead blocked reviewer cannot occupy the global review slot.
+    if (blocked && record.status === 'running' && !isPidAlive(record.reviewerPid)) continue;
+    if (!blocked) {
+      await transitionIssue(issue.number, STATES.REVIEW, STATES.BLOCKED, {
+        command: commandAdapter,
+      });
+    }
+    return { activeReview: null };
+  }
+  for (const issue of issues) {
+    if (
+      issue.labels?.some(
+        (label) => (typeof label === 'string' ? label : label.name) === STATES.BLOCKED,
+      )
+    )
+      continue;
     const candidate = await inspectCandidate(issue, { command: commandAdapter, now });
     if (candidate.state !== 'ready') continue;
     let record = await loadRecord(issue, candidate, commandAdapter);
@@ -2327,6 +2480,9 @@ export async function runReviewCycle({
       candidate.model = REVIEW_MODELS.ASTRA;
       candidate.riskReason = 'Sol escalation';
     }
+    waiting.push(candidate);
+  }
+  for (const candidate of waiting) {
     const tracker = {
       issue: candidate.issue,
       headSha: candidate.headSha,
@@ -2352,6 +2508,25 @@ export async function runReviewCycle({
           command: commandAdapter,
           stateRoot,
         });
+      })
+      .catch(async (error) => {
+        try {
+          await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
+            level: 'error',
+            event: 'scheduled-reviewer-failed',
+            issue: candidate.issue,
+            reason: error.message,
+          });
+          const state = await issueState(candidate.issue, commandAdapter);
+          if ([STATES.REVIEW, STATES.APPROVAL].includes(state)) {
+            await transitionIssue(candidate.issue, state, STATES.BLOCKED, {
+              command: commandAdapter,
+            });
+          }
+          return { state: STATES.BLOCKED, reason: error.message };
+        } catch (recordError) {
+          return { state: STATES.FAILED, reason: `${error.message}; ${recordError.message}` };
+        }
       })
       .finally(() => {
         tracker.settled = true;
