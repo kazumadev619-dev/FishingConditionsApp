@@ -4,26 +4,34 @@ import {
   buildPrBody,
   canRetryRunner,
   changesWithinPlan,
+  evaluatePrChecks,
   evaluateUsage,
   isRunStale,
   PLANNER_RESULT_SCHEMA,
   parseChangedPaths,
   parsePlanComment,
+  parseReviewComment,
   parseRunComment,
   planInputHash,
   plansConflict,
+  REVIEW_MODELS,
+  REVIEW_RESULT_SCHEMA,
   RUNNER_RESULT_SCHEMA,
   readState,
   renderPlanComment,
+  renderReviewComment,
   renderRunComment,
+  reviewFingerprint,
   runIdentity,
   runnerPrompt,
   selectReadyIssue,
+  selectReviewModel,
   selectRunnablePlans,
   transitionAllowed,
   validateChangedPaths,
   validateIssueNumber,
   validatePlan,
+  validateReviewResult,
   WORKER_MODELS,
 } from './core.mjs';
 
@@ -187,6 +195,233 @@ describe('state machine', () => {
 
   it('rejects a non-integer issue number', () => {
     expect(() => validateIssueNumber('1; rm -rf x')).toThrow('invalid issue number');
+  });
+
+  it('allows review infrastructure failure from review state', () => {
+    expect(transitionAllowed('agent:review', 'agent:failed')).toBe(true);
+  });
+});
+
+describe('PR checks', () => {
+  it('waits for empty checks until 30 minutes and then blocks', () => {
+    const createdAt = '2026-09-28T00:00:00.000Z';
+    expect(evaluatePrChecks([], createdAt, new Date('2026-09-28T00:29:59.000Z'))).toEqual({
+      state: 'pending',
+      reason: 'checks-not-started',
+    });
+    expect(evaluatePrChecks([], createdAt, new Date('2026-09-28T00:30:00.000Z'))).toEqual({
+      state: 'failed',
+      reason: 'checks-missing',
+    });
+  });
+
+  it('accepts GitHub timestamps without fractional seconds', () => {
+    expect(
+      evaluatePrChecks([], '2026-09-28T00:00:00Z', new Date('2026-09-28T00:29:59.000Z')),
+    ).toEqual({ state: 'pending', reason: 'checks-not-started' });
+    expect(
+      reviewFingerprint('a'.repeat(40), [
+        {
+          name: 'test',
+          workflow: 'CI',
+          bucket: 'pass',
+          completedAt: '2026-09-28T00:05:00Z',
+        },
+      ]),
+    ).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it.each(['fail', 'cancel', 'skipping'])('blocks a non-passing check bucket: %s', (bucket) => {
+    expect(evaluatePrChecks([{ name: 'CI', bucket }], '2026-09-28T00:00:00.000Z')).toMatchObject({
+      state: 'failed',
+    });
+  });
+
+  it('rejects invalid timestamps and check buckets', () => {
+    expect(() => evaluatePrChecks([], 'not-a-date')).toThrow('invalid PR timestamp');
+    expect(() =>
+      evaluatePrChecks([{ name: 'CI', bucket: 'unknown' }], '2026-09-28T00:00:00.000Z'),
+    ).toThrow('invalid PR check');
+    expect(() => evaluatePrChecks([{ name: 'CI' }], '2026-09-28T00:00:00.000Z')).toThrow(
+      'invalid PR check',
+    );
+  });
+});
+
+describe('review model routing', () => {
+  it.each([
+    [['risk:high'], ['docs/README.md']],
+    [[], ['src/lib/auth.ts']],
+    [[], ['src/app/auth/callback/route.ts']],
+    [[], ['src/lib/authentication/session.ts']],
+    [[], ['prisma/migrations/20260928/migration.sql']],
+    [[], ['.github/workflows/ci.yml']],
+    [[], ['k8s/deployment.yaml']],
+    [[], ['scripts/ai-factory/watcher.mjs']],
+    [[], ['.codex/agents/pr-verifier.toml']],
+    [[], ['docs/reference/ai-development-factory.md']],
+    [[], ['docs/guides/ai-development-factory.md']],
+  ])('routes high-risk labels or paths to Astra', (labels, changedPaths) => {
+    expect(selectReviewModel({ labels, changedPaths })).toBe('gpt-6-astra');
+  });
+
+  it('routes an ordinary source change to Sol without substring false positives', () => {
+    expect(selectReviewModel({ labels: [], changedPaths: ['src/lib/scoring.ts'] })).toBe(
+      'gpt-5.6-sol',
+    );
+    expect(selectReviewModel({ labels: [], changedPaths: ['src/lib/author.ts'] })).toBe(
+      'gpt-5.6-sol',
+    );
+  });
+});
+
+describe('review result and evidence', () => {
+  const result = {
+    outcome: 'approved',
+    summary: 'All checks passed',
+    findings: [],
+    verifiedCommands: ['npm run check-code'],
+    documentationCurrent: true,
+  };
+  const expected = {
+    issue: 42,
+    pullRequest: 321,
+    headSha: 'a'.repeat(40),
+    ciFingerprint: 'b'.repeat(64),
+    viewer: 'factory-bot',
+  };
+  const running = {
+    issue: expected.issue,
+    pullRequest: expected.pullRequest,
+    headSha: expected.headSha,
+    model: REVIEW_MODELS.SOL,
+    ciFingerprint: expected.ciFingerprint,
+    status: 'running',
+    reviewerPid: 1234,
+    threadId: '0199a213-81c0-7800-8aa1-bbab2a035a53',
+    heartbeatAt: '2026-09-28T00:00:00.000Z',
+  };
+
+  it('exposes the bounded structured-output schema', () => {
+    expect(REVIEW_RESULT_SCHEMA).toMatchObject({
+      required: ['outcome', 'summary', 'findings', 'verifiedCommands', 'documentationCurrent'],
+      additionalProperties: false,
+      properties: { outcome: { enum: ['approved', 'changes-required', 'escalate'] } },
+    });
+  });
+
+  it('rejects approved when documentation is stale', () => {
+    expect(() =>
+      validateReviewResult({ ...result, documentationCurrent: false }, REVIEW_MODELS.SOL),
+    ).toThrow('documentation is not current');
+  });
+
+  it('allows escalation only from Sol', () => {
+    const escalation = {
+      ...result,
+      outcome: 'escalate',
+      summary: 'authentication impact is uncertain',
+    };
+    expect(validateReviewResult(escalation, REVIEW_MODELS.SOL)).toEqual(escalation);
+    expect(() => validateReviewResult(escalation, REVIEW_MODELS.ASTRA)).toThrow(
+      'Astra cannot escalate',
+    );
+  });
+
+  it('bounds finding fields and rejects extra properties', () => {
+    expect(() =>
+      validateReviewResult(
+        {
+          ...result,
+          findings: [{ severity: 'high', title: 'x', evidence: 'y', extra: true }],
+        },
+        REVIEW_MODELS.SOL,
+      ),
+    ).toThrow('invalid review finding');
+    expect(() => validateReviewResult({ ...result, extra: true }, REVIEW_MODELS.SOL)).toThrow(
+      'invalid review result properties',
+    );
+  });
+
+  it('hashes sorted check evidence with the head SHA', () => {
+    const checks = [
+      { name: 'B', workflow: 'CI', bucket: 'pass', completedAt: '2026-09-28T00:02:00.000Z' },
+      { name: 'A', workflow: 'CI', bucket: 'pass', completedAt: '2026-09-28T00:01:00.000Z' },
+    ];
+    expect(reviewFingerprint(expected.headSha, checks)).toBe(
+      reviewFingerprint(expected.headSha, [...checks].reverse()),
+    );
+    expect(reviewFingerprint('c'.repeat(40), checks)).not.toBe(
+      reviewFingerprint(expected.headSha, checks),
+    );
+  });
+
+  it('accepts only a viewer-owned running record with current identity and heartbeat', () => {
+    const comment = {
+      id: 11,
+      user: { login: expected.viewer },
+      body: renderReviewComment(running),
+    };
+    expect(parseReviewComment(comment, expected)).toMatchObject({ ...running, commentId: 11 });
+    expect(() => parseReviewComment({ ...comment, user: { login: 'other' } }, expected)).toThrow(
+      'review comment author mismatch',
+    );
+    for (const [key, value] of [
+      ['issue', 7],
+      ['pullRequest', 999],
+      ['headSha', 'c'.repeat(40)],
+      ['ciFingerprint', 'd'.repeat(64)],
+    ] as const) {
+      expect(() =>
+        parseReviewComment(
+          { ...comment, body: renderReviewComment({ ...running, [key]: value }) },
+          expected,
+        ),
+      ).toThrow();
+    }
+    expect(() =>
+      parseReviewComment(
+        { ...comment, body: renderReviewComment({ ...running, heartbeatAt: 'yesterday' }) },
+        expected,
+      ),
+    ).toThrow('invalid review heartbeat');
+  });
+
+  it('accepts completed records only with a valid model, timestamp, and result', () => {
+    const completed = {
+      issue: expected.issue,
+      pullRequest: expected.pullRequest,
+      headSha: expected.headSha,
+      model: REVIEW_MODELS.SOL,
+      ciFingerprint: expected.ciFingerprint,
+      status: 'completed',
+      reviewedAt: '2026-09-28T00:10:00.000Z',
+      result,
+    };
+    const comment = {
+      id: 12,
+      user: { login: expected.viewer },
+      body: renderReviewComment(completed),
+    };
+    expect(parseReviewComment(comment, expected)).toMatchObject({ ...completed, commentId: 12 });
+    expect(() =>
+      parseReviewComment(
+        { ...comment, body: renderReviewComment({ ...completed, model: 'gpt-5.6-luna' }) },
+        expected,
+      ),
+    ).toThrow('invalid review model');
+    expect(() =>
+      parseReviewComment(
+        { ...comment, body: renderReviewComment({ ...completed, reviewedAt: 'tomorrow' }) },
+        expected,
+      ),
+    ).toThrow('invalid review timestamp');
+    expect(() =>
+      parseReviewComment(
+        { ...comment, body: renderReviewComment({ ...completed, result: undefined }) },
+        expected,
+      ),
+    ).toThrow('invalid review result');
   });
 });
 

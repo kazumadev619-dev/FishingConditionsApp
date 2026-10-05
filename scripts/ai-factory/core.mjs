@@ -30,7 +30,7 @@ const transitions = new Map([
   [STATES.BLOCKED, new Set([STATES.READY, STATES.PAUSED])],
   [STATES.FAILED, new Set([STATES.READY, STATES.PAUSED])],
   [STATES.PAUSED, new Set([STATES.READY])],
-  [STATES.REVIEW, new Set([STATES.APPROVAL, STATES.BLOCKED])],
+  [STATES.REVIEW, new Set([STATES.APPROVAL, STATES.BLOCKED, STATES.FAILED])],
   [STATES.APPROVAL, new Set([STATES.DONE, STATES.BLOCKED])],
 ]);
 
@@ -48,6 +48,38 @@ export const RUNNER_RESULT_SCHEMA = Object.freeze({
 
 export const PLANNER_MODEL = 'gpt-5.6-sol';
 export const WORKER_MODELS = Object.freeze(['gpt-5.6-luna', 'gpt-5.6-terra']);
+export const REVIEW_MODELS = Object.freeze({
+  SOL: 'gpt-5.6-sol',
+  ASTRA: 'gpt-6-astra',
+});
+
+const reviewFindingSchema = Object.freeze({
+  type: 'object',
+  properties: {
+    severity: { enum: ['critical', 'high', 'medium', 'low'] },
+    title: { type: 'string', minLength: 1, maxLength: 200 },
+    evidence: { type: 'string', minLength: 1, maxLength: 1000 },
+  },
+  required: ['severity', 'title', 'evidence'],
+  additionalProperties: false,
+});
+
+export const REVIEW_RESULT_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    outcome: { enum: ['approved', 'changes-required', 'escalate'] },
+    summary: { type: 'string', minLength: 1, maxLength: 1000 },
+    findings: { type: 'array', items: reviewFindingSchema, maxItems: 20 },
+    verifiedCommands: {
+      type: 'array',
+      items: { type: 'string', maxLength: 300 },
+      maxItems: 30,
+    },
+    documentationCurrent: { type: 'boolean' },
+  },
+  required: ['outcome', 'summary', 'findings', 'verifiedCommands', 'documentationCurrent'],
+  additionalProperties: false,
+});
 
 export const PLANNER_RESULT_SCHEMA = Object.freeze({
   type: 'object',
@@ -65,6 +97,37 @@ export const PLANNER_RESULT_SCHEMA = Object.freeze({
 
 export function transitionAllowed(from, to) {
   return transitions.get(from)?.has(to) ?? false;
+}
+
+export function evaluatePrChecks(checks, createdAt, now = new Date()) {
+  if (!Array.isArray(checks)) throw new Error('invalid PR checks');
+  if (!isoTimestamp(createdAt) || Number.isNaN(new Date(now).getTime())) {
+    throw new Error('invalid PR timestamp');
+  }
+  if (
+    checks.some(
+      (check) =>
+        !check ||
+        typeof check.name !== 'string' ||
+        check.name.length === 0 ||
+        !['pending', 'pass', 'fail', 'cancel', 'skipping'].includes(check.bucket),
+    )
+  ) {
+    throw new Error('invalid PR check');
+  }
+  if (checks.length === 0) {
+    const age = new Date(now).getTime() - Date.parse(createdAt);
+    return age < 30 * 60 * 1000
+      ? { state: 'pending', reason: 'checks-not-started' }
+      : { state: 'failed', reason: 'checks-missing' };
+  }
+  if (checks.some(({ bucket }) => bucket === 'pending')) {
+    return { state: 'pending', reason: 'checks-pending' };
+  }
+  if (checks.some(({ bucket }) => bucket !== 'pass')) {
+    return { state: 'failed', reason: 'checks-failed' };
+  }
+  return { state: 'passed', reason: 'checks-passed' };
 }
 
 export function readState(labels) {
@@ -138,6 +201,183 @@ export function validateChangedPaths(paths) {
   if (paths.length === 0) throw new Error('no changed paths');
   paths.forEach(normalizeSafePath);
   return paths;
+}
+
+export function selectReviewModel({ labels, changedPaths }) {
+  if (!Array.isArray(labels) || !Array.isArray(changedPaths)) {
+    throw new Error('invalid review risk input');
+  }
+  const labelNames = labels.map((label) => (typeof label === 'string' ? label : label?.name));
+  if (labelNames.some((label) => typeof label !== 'string')) {
+    throw new Error('invalid review risk input');
+  }
+  const paths = changedPaths.map(normalizeSafePath);
+  const highRisk =
+    labelNames.includes('risk:high') ||
+    paths.some((path) => {
+      const segments = path.split('/');
+      return (
+        (path.startsWith('src/') &&
+          segments.some((segment) =>
+            /^(auth|authentication|secret|secrets)(\.[^/]+)?$/.test(segment),
+          )) ||
+        path.startsWith('prisma/migrations/') ||
+        path.startsWith('.github/workflows/') ||
+        path.startsWith('k8s/') ||
+        path.startsWith('scripts/ai-factory/') ||
+        path === '.codex/agents/pr-verifier.toml' ||
+        path === 'docs/reference/ai-development-factory.md' ||
+        path === 'docs/guides/ai-development-factory.md'
+      );
+    });
+  return highRisk ? REVIEW_MODELS.ASTRA : REVIEW_MODELS.SOL;
+}
+
+function exactProperties(value, properties) {
+  const keys = Object.keys(value);
+  return keys.length === properties.length && keys.every((key) => properties.includes(key));
+}
+
+function boundedString(value, minimum, maximum) {
+  const length = typeof value === 'string' ? Array.from(value).length : -1;
+  return length >= minimum && length <= maximum;
+}
+
+function isoTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$/);
+  if (!match || Number.isNaN(Date.parse(value))) return false;
+  const milliseconds = (match[2] ?? '').padEnd(3, '0').slice(0, 3);
+  return new Date(value).toISOString() === `${match[1]}.${milliseconds}Z`;
+}
+
+export function validateReviewResult(result, model) {
+  if (!Object.values(REVIEW_MODELS).includes(model)) throw new Error('invalid review model');
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error('invalid review result');
+  }
+  if (!exactProperties(result, REVIEW_RESULT_SCHEMA.required)) {
+    throw new Error('invalid review result properties');
+  }
+  if (!REVIEW_RESULT_SCHEMA.properties.outcome.enum.includes(result.outcome)) {
+    throw new Error('invalid review outcome');
+  }
+  if (!boundedString(result.summary, 1, 1000)) throw new Error('invalid review summary');
+  if (
+    !Array.isArray(result.findings) ||
+    result.findings.length > 20 ||
+    result.findings.some(
+      (finding) =>
+        !finding ||
+        typeof finding !== 'object' ||
+        Array.isArray(finding) ||
+        !exactProperties(finding, reviewFindingSchema.required) ||
+        !reviewFindingSchema.properties.severity.enum.includes(finding.severity) ||
+        !boundedString(finding.title, 1, 200) ||
+        !boundedString(finding.evidence, 1, 1000),
+    )
+  ) {
+    throw new Error('invalid review finding');
+  }
+  if (
+    !Array.isArray(result.verifiedCommands) ||
+    result.verifiedCommands.length > 30 ||
+    result.verifiedCommands.some((command) => !boundedString(command, 0, 300))
+  ) {
+    throw new Error('invalid verified commands');
+  }
+  if (typeof result.documentationCurrent !== 'boolean') {
+    throw new Error('invalid documentation status');
+  }
+  if (result.outcome === 'approved' && !result.documentationCurrent) {
+    throw new Error('documentation is not current');
+  }
+  if (result.outcome === 'escalate' && model === REVIEW_MODELS.ASTRA) {
+    throw new Error('Astra cannot escalate');
+  }
+  return result;
+}
+
+export function reviewFingerprint(headSha, checks) {
+  if (typeof headSha !== 'string' || !/^[0-9a-f]{40}$/.test(headSha)) {
+    throw new Error('invalid review head SHA');
+  }
+  if (!Array.isArray(checks)) throw new Error('invalid PR checks');
+  const normalized = checks.map((check) => {
+    if (
+      !check ||
+      typeof check.name !== 'string' ||
+      typeof check.workflow !== 'string' ||
+      !['pending', 'pass', 'fail', 'cancel', 'skipping'].includes(check.bucket) ||
+      !isoTimestamp(check.completedAt)
+    ) {
+      throw new Error('invalid PR check');
+    }
+    return {
+      name: check.name,
+      workflow: check.workflow,
+      bucket: check.bucket,
+      completedAt: check.completedAt,
+    };
+  });
+  normalized.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return createHash('sha256')
+    .update(JSON.stringify({ headSha, checks: normalized }))
+    .digest('hex');
+}
+
+const REVIEW_COMMENT_MARKER = '<!-- ai-factory-review:v1 -->';
+
+export function renderReviewComment(record) {
+  return `${REVIEW_COMMENT_MARKER}\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\`\n`;
+}
+
+export function parseReviewComment(comment, expected) {
+  if (comment?.user?.login !== expected.viewer) throw new Error('review comment author mismatch');
+  if (!comment.body?.startsWith(`${REVIEW_COMMENT_MARKER}\n`)) {
+    throw new Error('invalid review comment marker');
+  }
+  const match = comment.body.match(/^<!-- ai-factory-review:v1 -->\n```json\n([^\n]+)\n```\n?$/);
+  if (!match) throw new Error('invalid review comment body');
+  let record;
+  try {
+    record = JSON.parse(match[1]);
+  } catch {
+    throw new Error('invalid review comment JSON');
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('invalid review comment record');
+  }
+  if (record.issue !== expected.issue) throw new Error('review issue mismatch');
+  if (record.pullRequest !== expected.pullRequest) throw new Error('review PR mismatch');
+  if (record.headSha !== expected.headSha) throw new Error('review head SHA mismatch');
+  if (record.ciFingerprint !== expected.ciFingerprint) {
+    throw new Error('review CI fingerprint mismatch');
+  }
+  if (!Object.values(REVIEW_MODELS).includes(record.model)) throw new Error('invalid review model');
+  const common = ['issue', 'pullRequest', 'headSha', 'model', 'ciFingerprint', 'status'];
+  if (record.status === 'running') {
+    if (!exactProperties(record, [...common, 'reviewerPid', 'threadId', 'heartbeatAt'])) {
+      throw new Error('invalid running review record');
+    }
+    if (!Number.isSafeInteger(record.reviewerPid) || record.reviewerPid <= 0) {
+      throw new Error('invalid reviewer PID');
+    }
+    if (typeof record.threadId !== 'string' || record.threadId.length === 0) {
+      throw new Error('invalid reviewer thread');
+    }
+    if (!isoTimestamp(record.heartbeatAt)) throw new Error('invalid review heartbeat');
+  } else if (record.status === 'completed') {
+    if (record.result === undefined) throw new Error('invalid review result');
+    if (!exactProperties(record, [...common, 'reviewedAt', 'result'])) {
+      throw new Error('invalid completed review record');
+    }
+    if (!isoTimestamp(record.reviewedAt)) throw new Error('invalid review timestamp');
+    validateReviewResult(record.result, record.model);
+  } else {
+    throw new Error('invalid review status');
+  }
+  return { ...record, commentId: comment.id };
 }
 
 export function planInputHash(issue) {
