@@ -75,7 +75,16 @@ describe('Slack installation', () => {
   it('stores the supplied secret outside plist, preserves it across install/uninstall, and reports only health', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-launchd-slack-'));
     const fakeWebhook = 'https://hooks.slack.com/services/T/B/FAKE_TEST_ONLY';
-    const options = { nodePath: '/opt/node', watcherPath: '/repo/watcher.mjs', workingDirectory: '/repo', path: '/usr/bin:/bin', plistPath: join(root, 'factory.plist'), stateRoot: root, uid: 501, command: async () => ({ stdout: 'daemon running' }) };
+    const options = {
+      nodePath: '/opt/node',
+      watcherPath: '/repo/watcher.mjs',
+      workingDirectory: '/repo',
+      path: '/usr/bin:/bin',
+      plistPath: join(root, 'factory.plist'),
+      stateRoot: root,
+      uid: 501,
+      command: async () => ({ stdout: 'daemon running' }),
+    };
     try {
       await install({ ...options, slackWebhookUrl: fakeWebhook });
       const { readFile, stat } = await import('node:fs/promises');
@@ -91,7 +100,9 @@ describe('Slack installation', () => {
       expect(JSON.stringify(result)).not.toContain(fakeWebhook);
       await uninstall(options);
       expect(await readFile(join(root, 'slack-webhook-url'), 'utf8')).toBe(`${fakeWebhook}\n`);
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
   it('validates an invalid webhook before altering the existing plist or launching commands', async () => {
     const root = await mkdtemp(join(tmpdir(), 'ai-factory-launchd-invalid-'));
@@ -100,9 +111,21 @@ describe('Slack installation', () => {
     const plistPath = join(root, 'factory.plist');
     try {
       await writeFile(plistPath, 'existing plist');
-      await expect(install({ stateRoot: root, plistPath, slackWebhookUrl: 'https://wrong.example/secret', command: async (file: string) => { commands.push(file); return { stdout: '' }; } })).rejects.toThrow('invalid Slack webhook URL');
+      await expect(
+        install({
+          stateRoot: root,
+          plistPath,
+          slackWebhookUrl: 'https://wrong.example/secret',
+          command: async (file: string) => {
+            commands.push(file);
+            return { stdout: '' };
+          },
+        }),
+      ).rejects.toThrow('invalid Slack webhook URL');
       expect(await readFile(plistPath, 'utf8')).toBe('existing plist');
       expect(commands).toEqual([]);
-    } finally { await rm(root, { recursive: true, force: true }); }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 });

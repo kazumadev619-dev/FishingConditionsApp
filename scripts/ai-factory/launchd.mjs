@@ -55,7 +55,13 @@ function defaults() {
     workingDirectory: repoRoot,
     path: process.env.PATH,
     plistPath,
-    stateRoot: join(homedir(), 'Library', 'Application Support', 'FishingConditionsApp', 'ai-factory'),
+    stateRoot: join(
+      homedir(),
+      'Library',
+      'Application Support',
+      'FishingConditionsApp',
+      'ai-factory',
+    ),
     uid: process.getuid(),
   };
 }
@@ -109,9 +115,15 @@ export async function uninstall(options = {}) {
 
 export async function status(options = {}) {
   const values = { ...defaults(), ...options };
-  const result = await (options.command ?? command)('launchctl', ['print', `gui/${values.uid}/${LABEL}`]);
+  const result = await (options.command ?? command)('launchctl', [
+    'print',
+    `gui/${values.uid}/${LABEL}`,
+  ]);
   const slack = await slackHealth({ stateRoot: values.stateRoot });
-  return { ...result, stdout: `${result.stdout}\nSlack: ${slack.health} ${JSON.stringify(slack)}\n` };
+  return {
+    ...result,
+    stdout: `${result.stdout}\nSlack: ${slack.health} ${JSON.stringify(slack)}\n`,
+  };
 }
 
 async function main() {
