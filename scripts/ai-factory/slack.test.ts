@@ -9,6 +9,7 @@ import {
   symlink,
   writeFile,
 } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -341,4 +342,46 @@ describe('Slack fixed schema and private files', () => {
     );
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+describe('Slack special-file rejection', () => {
+  it.each(['webhook', 'outbox', 'identity'])(
+    'rejects a %s FIFO promptly without retaining the once lock',
+    async (kind) => {
+      let path = join(stateRoot, 'slack-webhook-url');
+      if (kind === 'outbox') {
+        const { id } = await setup();
+        path = join(stateRoot, 'slack-outbox', `${id}.json`);
+        await rm(path);
+      } else if (kind === 'identity') {
+        await mkdir(join(stateRoot, 'slack-issues'));
+        path = join(stateRoot, 'slack-issues', '42.json');
+      }
+      const fixture = spawnSync('mkfifo', ['-m', '600', path]);
+      expect(fixture.status).toBe(0);
+      const script = `
+        import { withFactoryNotifications, runOnce } from ${JSON.stringify(new URL('./watcher.mjs', import.meta.url).href)};
+        import { updateSlackIssue } from ${JSON.stringify(new URL('./slack.mjs', import.meta.url).href)};
+        const stateRoot = process.argv[1];
+        if (process.argv[2] === 'identity') {
+          try { await updateSlackIssue(42, () => ({}), { stateRoot }); process.exit(1); }
+          catch (error) { if (error.message !== 'Slack storage failed') throw error; }
+        } else {
+          const result = await withFactoryNotifications({ stateRoot }, () =>
+            runOnce({ stateRoot, env: {}, command: async () => ({ stdout: '[]' }) }));
+          if (result.reason !== 'no-ready-issue') process.exit(1);
+        }
+        process.stdout.write('rejected promptly');
+      `;
+      const child = spawnSync(
+        process.execPath,
+        ['--input-type=module', '-e', script, stateRoot, kind],
+        { timeout: 2000, encoding: 'utf8', env: { PATH: process.env.PATH, NODE_ENV: 'test' } },
+      );
+      expect(child.error?.message).toBeUndefined();
+      expect(child.status).toBe(0);
+      expect(child.stdout).toBe('rejected promptly');
+      await expect(stat(join(stateRoot, 'watcher.lock'))).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
 });
