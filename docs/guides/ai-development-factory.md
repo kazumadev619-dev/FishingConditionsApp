@@ -87,6 +87,50 @@ node scripts/ai-factory/launchd.mjs uninstall
 
 この操作はworktree、run log、Issue、branch、PRを削除しない。
 
+## Slack通知の設定
+
+SlackテストチャンネルのIncoming Webhookを用意し、そのチャンネルへ通知してよいことを確認してから設定する。URLをチャット、Issue、PR、コマンド引数へ貼らない。Webhookの設定方法は [Slack公式ガイド](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/) を参照する。
+
+次はzshの非表示入力。履歴へURLを残さず、既存の恒久runtimeからinstallする。installは実行元のcheckoutをdaemonの起動先へ設定するため、実装用の一時worktreeから実行しない。
+
+```zsh
+FACTORY_ROOT="$HOME/Library/Application Support/FishingConditionsApp/ai-factory"
+cd "$FACTORY_ROOT/runtime"
+read -rs 'SLACK_WEBHOOK_URL?Slack Incoming Webhook URL: '
+printf '\n'
+export SLACK_WEBHOOK_URL
+npm run factory:install
+unset SLACK_WEBHOOK_URL
+npm run factory:status
+```
+
+`Slack: healthy` と `configured:true` を確認する。URLはmode `0600`のローカル秘密ファイルへ保存され、plist・worker・Reviewerへ渡らない。URL未設定のinstallとuninstallは既存の秘密ファイルを保持する。
+
+通知の表示を確認するには、選択済みの実在するdocs修正Issueを上記手動E2E手順で開始し、開始・PR作成・最終レビュー・承認待ち通知のIssue/PR番号と短いイベントIDを照合する。Webhook設定だけではテストメッセージを送信しない。既存outboxがある場合、設定後のdaemonで順次送信される。
+
+### 通知の障害復旧
+
+`factory:status` の `outboxPending`、`oldestPendingAt`、`lastSuccessAt` を確認する。未設定、不正な秘密ファイル、送信失敗、outbox不正はunhealthyになる。通知が停止してもIssueの状態遷移は継続する。
+
+```bash
+FACTORY_ROOT="$HOME/Library/Application Support/FishingConditionsApp/ai-factory"
+rg -n 'slack-notification-failed' "$FACTORY_ROOT/watcher.jsonl"
+```
+
+分類値は `enqueue-failed`、`identity-failed`、`flush-failed`。ログへURLやHTTP応答本文を出さない。秘密ファイルをcatしたり、workerへコピーしたりしない。
+
+通信失敗はpendingに残り、最大1件/cycle、10秒timeoutでbackoff再送する。通常の再enqueueは送信済みIDで抑止するが、送信成功直後のクラッシュ・応答喪失では重複し得る。重複の確認にはメッセージのイベントIDを使う。復旧通知自身の再送から新しい復旧通知は作らない。
+
+送信済み記録は保持される。outboxを削除すると過去イベントを再送する可能性があるため、稼働中の削除・手編集はしない。unhealthyでoutbox不正が疑われる場合は、Watcherを停止して記録を保全し、人が原因を確認する。
+
+通知設定だけを削除する場合は、Watcherを停止した上で対象の秘密ファイルだけを削除する。
+
+```bash
+rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/slack-webhook-url"
+```
+
+週次レポート・全体監視・Slack Botは後続段階であり、この通知段階には含めない。
+
 ## 最終レビューの確認
 
 `agent:review`、対象PR、現在head SHAのcheckをread-onlyで確認する。
@@ -156,4 +200,4 @@ worktreeの削除はPRのmergeまたはclose後に、未コミット変更がな
 
 ## 現在の境界
 
-現在のWatcherには自動修正、自動merge/deploy、Slack通知、全体観測・週次レポート、Slack Bot、Jev、API key fallback、API従量課金を含めない。
+現在のWatcherには自動修正、自動merge/deploy、全体観測・週次レポート、Slack Bot、Jev、API key fallback、API従量課金を含めない。
