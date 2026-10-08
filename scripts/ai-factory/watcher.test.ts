@@ -4110,3 +4110,224 @@ describe('heartbeat and recovery', () => {
     }
   });
 });
+
+describe('Slack notification integration', () => {
+  it.each(['agent:running', 'agent:blocked', 'agent:failed'])(
+    'preserves %s transitions when enqueue and error logging both fail',
+    async (next) => {
+      const { withFactoryNotifications } = await import('./watcher.mjs');
+      const root = await mkdtemp(join(tmpdir(), 'factory-notify-failure-'));
+      let state = 'agent:ready';
+      const enqueue = vi.fn(async () => {
+        throw new Error('PRIVATE_WEBHOOK');
+      });
+      const log = vi.fn(async () => {
+        throw new Error('disk full');
+      });
+      const flush = vi.fn(async () => ({ outcome: 'idle' }));
+      const command = async (_file: string, args: string[]) => {
+        if (args[1] === 'edit') {
+          state = next;
+          return { stdout: '' };
+        }
+        return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+      };
+      try {
+        await withFactoryNotifications({ stateRoot: root, enqueue, log, flush }, () =>
+          transitionIssue(42, 'agent:ready', next, { command }),
+        );
+        expect(state).toBe(next);
+        expect(enqueue).toHaveBeenCalledTimes(1);
+        expect(log).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ reason: 'enqueue-failed' }),
+        );
+        expect(JSON.stringify(log.mock.calls)).not.toContain('PRIVATE_WEBHOOK');
+        expect(flush).toHaveBeenCalledTimes(1);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+  it('flushes independently after a GitHub cycle failure and preserves that original error', async () => {
+    const { withFactoryNotifications } = await import('./watcher.mjs');
+    const flush = vi.fn(async () => {
+      throw new Error('PRIVATE_WEBHOOK');
+    });
+    const log = vi.fn(async () => {});
+    await expect(
+      withFactoryNotifications({ stateRoot: '/unused', flush, log }, async () => {
+        throw new Error('GitHub unavailable');
+      }),
+    ).rejects.toThrow('GitHub unavailable');
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.objectContaining({ reason: 'flush-failed' }),
+    );
+    expect(JSON.stringify(log.mock.calls)).not.toContain('PRIVATE_WEBHOOK');
+  });
+  it('suppresses repeated quota waits across scopes/restarts and creates a new episode after recovery', async () => {
+    const { withFactoryNotifications, notifyFactoryQuota } = await import('./watcher.mjs');
+    const { slackHealth } = await import('./slack.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-notify-quota-'));
+    const flush = async () => ({ outcome: 'disabled' });
+    try {
+      for (let index = 0; index < 3; index += 1)
+        await withFactoryNotifications({ stateRoot: root, flush }, () =>
+          notifyFactoryQuota(42, false),
+        );
+      expect((await slackHealth({ stateRoot: root })).outboxPending).toBe(1);
+      await withFactoryNotifications({ stateRoot: root, flush }, () =>
+        notifyFactoryQuota(42, true),
+      );
+      await withFactoryNotifications({ stateRoot: root, flush }, () =>
+        notifyFactoryQuota(42, false),
+      );
+      expect((await slackHealth({ stateRoot: root })).outboxPending).toBe(2);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('emits approval only after clean verification cleanup, with the correct head identity', async () => {
+    const { withFactoryNotifications } = await import('./watcher.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-notify-approval-'));
+    const enqueue = vi.fn(async () => ({ id: 'a'.repeat(64), created: true }));
+    const candidate = {
+      state: 'ready',
+      issue: 42,
+      pullRequest: 321,
+      headSha: 'a'.repeat(40),
+      ciFingerprint: 'b'.repeat(64),
+      model: 'gpt-5.6-sol',
+    };
+    const command = async (file: string, args: string[]) => {
+      if (file === 'gh' && args[1] === 'list')
+        return {
+          stdout: JSON.stringify(
+            args.includes('agent:review') ? [{ number: 42, labels: ['agent:review'] }] : [],
+          ),
+        };
+      if (file === 'git' && args[0] === 'status') return { stdout: '' };
+      if (file === 'git' && args[0] === 'worktree') return { stdout: '' };
+      throw new Error('unexpected command');
+    };
+    try {
+      await withFactoryNotifications(
+        { stateRoot: root, enqueue, flush: async () => ({ outcome: 'idle' }) },
+        async () => {
+          const result = await runReviewCycle({
+            stateRoot: root,
+            command,
+            inspectCandidate: async () => candidate,
+            loadReviewRecord: async () => null,
+            runReview: async () => ({ state: 'human:approval', worktree: '/fake/verification' }),
+          });
+          await result.activeReview?.promise;
+        },
+      );
+      expect(enqueue).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'review-approved',
+          issue: 42,
+          pullRequest: 321,
+          headSha: candidate.headSha,
+        }),
+        expect.any(Object),
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Slack sender ownership', () => {
+  it('does not flush when another Watcher owns the lock', async () => {
+    const { withFactoryNotifications } = await import('./watcher.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-notify-lock-'));
+    const flush = vi.fn(async () => ({ outcome: 'idle' }));
+    try {
+      await writeFile(join(root, 'watcher.lock'), String(process.pid));
+      const result = await withFactoryNotifications({ stateRoot: root, flush }, () =>
+        runOnce({ stateRoot: root }),
+      );
+      expect(result.reason).toBe('already-running');
+      expect(flush).not.toHaveBeenCalled();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('flushes once before releasing the once-mode lock', async () => {
+    const { withFactoryNotifications } = await import('./watcher.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-notify-lock-release-'));
+    let lockHeld = false;
+    const flush = vi.fn(async () => {
+      lockHeld = Number(await readFile(join(root, 'watcher.lock'), 'utf8')) === process.pid;
+      return { outcome: 'idle' };
+    });
+    try {
+      await withFactoryNotifications({ stateRoot: root, flush }, () =>
+        runOnce({ stateRoot: root, command: async () => ({ stdout: '[]' }) }),
+      );
+      expect(flush).toHaveBeenCalledTimes(1);
+      expect(lockHeld).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('Reviewer Slack evidence gate', () => {
+  it('deduplicates heartbeat notices by head/model and does not notify an unverified new comment', async () => {
+    const { withFactoryNotifications, syncReviewComment } = await import('./watcher.mjs');
+    const { slackHealth } = await import('./slack.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-notify-review-evidence-'));
+    const record = {
+      issue: 42,
+      pullRequest: 321,
+      headSha: 'a'.repeat(40),
+      model: 'gpt-5.6-sol',
+      ciFingerprint: 'b'.repeat(64),
+      status: 'running',
+      reviewerPid: 1234,
+      threadId: 'thread-42',
+      heartbeatAt: '2026-10-05T01:00:00.000Z',
+    };
+    try {
+      await withFactoryNotifications(
+        { stateRoot: root, flush: async () => ({ outcome: 'disabled' }) },
+        async () => {
+          await expect(
+            syncReviewComment(
+              { issue: 42, repo: 'owner/repo', runDir: root, record },
+              { command: async () => ({ stdout: '{}' }) },
+            ),
+          ).rejects.toThrow('review comment ID missing');
+          expect((await slackHealth({ stateRoot: root })).outboxPending).toBe(0);
+          await syncReviewComment(
+            { issue: 42, repo: 'owner/repo', runDir: root, record },
+            { command: async () => ({ stdout: '{"id":77}' }) },
+          );
+          await syncReviewComment(
+            { issue: 42, repo: 'owner/repo', runDir: root, record, commentId: 77 },
+            { command: async () => ({ stdout: '' }) },
+          );
+          expect((await slackHealth({ stateRoot: root })).outboxPending).toBe(1);
+          await syncReviewComment(
+            {
+              issue: 42,
+              repo: 'owner/repo',
+              runDir: root,
+              record: { ...record, headSha: 'c'.repeat(40) },
+              commentId: 77,
+            },
+            { command: async () => ({ stdout: '' }) },
+          );
+          expect((await slackHealth({ stateRoot: root })).outboxPending).toBe(2);
+        },
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

@@ -8,6 +8,8 @@ import { promisify } from 'node:util';
 
 export const LABEL = 'com.kazuma-lab.fishing-conditions-ai-factory';
 
+import { saveSlackWebhook, slackHealth } from './slack.mjs';
+
 const execFileAsync = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -53,6 +55,13 @@ function defaults() {
     workingDirectory: repoRoot,
     path: process.env.PATH,
     plistPath,
+    stateRoot: join(
+      homedir(),
+      'Library',
+      'Application Support',
+      'FishingConditionsApp',
+      'ai-factory',
+    ),
     uid: process.getuid(),
   };
 }
@@ -66,6 +75,7 @@ async function bootout(uid, commandAdapter) {
 export async function install(options = {}) {
   const values = { ...defaults(), ...options };
   const commandAdapter = options.command ?? command;
+  await saveSlackWebhook(options.slackWebhookUrl, { stateRoot: values.stateRoot });
   const temporaryPath = `${values.plistPath}.tmp-${process.pid}`;
   await mkdir(dirname(values.plistPath), { recursive: true });
   await writeFile(
@@ -105,7 +115,15 @@ export async function uninstall(options = {}) {
 
 export async function status(options = {}) {
   const values = { ...defaults(), ...options };
-  return (options.command ?? command)('launchctl', ['print', `gui/${values.uid}/${LABEL}`]);
+  const result = await (options.command ?? command)('launchctl', [
+    'print',
+    `gui/${values.uid}/${LABEL}`,
+  ]);
+  const slack = await slackHealth({ stateRoot: values.stateRoot });
+  return {
+    ...result,
+    stdout: `${result.stdout}\nSlack: ${slack.health} ${JSON.stringify(slack)}\n`,
+  };
 }
 
 async function main() {
@@ -113,7 +131,7 @@ async function main() {
   if (action === 'print') {
     process.stdout.write(renderPlist(defaults()));
   } else if (action === 'install') {
-    process.stdout.write(`${await install()}\n`);
+    process.stdout.write(`${await install({ slackWebhookUrl: process.env.SLACK_WEBHOOK_URL })}\n`);
   } else if (action === 'uninstall') {
     await uninstall();
   } else if (action === 'status') {

@@ -1,5 +1,6 @@
 import { execFile, spawn as spawnProcess } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   appendFile,
   link,
@@ -58,6 +59,8 @@ import {
   WORKER_MODELS,
 } from './core.mjs';
 
+import { enqueueSlackEvent, flushSlackOutbox, updateSlackIssue } from './slack.mjs';
+
 const execFileAsync = promisify(execFile);
 
 export const LABELS = Object.freeze([
@@ -85,6 +88,108 @@ const FACTORY_ROOT = join(
   'FishingConditionsApp',
   'ai-factory',
 );
+
+// Scope notifications to live Watcher actions; dry-run and standalone test helpers stay read-only.
+const factoryNotifications = new AsyncLocalStorage();
+const notificationGeneration = () => createHash('sha256').update(randomUUID()).digest('hex');
+
+async function notificationLog(context, reason) {
+  try {
+    await (context.log ?? writeFactoryLog)(join(context.stateRoot, 'watcher.jsonl'), {
+      level: 'error',
+      event: 'slack-notification-failed',
+      reason,
+    });
+  } catch {
+    // A notification log failure must not change the task outcome.
+    return false;
+  }
+  return true;
+}
+
+async function flushFactoryNotifications() {
+  const context = factoryNotifications.getStore();
+  if (!context || context.flushed) return;
+  context.flushed = true;
+  try {
+    await (context.flush ?? flushSlackOutbox)({
+      stateRoot: context.stateRoot,
+      now: context.now ?? new Date(),
+    });
+  } catch {
+    await notificationLog(context, 'flush-failed');
+  }
+}
+
+export async function withFactoryNotifications(options, action) {
+  return factoryNotifications.run({ ...options, flushed: false }, async () => {
+    try {
+      return await action();
+    } finally {
+      await flushFactoryNotifications();
+    }
+  });
+}
+
+async function notifyFactoryEvent(event) {
+  const context = factoryNotifications.getStore();
+  if (!context) return;
+  try {
+    const identity = await updateSlackIssue(
+      event.issue,
+      (current) => {
+        if (event.type === 'task-started') return { generation: notificationGeneration() };
+        return {
+          ...current,
+          generation: current.generation ?? notificationGeneration(),
+          ...(event.pullRequest ? { pullRequest: event.pullRequest } : {}),
+          ...(event.headSha ? { headSha: event.headSha } : {}),
+        };
+      },
+      context,
+    );
+    const enriched = ['task-started', 'task-blocked', 'task-failed'].includes(event.type)
+      ? { ...identity, ...event }
+      : { ...event };
+    delete enriched.quotaGeneration;
+    await (context.enqueue ?? enqueueSlackEvent)(
+      { ...enriched, occurredAt: (context.now ?? new Date()).toISOString() },
+      context,
+    );
+  } catch {
+    await notificationLog(context, 'enqueue-failed');
+  }
+}
+
+export async function notifyFactoryQuota(issue, allowed) {
+  const context = factoryNotifications.getStore();
+  if (!context || !issue) return;
+  try {
+    const identity = await updateSlackIssue(
+      issue,
+      (current) => {
+        const next = { ...current };
+        if (allowed) delete next.quotaGeneration;
+        else next.quotaGeneration ??= notificationGeneration();
+        return next;
+      },
+      context,
+    );
+    if (!allowed)
+      await (context.enqueue ?? enqueueSlackEvent)(
+        {
+          type: 'quota-wait',
+          issue,
+          generation: identity.quotaGeneration,
+          occurredAt: (context.now ?? new Date()).toISOString(),
+          reason: 'quota',
+        },
+        context,
+      );
+  } catch {
+    await notificationLog(context, 'enqueue-failed');
+  }
+}
 
 /** @typedef {{ stdout: string, stderr?: string }} CommandResult */
 /** @typedef {(file: string, args: string[], options?: { cwd?: string, env?: Record<string, string | undefined>, timeout?: number }) => Promise<CommandResult>} CommandAdapter */
@@ -306,17 +411,19 @@ function plannerArguments(issue, repoRoot, schemaPath, resultPath) {
   ];
 }
 
-async function ensureQuota(readAccount, env) {
+async function ensureQuota(readAccount, env, issue) {
   if (!readAccount) return;
   let account;
   try {
     account = await readAccount({ env });
   } catch {
+    await notifyFactoryQuota(issue, false);
     const error = new Error('quota-unavailable');
     error.usage = { allowed: false, reason: 'quota-unavailable' };
     throw error;
   }
   const usage = evaluateUsage(account);
+  await notifyFactoryQuota(issue, usage.allowed);
   if (usage.allowed) return;
   const error = new Error(usage.reason);
   error.usage = usage;
@@ -354,7 +461,7 @@ export async function planIssue(
       if (error?.code !== 'ENOENT') throw error;
     });
     try {
-      await ensureQuota(readAccount, env);
+      await ensureQuota(readAccount, env, issue.number);
       runner = await runRunner({
         args: plannerArguments(issue, repoRoot, schemaPath, resultPath),
         runDir,
@@ -490,6 +597,18 @@ export async function inspectReviewCandidate(
   ) {
     return blockReviewCandidate(number, 'pull-request-mismatch', commandAdapter);
   }
+  const notificationContext = factoryNotifications.getStore();
+  if (notificationContext) {
+    try {
+      await updateSlackIssue(
+        number,
+        (current) => ({ ...current, pullRequest: pull.number, headSha: pull.headRefOid }),
+        notificationContext,
+      );
+    } catch {
+      await notificationLog(notificationContext, 'identity-failed');
+    }
+  }
   let checks;
   try {
     checks = parseJson(
@@ -579,6 +698,16 @@ export async function transitionIssue(issue, from, to, { command: commandAdapter
   if ((await issueState(issue, commandAdapter)) !== to) {
     throw new Error('issue state transition was not applied');
   }
+  if (to === STATES.RUNNING && from === STATES.READY)
+    await notifyFactoryEvent({ type: 'task-started', issue });
+  if (to === STATES.BLOCKED)
+    await notifyFactoryEvent({
+      type: 'task-blocked',
+      issue,
+      reason: from === STATES.REVIEW || from === STATES.APPROVAL ? 'review' : 'recovery',
+    });
+  if (to === STATES.FAILED)
+    await notifyFactoryEvent({ type: 'task-failed', issue, reason: 'infrastructure' });
 }
 
 export async function ensureLabels(commandAdapter = command) {
@@ -658,8 +787,9 @@ export async function syncRunComment(
   return created.id;
 }
 
-async function syncReviewComment(
-  { issue, record, repo, runDir, commentId },
+/** @param {{ issue: number, record: any, repo: string, runDir: string, commentId?: number }} data @param {{ command?: CommandAdapter }} [options] */
+export async function syncReviewComment(
+  { issue, record, repo, runDir, commentId = undefined },
   { command: commandAdapter = command } = {},
 ) {
   const bodyPath = join(runDir, 'review-comment.md');
@@ -675,12 +805,22 @@ async function syncReviewComment(
     '--field',
     `body=@${bodyPath}`,
   ]);
-  if (commentId) return commentId;
-  const created = parseJson(stdout, 'review comment');
-  if (!Number.isSafeInteger(created.id) || created.id <= 0) {
-    throw new Error('review comment ID missing');
+  let verifiedId = commentId;
+  if (!verifiedId) {
+    const created = parseJson(stdout, 'review comment');
+    if (!Number.isSafeInteger(created.id) || created.id <= 0)
+      throw new Error('review comment ID missing');
+    verifiedId = created.id;
   }
-  return created.id;
+  if (record.status === 'running')
+    await notifyFactoryEvent({
+      type: 'review-started',
+      issue,
+      pullRequest: record.pullRequest,
+      headSha: record.headSha,
+      model: record.model,
+    });
+  return verifiedId;
 }
 
 async function listIssuesForState(state, commandAdapter) {
@@ -1176,7 +1316,7 @@ export async function reconcileStartup({
 
     if (record.threadId && record.attempt < 3) {
       try {
-        await ensureQuota(readAccount, env);
+        await ensureQuota(readAccount, env, number);
       } catch (error) {
         if (!error?.usage) throw error;
         results.push({
@@ -1540,7 +1680,7 @@ export async function reviewIssue(
       });
       let home;
       try {
-        await ensureQuota(readAccount, env);
+        await ensureQuota(readAccount, env, number);
         if (!worktree) {
           const prepared = await prepare(candidate, { command: commandAdapter, stateRoot, env });
           commonGitDir = (
@@ -1933,6 +2073,7 @@ async function publishReady(issue, prepared, result, runDir, fromState, commandA
   }
   if (pulls.length !== 1 || !pulls[0].url) throw new Error('pull request read-back failed');
   await transitionIssue(number, fromState, STATES.REVIEW, { command: commandAdapter });
+  await notifyFactoryEvent({ type: 'pr-created', issue: number, pullRequest: pulls[0].number });
   return { state: STATES.REVIEW, pullRequest: pulls[0].url, worktree: prepared.worktree };
 }
 
@@ -2038,7 +2179,7 @@ export async function executeIssue(
           ];
     if (attempt === 1) {
       try {
-        await ensureQuota(readAccount, env);
+        await ensureQuota(readAccount, env, number);
       } catch (error) {
         if (!error?.usage) throw error;
         await transitionIssue(number, STATES.RUNNING, STATES.READY, { command: commandAdapter });
@@ -2329,6 +2470,13 @@ async function cleanupReviewWorktree(
     return { state, worktree, reason: 'dirty-review-worktree' };
   }
   await commandAdapter('git', ['worktree', 'remove', worktree]);
+  if (currentState === STATES.APPROVAL)
+    await notifyFactoryEvent({
+      type: 'review-approved',
+      issue: candidate.issue,
+      pullRequest: candidate.pullRequest,
+      headSha: candidate.headSha,
+    });
   return { state: currentState };
 }
 
@@ -2670,6 +2818,7 @@ export async function runOnce({
       nextState: STATES.RUNNING,
       model: 'gpt-5.6-terra',
     };
+    await notifyFactoryQuota(number, usage.allowed);
     if (!usage.allowed) return result;
     const options = {
       command: commandAdapter,
@@ -2710,10 +2859,15 @@ export async function runOnce({
     return execute(false);
   }
   const lock = await acquireLock(stateRoot);
-  if (!lock.acquired) return { mode: 'once', reason: lock.reason };
+  if (!lock.acquired) {
+    const context = factoryNotifications.getStore();
+    if (context) context.flushed = true;
+    return { mode: 'once', reason: lock.reason };
+  }
   try {
     return await execute(true);
   } finally {
+    await flushFactoryNotifications();
     await lock.release();
   }
 }
@@ -2741,12 +2895,14 @@ export async function watch({ pollMs = 30_000, ...options } = {}) {
   try {
     for (;;) {
       try {
-        await runScheduledCycle({ ...options, stateRoot, active });
-        ({ activeReview } = await runReviewCycle({
-          ...options,
-          stateRoot,
-          activeReview,
-        }));
+        await withFactoryNotifications({ ...options, stateRoot }, async () => {
+          await runScheduledCycle({ ...options, stateRoot, active });
+          ({ activeReview } = await runReviewCycle({
+            ...options,
+            stateRoot,
+            activeReview,
+          }));
+        });
       } catch (error) {
         await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
           level: 'error',
@@ -2854,7 +3010,11 @@ async function main() {
     return;
   }
   if (args.has('--once')) {
-    process.stdout.write(`${JSON.stringify(await runOnce({ dryRun: args.has('--dry-run') }))}\n`);
+    const dryRun = args.has('--dry-run');
+    const result = dryRun
+      ? await runOnce({ dryRun })
+      : await withFactoryNotifications({ stateRoot: FACTORY_ROOT }, () => runOnce());
+    process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
   await watch();

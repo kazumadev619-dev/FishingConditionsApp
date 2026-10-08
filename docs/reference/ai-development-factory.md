@@ -178,9 +178,45 @@ GitHub側のIssue label、Watcher所有のplan/run/reviewコメント、PRとCI�
 
 ローカルでは `~/Library/Application Support/FishingConditionsApp/ai-factory/` 配下にlock、run/review結果、ログ、worker worktree、verification worktreeを置く。ローカル情報だけでGitHub状態を上書きしない。worker worktreeはPRのmergeまたはclose後も、dirtyでないことを人が確認するまで自動削除しない。verification worktreeはreview状態遷移後にcleanな場合だけ自動削除する。
 
+## Slack Incoming Webhook通知
+
+通知処理は既存Watcher内で動き、新しい常駐サービスやnpm依存を使わない。Watcherが確認した状態遷移・PR・review証拠から、次の固定イベントだけを生成する。
+
+- タスク開始
+- PR作成、最終レビュー開始
+- cleanなverification worktreeの後処理を終えた承認待ち
+- CI失敗・レビュー要修正・復旧不能・実行基盤の停止
+- quota不足の待機開始（同じ待機episodeでは1件）
+- 通知機能の復旧（同じ障害episodeでは1件）
+
+依存待ち・パス競合は通知しない。Issue/PRのタイトル・本文、モデルの自由文、コマンド出力、HTTP応答本文を通知へ含めない。payloadは固定の日本語文と検証済みIssue/PR番号・モデル・短いイベントIDだけで組み立てる。
+
+### Webhookの秘密
+
+HTTPSの `hooks.slack.com/services/...` Incoming Webhook URLだけを受理し、userinfo、query、fragment、追加port、別hostnameを拒否する。`factory:install` の `SLACK_WEBHOOK_URL` が設定された時だけ、`~/Library/Application Support/FishingConditionsApp/ai-factory/slack-webhook-url` へmode `0600`でatomicに保存する。未設定なら既存ファイルを保持する。uninstallでは削除しない。
+
+URLをリポジトリ、plist、引数、標準出力、Issue/PR、ログへ書かない。worker/Reviewerの環境へ渡さない。読み取り時にsymlink・公開権限・不正なURLを拒否し、未設定・不正設定でも開発フローは動く。
+
+### Outboxと配送
+
+`slack-outbox/<SHA-256イベントID>.json` にpending/sentの記録をmode `0600`で保存する。IDは種別・Issue/PR・head SHA・run/待機の世代・モデル・理由から決定し、発生日時の変化では変えない。enqueueは一時ファイルとexclusive hard linkで既存IDを上書きしない。送信結果の更新はatomic renameを使う。送信済み記録を保持し、再enqueue・再起動で通常の重複を抑止する。
+
+配送はat-least-onceである。Slackが受理した直後にMacが停止した場合やHTTP応答が失われた場合は、次回の再送で重複し得る。メッセージの短いイベントIDで照合できる。enqueueやローカル保存の失敗時には通知が欠落し得るが、Issue状態を戻さず、秘密を含まない分類ログを残す。
+
+送信は既存Watcher lockの所有者だけが、1cycleにつき最大1件行う。HTTP timeoutは10秒、redirectは禁止。429・その他の非2xx・network失敗ではpendingを保持し、1分、5分、30分、1時間、以後6時間で再送する。有効な429の `Retry-After` がより長い場合は24時間までその下限を尊重する。応答本文・例外の自由文を読んだり保存したりしない。
+
+sent保存後に復旧通知をenqueueする前に停止しても、次回flushで補完する。復旧通知自身の失敗から新しい復旧通知を生成しない。通知flushはGitHub側cycleの失敗時にも試し、通知・ログの失敗でworker/Reviewerを失敗させない。手動onceのflushはlock解放前に行い、既存daemonがlockを所有している場合は送信しない。
+
+送信済み記録はこの段階では自動削除しない。長期稼働では保存量と一覧読み取り時間が増える。削除すると古いイベントの再送抑止が失われるため、保持期間・再送対象期間を定義してから整理する。
+
+`slack-issues/<Issue番号>.json` は通知ID用のrun/待機世代とPR/head identityを保持する派生データであり、GitHub状態の復旧根拠にしない。
+
+### Health
+
+`factory:status` は既存LaunchAgent状態に加え、`configured`、`health`、`outboxPending`、`oldestPendingAt`、`lastSuccessAt` を表示する。Webhook未設定・不正、outbox不正、失敗後のpendingがある場合はunhealthy。Webhook値は返さない。
+
 ## 現在の対象外
 
-- Slack Incoming Webhook通知
 - 全体監視と週次レポート
 - Slack Socket Mode双方向Bot
 - Jevによる分類補助
