@@ -1821,7 +1821,11 @@ export async function reviewIssue(
   const { repo } = await planContext(commandAdapter);
   let commentId;
   let model = candidate.model;
-  const generation = candidate.ciFingerprint;
+  // A fresh invocation is a distinct execution, including retries after a quota pause.
+  // The written events retain this identifier across all attempts/models in this invocation.
+  const generation = createHash('sha256')
+    .update(JSON.stringify([candidate.ciFingerprint, randomUUID()]))
+    .digest('hex');
   let completedAttempt;
   for (;;) {
     const runDir = join(

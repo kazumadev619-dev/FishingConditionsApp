@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, stat, symlink, writeFile, mkdir } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, symlink, writeFile, mkdir, chmod } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -423,4 +423,128 @@ it('records loss in an existing owned 0755 factory root', async () => {
   await chmod(stateRoot, 0o755);
   await markFactoryObservationFailure({ stateRoot });
   expect((await readFactoryEvents({ stateRoot })).incomplete).toBe(true);
+});
+
+it('marks unmatched starts as incomplete', () => {
+  const report = aggregateFactoryReport([validateFactoryEvent(base)], {
+    from: base.at,
+    to: '2026-10-12T00:00:00.000Z',
+  });
+  expect(report.unfinished).toBe(1);
+  expect(report.incomplete).toBe(true);
+  expect(renderFactoryReport(report)).toContain('不完全');
+});
+it('uses the same logical Sol review cohort for cross-week escalations and retries', () => {
+  const from = '2026-10-04T15:00:00.000Z',
+    to = '2026-10-11T15:00:00.000Z';
+  const events = [42, 43].flatMap((issue, index) => {
+    const review = {
+      ...base,
+      issue,
+      stage: 'review',
+      model: 'gpt-5.6-sol',
+      generation: String(issue).padStart(64, '0'),
+    };
+    const start = index ? '2026-10-05T00:00:00.000Z' : '2026-10-04T14:00:00.000Z';
+    const end = index ? '2026-10-05T01:00:00.000Z' : '2026-10-04T15:01:00.000Z';
+    return [
+      validateFactoryEvent({ ...review, at: start }),
+      validateFactoryEvent({ ...review, type: 'stage-finished', at: end, outcome: 'escalate' }),
+      validateFactoryEvent({
+        ...review,
+        type: 'escalation',
+        stage: undefined,
+        attempt: undefined,
+        at: end,
+      }),
+    ];
+  });
+  const report = aggregateFactoryReport(events, { from, to });
+  expect(report.escalations).toBe(2);
+  expect(report.escalationRate).toBe(1);
+  expect(report.models['gpt-5.6-sol']).toBe(1);
+  expect(report.incomplete).toBe(false);
+  const retry = events
+    .slice(0, 2)
+    .map((e) =>
+      validateFactoryEvent({ ...e, id: undefined, attempt: 2, at: '2026-10-05T02:00:00.000Z' }),
+    );
+  expect(aggregateFactoryReport([...events, ...retry], { from, to }).escalationRate).toBe(1);
+});
+it.each(['pullRequest', 'headSha', 'ciFingerprint', 'parent'])(
+  'rejects untrusted reviewer %s evidence',
+  async (field) => {
+    const { inspectFactoryProcesses } = await import('./report.mjs');
+    const { renderReviewComment } = await import('./core.mjs');
+    const stateRoot = await root();
+    const record = {
+      issue: 42,
+      pullRequest: 43,
+      headSha: 'a'.repeat(40),
+      ciFingerprint: 'b'.repeat(64),
+      model: 'gpt-5.6-sol',
+      status: 'running',
+      reviewerPid: 1234,
+      threadId: 'fixture-thread',
+      heartbeatAt: base.at,
+    };
+    const malformed = {
+      ...record,
+      ...(field === 'parent'
+        ? {}
+        : { [field]: field === 'headSha' ? '/../outside/' : 'not-valid' }),
+    };
+    const runDir = join(
+      stateRoot,
+      'review-runs',
+      `issue-42-${malformed.headSha.slice(0, 12)}-${record.model}`,
+    );
+    await mkdir(runDir, { recursive: true, mode: 0o700 });
+    await writeFile(
+      join(runDir, 'codex.jsonl'),
+      JSON.stringify({ type: 'thread.started', thread_id: record.threadId }) + '\n',
+      { mode: 0o600 },
+    );
+    if (field === 'parent') await chmod(join(stateRoot, 'review-runs'), 0o777);
+    const command = async (file: string, args: string[]) => ({
+      stdout:
+        file === 'ps'
+          ? `codex exec --output-last-message ${runDir}/result.json`
+          : args[1] === 'user'
+            ? 'factory-bot\n'
+            : args[0] === 'repo'
+              ? 'owner/repo\n'
+              : JSON.stringify([
+                  [{ id: 1, user: { login: 'factory-bot' }, body: renderReviewComment(malformed) }],
+                ]),
+    });
+    expect(
+      (
+        await inspectFactoryProcesses([{ number: 42, labels: [{ name: 'agent:review' }] }], {
+          stateRoot,
+          command,
+        })
+      ).reviewerProcess,
+    ).toBe('unknown');
+  },
+);
+
+it('does not fabricate a rate for escalations with missing Sol starts', () => {
+  const known = { ...base, stage: 'review', model: 'gpt-5.6-sol' };
+  const events = [
+    validateFactoryEvent(known),
+    validateFactoryEvent({ ...known, type: 'escalation', stage: undefined, attempt: undefined }),
+    validateFactoryEvent({
+      ...known,
+      issue: 43,
+      type: 'escalation',
+      stage: undefined,
+      attempt: undefined,
+    }),
+  ];
+  const report = aggregateFactoryReport(events, { from: base.at, to: '2026-10-06T00:00:00.000Z' });
+  expect(report.escalations).toBe(2);
+  expect(report.escalationRate).toBe(1);
+  expect(report.incomplete).toBe(true);
+  expect(report.invalid).toBe(1);
 });

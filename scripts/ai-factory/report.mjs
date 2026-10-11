@@ -314,10 +314,12 @@ export function aggregateFactoryReport(events, { from, to, incomplete = false })
     starts = new Map(),
     seen = new Set(),
     stalled = new Set(),
-    outages = new Set();
+    outages = new Set(),
+    solReviews = new Set(),
+    reviewCohort = new Set(),
+    escalatedReviews = new Set();
   let invalid = 0,
-    escalations = 0,
-    reviews = 0;
+    escalations = 0;
   const valid = [];
   for (const raw of events) {
     try {
@@ -333,11 +335,15 @@ export function aggregateFactoryReport(events, { from, to, incomplete = false })
     if (at >= right) continue;
     const inside = at >= left;
     const key = pairKey(e);
+    const reviewKey = JSON.stringify([e.issue, e.generation, e.headSha ?? null]);
     if (e.type === 'stage-started' || e.type === 'wait-started') {
       if (starts.has(key)) invalid++;
       else starts.set(key, e);
       if (inside && e.model) models[e.model] = (models[e.model] ?? 0) + 1;
-      if (inside && e.stage === 'review' && e.model === 'gpt-5.6-sol') reviews++;
+      if (e.stage === 'review' && e.model === 'gpt-5.6-sol') {
+        solReviews.add(reviewKey);
+        if (inside) reviewCohort.add(reviewKey);
+      }
     } else if (e.type === 'stage-finished' || e.type === 'wait-finished') {
       const start = starts.get(key);
       if (!start || start.type.replace('started', 'finished') !== e.type) {
@@ -345,6 +351,7 @@ export function aggregateFactoryReport(events, { from, to, incomplete = false })
         continue;
       }
       starts.delete(key);
+      if (inside && e.stage === 'review' && e.model === 'gpt-5.6-sol') reviewCohort.add(reviewKey);
       if (e.type === 'wait-finished')
         waitDurations[e.reason] =
           (waitDurations[e.reason] ?? 0) + Math.max(0, at - Math.max(left, Date.parse(start.at)));
@@ -366,7 +373,13 @@ export function aggregateFactoryReport(events, { from, to, incomplete = false })
     if (counter) counts[counter]++;
     if (['blocked', 'failed', 'slack-retry', 'ci-failed'].includes(e.type) && e.reason)
       reasons[e.reason] = (reasons[e.reason] ?? 0) + 1;
-    if (e.type === 'escalation') escalations++;
+    if (e.type === 'escalation') {
+      escalations++;
+      if (solReviews.has(reviewKey)) {
+        reviewCohort.add(reviewKey);
+        escalatedReviews.add(reviewKey);
+      } else invalid++;
+    }
   }
   for (const start of starts.values()) {
     if (start.type === 'wait-started')
@@ -402,11 +415,11 @@ export function aggregateFactoryReport(events, { from, to, incomplete = false })
     reasons,
     waitDurations,
     escalations,
-    escalationRate: reviews ? escalations / reviews : 0,
+    escalationRate: reviewCohort.size ? escalatedReviews.size / reviewCohort.size : 0,
     stalledIssues,
     improvementSignals,
     invalid,
-    incomplete: incomplete || invalid > 0,
+    incomplete: incomplete || invalid > 0 || starts.size > 0,
     unfinished: starts.size,
   };
 }
@@ -764,6 +777,15 @@ export async function inspectFactoryProcesses(issues, { stateRoot, command }) {
           try {
             const match = comment.body.match(/\n```json\n([^\n]+)\n```\n?$/);
             const parsed = JSON.parse(match?.[1] ?? 'null');
+            if (
+              kind === 'review' &&
+              (!positive(parsed?.pullRequest) ||
+                typeof parsed?.headSha !== 'string' ||
+                !/^[a-f0-9]{40}$/.test(parsed.headSha) ||
+                typeof parsed?.ciFingerprint !== 'string' ||
+                !HASH.test(parsed.ciFingerprint))
+            )
+              throw new Error('invalid reviewer identity');
             const record =
               kind === 'run'
                 ? parseRunComment(comment, { issue: issue.number, viewer })
@@ -825,6 +847,20 @@ export async function inspectFactoryProcesses(issues, { stateRoot, command }) {
           continue;
         }
         try {
+          for (const path of [
+            stateRoot,
+            join(stateRoot, kind === 'run' ? 'runs' : 'review-runs'),
+            runDir,
+          ]) {
+            const info = await lstat(path);
+            if (
+              !info.isDirectory() ||
+              info.isSymbolicLink() ||
+              info.uid !== process.getuid() ||
+              (info.mode & 0o022) !== 0
+            )
+              throw new Error('untrusted process evidence');
+          }
           const file = await privateOpen(join(runDir, 'codex.jsonl'), constants.O_RDONLY);
           let text;
           try {

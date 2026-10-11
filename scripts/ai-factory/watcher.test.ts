@@ -4557,3 +4557,90 @@ it.each(['pass', 'fail'])(
     }
   },
 );
+
+it('counts reviewer retry after a quota pause in a new cycle', async () => {
+  const { withFactoryNotifications } = await import('./watcher.mjs');
+  const { readFactoryEvents, aggregateFactoryReport } = await import('./report.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'factory-review-restart-'));
+  let state = 'agent:review',
+    phase = 1,
+    accountReads = 0,
+    runnerCalls = 0;
+  const command = async (file: string, args: string[]) => {
+    if (file === 'git') return { stdout: '/fake/.git\n' };
+    if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+    if (args[1] === 'user') return { stdout: 'factory-bot\n' };
+    if (args[0] === 'api') return { stdout: '{"id":77}' };
+    if (args[1] === 'edit') {
+      state = args[args.indexOf('--add-label') + 1];
+      return { stdout: '' };
+    }
+    return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+  };
+  const candidate = {
+    issue: 42,
+    pullRequest: 43,
+    base: 'develop',
+    branch: 'codex/issue-42',
+    headSha: 'a'.repeat(40),
+    ciFingerprint: 'b'.repeat(64),
+    model: 'gpt-5.6-sol',
+    changedPaths: ['docs/README.md'],
+    claims: 'fixture',
+    checks: [],
+    labels: [],
+  };
+  const opts = {
+    stateRoot: root,
+    command,
+    env: { PATH: '/usr/bin', HOME: root, CODEX_HOME: join(root, '.codex') },
+    prepareWorktree: async () => root,
+    readAccount: async () => ({
+      account: { type: 'chatgpt' },
+      ordinaryUsageAllowed: true,
+      rateLimits: {
+        primary: { usedPercent: phase === 1 && ++accountReads > 1 ? 80 : 10, resetsAt: 1800000000 },
+      },
+    }),
+    runRunner: async () => {
+      runnerCalls++;
+      if (phase === 1) throw new Error('fixture infrastructure failure');
+      return {
+        result: {
+          outcome: 'approved',
+          summary: 'verified',
+          findings: [],
+          verifiedCommands: [],
+          documentationCurrent: true,
+        },
+        threadId: 'fixture-thread',
+        runnerPid: 1234,
+      };
+    },
+  };
+
+  try {
+    for (phase = 1; phase <= 2; phase++) {
+      const now = new Date(phase === 1 ? '2026-10-05T00:00:00Z' : '2026-10-05T01:00:00Z');
+      const result = await withFactoryNotifications(
+        { stateRoot: root, now, flush: async () => ({ outcome: 'idle' }) },
+        () => reviewIssue(candidate, { ...opts, now }),
+      );
+      expect(result.state).toBe(phase === 1 ? 'agent:review' : 'human:approval');
+    }
+    const events = (await readFactoryEvents({ stateRoot: root })).events;
+    const starts = events.filter((e) => e.type === 'stage-started' && e.stage === 'review');
+    expect(runnerCalls).toBe(2);
+    expect(new Set(starts.map((e) => e.id)).size).toBe(2);
+    const report = aggregateFactoryReport(events, {
+      from: '2026-10-05T00:00:00.000Z',
+      to: '2026-10-06T00:00:00.000Z',
+    });
+    expect(report.invalid).toBe(0);
+    expect(report.incomplete).toBe(false);
+    expect(report.models['gpt-5.6-sol']).toBe(2);
+    expect(report.stageDurations.review.count).toBe(2);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
