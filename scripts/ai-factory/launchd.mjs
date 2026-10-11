@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 export const LABEL = 'com.kazuma-lab.fishing-conditions-ai-factory';
 
 import { saveSlackWebhook, slackHealth } from './slack.mjs';
+import { readFactoryEvents, aggregateFactoryReport, inspectFactoryProcesses } from './report.mjs';
 
 const execFileAsync = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
@@ -115,14 +116,76 @@ export async function uninstall(options = {}) {
 
 export async function status(options = {}) {
   const values = { ...defaults(), ...options };
-  const result = await (options.command ?? command)('launchctl', [
-    'print',
-    `gui/${values.uid}/${LABEL}`,
-  ]);
+  const adapter = options.command ?? command;
+  let launchd;
+  try {
+    const result = await adapter('launchctl', ['print', `gui/${values.uid}/${LABEL}`]);
+    launchd =
+      result.stdout.match(/(?:^|\n)\s*state = (running|waiting|exited)\b/)?.[1] ??
+      (result.stdout === 'daemon running' ? 'running' : 'unknown');
+  } catch {
+    launchd = 'unavailable';
+  }
+  let queues = {
+    health: 'unavailable',
+    runningIssues: null,
+    reviewQueue: null,
+    workerProcesses: 'unknown',
+    reviewerProcess: 'unknown',
+  };
+  try {
+    const result = await adapter('gh', [
+      'issue',
+      'list',
+      '--state',
+      'open',
+      '--limit',
+      '1000',
+      '--json',
+      'number,labels',
+    ]);
+    const issues = JSON.parse(result.stdout);
+    if (
+      !Array.isArray(issues) ||
+      issues.length >= 1000 ||
+      issues.some(
+        (issue) =>
+          !Number.isSafeInteger(issue.number) ||
+          issue.number < 1 ||
+          !Array.isArray(issue.labels) ||
+          issue.labels.some((label) => typeof label.name !== 'string'),
+      )
+    )
+      throw new Error('invalid queue');
+    queues = {
+      ...queues,
+      health: 'available',
+      runningIssues: issues.filter((issue) =>
+        issue.labels.some(
+          (label) => label.name === 'agent:running' || label.name === 'agent:recovery',
+        ),
+      ).length,
+      reviewQueue: issues.filter((issue) =>
+        issue.labels.some((label) => label.name === 'agent:review'),
+      ).length,
+    };
+    queues = {
+      ...queues,
+      ...(await inspectFactoryProcesses(issues, { stateRoot: values.stateRoot, command: adapter })),
+    };
+  } catch {
+    queues.health = 'unavailable';
+  }
   const slack = await slackHealth({ stateRoot: values.stateRoot });
+  const events = await readFactoryEvents({ stateRoot: values.stateRoot });
+  const now = options.now ?? new Date();
+  const report = aggregateFactoryReport(events.events, {
+    from: new Date(now.getTime() - 7 * 86400000).toISOString(),
+    to: now.toISOString(),
+    incomplete: events.incomplete,
+  });
   return {
-    ...result,
-    stdout: `${result.stdout}\nSlack: ${slack.health} ${JSON.stringify(slack)}\n`,
+    stdout: `LaunchAgent: ${launchd === 'running' ? 'daemon running' : launchd}\nQueues: ${JSON.stringify(queues)}\nQuota: ${events.incomplete ? 'unknown' : (report.waitDurations.quota ?? 0) + 'ms observed / live unknown'}\nSlack: ${slack.health} ${JSON.stringify(slack)}\nObservations: ${report.incomplete ? 'incomplete' : 'available'} / unfinished ${report.unfinished}\n`,
   };
 }
 

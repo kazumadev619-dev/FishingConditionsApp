@@ -129,3 +129,47 @@ describe('Slack installation', () => {
     }
   });
 });
+
+describe('factory status', () => {
+  it('shows GitHub queues and unknown process liveness without exposing launchctl paths', async () => {
+    const { status } = await import('./launchd.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-status-'));
+    try {
+      const result = await status({
+        stateRoot: root,
+        command: async (file: string) => ({
+          stdout:
+            file === 'launchctl'
+              ? 'state = running\npid = 123\npath = /Users/PRIVATE_NAME/private'
+              : JSON.stringify([
+                  { number: 42, labels: [{ name: 'agent:running' }] },
+                  { number: 43, labels: [{ name: 'agent:review' }] },
+                ]),
+        }),
+      });
+      expect(result.stdout).toContain('"runningIssues":1');
+      expect(result.stdout).toContain('"reviewQueue":1');
+      expect(result.stdout).toContain('unknown');
+      expect(result.stdout).not.toContain('PRIVATE_NAME');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('shows local Slack health when launchctl and GitHub are unavailable', async () => {
+    const { status } = await import('./launchd.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-status-fail-'));
+    try {
+      const result = await status({
+        stateRoot: root,
+        command: async () => {
+          throw new Error('RAW_SECRET');
+        },
+      });
+      expect(result.stdout).toContain('unavailable');
+      expect(result.stdout).toContain('Slack:');
+      expect(result.stdout).not.toContain('RAW_SECRET');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

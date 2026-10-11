@@ -217,9 +217,27 @@ sent保存後に復旧通知をenqueueする前に停止しても、次回flush�
 
 ## 現在の対象外
 
-- 全体監視と週次レポート
+- AIによるレポート分析と改善Issueの自動作成
 - Slack Socket Mode双方向Bot
 - Jevによる分類補助
 - API key fallbackとAPI従量課金
 - 自動mergeと自動deploy
 - Slackからのmerge/deploy
+
+## 全体観測と週次レポート
+
+Watcherはlive実行のplanning、running、CI、reviewの開始・終了、タスク開始、PR、承認待ち、停止、retry/recovery、quota/dependency/conflict/CI待機をローカル観測へ記録する。観測は派生データであり、GitHub状態の復旧根拠にしない。観測保存・集計の失敗でworker、Reviewer、状態遷移、Slack配送を失敗させない。
+
+`events/YYYY-MM-DD.jsonl` はUTC日付の固定Schema記録で、通常ファイル・所有者・0600権限を検証する。symlink、FIFO、公開権限、過大ファイルを拒否する。末尾の改行未完了行だけを無視し、不正な完全行は内容を出さず不完全観測と表示する。UTC日付差が35日を超える実在日付の通常ファイルだけを削除し、35日前は残す。outboxと秘密は保持対象外である。
+
+イベントには種別、UTC時刻、検証済みIssue/PR番号、head SHA、実行世代、試行、段階、モデル、固定outcome/reason、通知IDだけを許可する。タイトル・本文・モデル自由文・コマンド出力を保存しない。待機episodeは`observation-waits/`へatomic保存し、再起動越しに同じ開始IDを使う。CI head更新では旧episodeを終了し、新しい世代を計測する。レビュー起動ごとにCI fingerprintとUUIDから実行世代を生成し、同じ起動内のretryとSol/Astraはその世代を共有する。quota停止後の次cycleで新しく起動したレビューは別世代として数える。
+
+`factory:report`は直近7日の開始/PR/承認/停止件数、段階時間の中央値/最長、モデル、待機、原因、Astra昇格、retry/recovery/通知失敗、停滞と改善要確認を表示する。集計は[from,to)とし、段階完了が期間内の場合に時間を計上し、待機は期間へclipする。世代・試行・head・モデルが一致する開始/終了だけを対応させ、重複IDは除外する。未対応終了は不明、未対応開始は未完了として、どちらも観測不完全と表示する。Sol→Astra昇格率の分母は、期間内に開始・対応する完了・昇格のいずれかがある同じSolレビュー集合（Issue・実行世代・head）とする。期間前に開始したレビューも期間内に昇格した場合は含め、同じレビュー内のretryは分母を増やさない。対応するSol開始がない昇格は観測不完全とし、率には含めない。保持前の開始と未導入時の履歴は復元できない。
+
+改善要確認は24時間以上の未完了、同一固定原因3回以上、未復旧Slack障害だけである。AIによる分析・自動Issue作成は行わない。
+
+週次はAsia/Tokyo月曜00:00から次の月曜00:00を対象とし、月曜09:00以降に直前週だけenqueueする。停止中なら次回cycleでcatch-upし、過去週を連続送信しない。週開始日をIDに使い、最初の集計snapshotとsent記録を保持する。再集計や再起動で通常の重複を抑止する。配送は既存outboxによるat-least-onceである。
+
+statusはlaunchdの分類状態、GitHubのrunning/recovery Issue数とreviewキュー、確認できたworker/Reviewer process数、直近quota待機時間、Slack health・最終週次送信を表示する。process数はWatcher所有コメント・PIDのコマンド・ローカルthread証拠を照合し、不一致・取得不能はunknownとする。Issue数には準備中も含む。quotaの現在利用枠はstatusで問い合わせずlive unknownと明示する。GitHub停止でもローカルhealthを表示する。launchctlの生出力・絶対path・任意例外を返さない。
+
+保存・待機episode・週次集計に失敗した場合は固定の`observation-incomplete` markerも残す。markerが存在する間はレポートを不完全と表示する。marker自体を保存できないディスク障害では分類ログだけが残り得るため、ログの観測失敗も確認する。
