@@ -4331,3 +4331,229 @@ describe('Reviewer Slack evidence gate', () => {
     }
   });
 });
+
+describe('factory observation integration', () => {
+  it('records only verified state changes with fixed fields and wait episodes', async () => {
+    const { withFactoryNotifications, notifyFactoryQuota } = await import('./watcher.mjs');
+    const { readFactoryEvents } = await import('./report.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-observe-'));
+    let state = 'agent:ready';
+    const command = async (_file: string, args: string[]) => {
+      if (args[1] === 'edit') {
+        state = args[args.indexOf('--add-label') + 1];
+        return { stdout: '' };
+      }
+      return { stdout: JSON.stringify({ labels: [state] }) };
+    };
+    try {
+      await withFactoryNotifications(
+        {
+          stateRoot: root,
+          now: new Date('2026-10-12T00:00:00Z'),
+          flush: async () => ({ outcome: 'idle' }),
+        },
+        async () => {
+          await transitionIssue(42, 'agent:ready', 'agent:running', { command });
+          await notifyFactoryQuota(42, false);
+          await notifyFactoryQuota(42, false);
+          await notifyFactoryQuota(42, true);
+          await transitionIssue(42, 'agent:running', 'agent:blocked', { command });
+        },
+      );
+      const data = await readFactoryEvents({ stateRoot: root });
+      expect(data.events.map((e) => e.type)).toEqual(
+        expect.arrayContaining([
+          'task-started',
+          'blocked',
+          'wait-started',
+          'wait-finished',
+          'slack-enqueued',
+        ]),
+      );
+      expect(data.incomplete).toBe(false);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('keeps successful state transition when observation writing fails', async () => {
+    const { withFactoryNotifications } = await import('./watcher.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-observe-fail-'));
+    let state = 'agent:ready';
+    const observe = vi.fn(async () => {
+      throw new Error('DO_NOT_ECHO');
+    });
+    const log = vi.fn();
+    const command = async (_file: string, args: string[]) => {
+      if (args[1] === 'edit') {
+        state = 'agent:running';
+        return { stdout: '' };
+      }
+      return { stdout: JSON.stringify({ labels: [state] }) };
+    };
+    try {
+      await withFactoryNotifications(
+        { stateRoot: root, observe, log, flush: async () => ({ outcome: 'idle' }) },
+        () => transitionIssue(42, 'agent:ready', 'agent:running', { command }),
+      );
+      expect(observe).toHaveBeenCalled();
+      expect(state).toBe('agent:running');
+      expect(JSON.stringify(log.mock.calls)).not.toContain('DO_NOT_ECHO');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+it('enqueues the previous week only at the live weekly cycle boundary', async () => {
+  const { withFactoryNotifications } = await import('./watcher.mjs');
+  const { slackHealth } = await import('./slack.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'factory-weekly-cycle-'));
+  try {
+    for (let n = 0; n < 2; n++)
+      await withFactoryNotifications(
+        {
+          stateRoot: root,
+          weeklyReports: true,
+          now: new Date('2026-10-12T00:00:00Z'),
+          flush: async () => ({ outcome: 'idle' }),
+        },
+        async () => {},
+      );
+    expect((await slackHealth({ stateRoot: root })).outboxPending).toBe(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it('finishes failed reviewer attempts before retrying so approved reviews do not look stalled', async () => {
+  const { withFactoryNotifications } = await import('./watcher.mjs');
+  const { readFactoryEvents, aggregateFactoryReport } = await import('./report.mjs');
+  const root = await mkdtemp(join(tmpdir(), 'factory-review-observe-retry-'));
+  let state = 'agent:review';
+  let attempts = 0;
+  const command = async (file: string, args: string[]) => {
+    if (file === 'git') return { stdout: '/fake/.git\n' };
+    if (args[0] === 'repo') return { stdout: 'owner/repo\n' };
+    if (args[1] === 'user') return { stdout: 'factory-bot\n' };
+    if (args[0] === 'api') return { stdout: '{"id":77}' };
+    if (args[1] === 'edit') {
+      state = args[args.indexOf('--add-label') + 1];
+      return { stdout: '' };
+    }
+    return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+  };
+  const now = new Date('2026-10-05T00:00:00Z');
+  try {
+    await withFactoryNotifications(
+      { stateRoot: root, now, flush: async () => ({ outcome: 'idle' }) },
+      () =>
+        reviewIssue(
+          {
+            issue: 42,
+            pullRequest: 43,
+            base: 'develop',
+            branch: 'codex/issue-42',
+            headSha: 'a'.repeat(40),
+            ciFingerprint: 'b'.repeat(64),
+            model: 'gpt-5.6-sol',
+            changedPaths: ['docs/README.md'],
+            claims: 'docs',
+            checks: [],
+            labels: [],
+          },
+          {
+            stateRoot: root,
+            now,
+            command,
+            env: { PATH: '/usr/bin', HOME: root, CODEX_HOME: join(root, '.codex') },
+            prepareWorktree: async () => root,
+            readAccount: async () => ({
+              account: { type: 'chatgpt' },
+              ordinaryUsageAllowed: true,
+              rateLimits: { primary: { usedPercent: 10, resetsAt: 1800000000 } },
+            }),
+            runRunner: async () => {
+              attempts++;
+              if (attempts === 1) throw new Error('temporary failure');
+              return {
+                result: {
+                  outcome: 'approved',
+                  summary: 'verified',
+                  findings: [],
+                  verifiedCommands: [],
+                  documentationCurrent: true,
+                },
+                threadId: 'thread',
+                runnerPid: 1234,
+              };
+            },
+          },
+        ),
+    );
+    const report = aggregateFactoryReport((await readFactoryEvents({ stateRoot: root })).events, {
+      from: now.toISOString(),
+      to: '2026-10-07T00:00:00.000Z',
+    });
+    expect(report.invalid).toBe(0);
+    expect(report.unfinished).toBe(0);
+    expect(report.counts.retries).toBe(1);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+it.each(['pass', 'fail'])(
+  'records a CI %s verdict even when no pending cycle was observed',
+  async (bucket) => {
+    const { withFactoryNotifications } = await import('./watcher.mjs');
+    const { readFactoryEvents } = await import('./report.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-ci-verdict-'));
+    let state = 'agent:review';
+    const headRefOid = 'a'.repeat(40);
+    const command = async (_file: string, args: string[]) => {
+      if (args[0] === 'pr' && args[1] === 'list')
+        return {
+          stdout: JSON.stringify([
+            {
+              number: 43,
+              state: 'OPEN',
+              isDraft: false,
+              baseRefName: 'develop',
+              headRefName: 'codex/issue-42',
+              headRefOid,
+              createdAt: '2026-10-05T00:00:00.000Z',
+              body: 'docs',
+              files: [{ path: 'docs/README.md' }],
+            },
+          ]),
+        };
+      if (args[1] === 'checks')
+        return {
+          stdout: JSON.stringify([
+            { name: 'test', workflow: 'CI', bucket, completedAt: '2026-10-05T00:05:00.000Z' },
+          ]),
+        };
+      if (args[0] === 'pr' && args[1] === 'view') return { stdout: JSON.stringify({ headRefOid }) };
+      if (args[1] === 'edit') {
+        state = args[args.indexOf('--add-label') + 1];
+        return { stdout: '' };
+      }
+      return { stdout: JSON.stringify({ labels: [{ name: state }] }) };
+    };
+    try {
+      await withFactoryNotifications(
+        { stateRoot: root, flush: async () => ({ outcome: 'idle' }) },
+        () =>
+          inspectReviewCandidate(
+            { number: 42, labels: [] },
+            { command, now: new Date('2026-10-05T01:00:00.000Z') },
+          ),
+      );
+      expect((await readFactoryEvents({ stateRoot: root })).events.map((e) => e.type)).toContain(
+        bucket === 'pass' ? 'ci-passed' : 'ci-failed',
+      );
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  },
+);

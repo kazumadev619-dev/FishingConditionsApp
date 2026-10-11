@@ -129,7 +129,7 @@ rg -n 'slack-notification-failed' "$FACTORY_ROOT/watcher.jsonl"
 rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/slack-webhook-url"
 ```
 
-週次レポート・全体監視・Slack Botは後続段階であり、この通知段階には含めない。
+週次レポートの操作は末尾の「全体観測を確認する」を参照する。Slack Botは後続段階である。
 
 ## 最終レビューの確認
 
@@ -200,4 +200,31 @@ worktreeの削除はPRのmergeまたはclose後に、未コミット変更がな
 
 ## 現在の境界
 
-現在のWatcherには自動修正、自動merge/deploy、全体観測・週次レポート、Slack Bot、Jev、API key fallback、API従量課金を含めない。
+現在のWatcherには自動修正、自動merge/deploy、AIによるレポート分析・改善Issue自動作成、Slack Bot、Jev、API key fallback、API従量課金を含めない。
+
+## 全体観測を確認する
+
+```bash
+npm run factory:status
+npm run factory:report
+```
+
+reportは外部書込なしで直近7日を表示する。未導入時の履歴は復元しない。観測が不完全な場合、0件を全期間の実績と判断せず、Watcherログの固定分類`observation-failed`、`observation-wait-failed`、`observation-report-failed`を確認する。未完了は開始しかない記録、不明は対応する開始がない終了などを示す。
+
+statusのrunningIssuesはGitHubのrunning/recovery件数で準備中を含む。workerProcesses/reviewerProcessは所有コメント・PID・コマンド・threadを照合した数である。unknownは不在を意味しない。reviewQueueはagent:reviewの件数で、CI待ちも含む。quotaは直近7日の観測待機時間で、現在残量ではない。lastWeeklySuccessAtはoutboxへsent保存できた最終時刻である。
+
+週次通知はJST月曜09:00以降のcycleで直前週を予約する。Mac停止後は次回cycleで直前週のみを送る。手動予約も同じ対象週・IDを使う。
+
+```bash
+npm run factory:report -- --send
+```
+
+`--send`は直前週を表示してoutboxへ予約するだけで、直接HTTP送信しない。月曜09:00前は予約しない。同じ週の既存snapshotは上書きしないため、予約後に記録が増えても通知は最初の集計を使う。daemon停止中は予約が残り、再開後に送る。outbox/sent記録を削除すると再送抑止が失われるので、観測ログと一緒に削除しない。
+
+観測ファイルはUTC日付で35日保持する。35日前を残し、それより古い通常日別ファイルだけを削除する。CI head変更・再試行・Astra昇格は別計測となる。24時間停滞・同一原因3回以上・未復旧通知障害は人が調べてIssue化する。
+
+`observation-incomplete`は過去の欠落を示すため成功cycleで自動解除しない。原因を直した後も、欠落期間を含む集計は不完全として読む。欠落期間が保持範囲を外れたことを確認してから、人がこの固定markerだけを削除できる。
+
+```bash
+rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/observation-incomplete"
+```

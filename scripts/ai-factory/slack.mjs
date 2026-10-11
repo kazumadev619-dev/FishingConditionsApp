@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { link, lstat, mkdir, open, readdir, rename, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { URL } from 'node:url';
+import { validateWeeklySnapshot, renderWeeklySnapshot } from './report.mjs';
 
 const TYPES = new Set([
   'task-started',
@@ -50,6 +51,15 @@ export function validateWebhookUrl(value) {
 }
 
 function validateEvent(event) {
+  if (event?.type === 'weekly-report') {
+    if (
+      Object.keys(event).some((key) => !['type', 'week', 'report', 'occurredAt'].includes(key)) ||
+      !iso(event.occurredAt)
+    )
+      throw new Error('invalid weekly event');
+    validateWeeklySnapshot(event.week, event.report);
+    return event;
+  }
   const allowed = [
     'type',
     'issue',
@@ -115,6 +125,10 @@ function validateEvent(event) {
 
 export function slackEventId(event) {
   validateEvent(event);
+  if (event.type === 'weekly-report')
+    return createHash('sha256')
+      .update(JSON.stringify(['weekly-report', event.week]))
+      .digest('hex');
   return createHash('sha256')
     .update(
       JSON.stringify([
@@ -262,6 +276,10 @@ async function persistRecord(record, { stateRoot }) {
 }
 
 function payload(record) {
+  if (record.event.type === 'weekly-report')
+    return {
+      text: `${renderWeeklySnapshot(record.event.week, record.event.report)}\nevent ${record.id.slice(0, 12)}`,
+    };
   const labels = {
     'task-started': 'タスク開始',
     'pr-created': 'PR作成',
@@ -300,13 +318,14 @@ async function enqueueRecovery(record, records, stateRoot, now) {
   );
 }
 
-/** @param {{ stateRoot: string, fetch?: (url: string, options: any) => Promise<{ ok: boolean, status: number, headers?: { get: (name: string) => string | null } }>, now?: Date, persistRecord?: (record: any, options: any) => Promise<any> }} options */
+/** @param {{ stateRoot: string, fetch?: (url: string, options: any) => Promise<{ ok: boolean, status: number, headers?: { get: (name: string) => string | null } }>, now?: Date, persistRecord?: (record: any, options: any) => Promise<any>, onDelivery?: (event: any) => Promise<any> }} options */
 // ponytail: sent receipts are retained; prune only after defining a replay horizon.
 export async function flushSlackOutbox({
   stateRoot,
   fetch = globalThis.fetch,
   now = new Date(),
   persistRecord: persist = persistRecord,
+  onDelivery,
 }) {
   const webhook = await readWebhook(stateRoot);
   if (!webhook) return { outcome: 'disabled' };
@@ -347,6 +366,12 @@ export async function flushSlackOutbox({
     if (record.attempts > 0 && record.event.type !== 'notification-recovered') {
       await enqueueRecovery(record, records, stateRoot, now);
     }
+    if (onDelivery)
+      await onDelivery({
+        type: record.event.type === 'notification-recovered' ? 'slack-recovered' : 'slack-sent',
+        deliveryId: record.event.type === 'notification-recovered' ? record.event.generation : id,
+        at: now.toISOString(),
+      }).catch(() => false);
     return { outcome: 'sent', id };
   }
   const attempts = record.attempts + 1;
@@ -377,6 +402,14 @@ export async function flushSlackOutbox({
   } catch {
     throw new Error('Slack storage failed');
   }
+  if (onDelivery)
+    await onDelivery({
+      type: 'slack-retry',
+      deliveryId: id,
+      reason: response ? 'http' : 'network',
+      attempts,
+      at: now.toISOString(),
+    }).catch(() => false);
   return { outcome: 'retry', id };
 }
 
@@ -396,6 +429,12 @@ export async function slackHealth({ stateRoot }) {
       outboxPending: pending.length,
       oldestPendingAt: pending.map((record) => record.event.occurredAt).sort()[0] ?? null,
       lastSuccessAt: success.at(-1) ?? null,
+      lastWeeklySuccessAt:
+        records
+          .filter((record) => record.status === 'sent' && record.event.type === 'weekly-report')
+          .map((record) => record.sentAt)
+          .sort()
+          .at(-1) ?? null,
     };
   } catch {
     return {
@@ -404,6 +443,7 @@ export async function slackHealth({ stateRoot }) {
       outboxPending: null,
       oldestPendingAt: null,
       lastSuccessAt: null,
+      lastWeeklySuccessAt: null,
     };
   }
 }
@@ -445,4 +485,12 @@ export async function updateSlackIssue(issue, update, { stateRoot }) {
   } catch {
     throw new Error('Slack storage failed');
   }
+}
+
+export async function readWeeklySnapshot(week, { stateRoot }) {
+  const record = (await readRecords(stateRoot)).find(
+    (item) => item.event.type === 'weekly-report' && item.event.week === week,
+  );
+  if (!record) throw new Error('weekly snapshot missing');
+  return record.event.report;
 }

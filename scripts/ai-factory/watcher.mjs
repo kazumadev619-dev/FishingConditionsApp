@@ -60,6 +60,13 @@ import {
 } from './core.mjs';
 
 import { enqueueSlackEvent, flushSlackOutbox, updateSlackIssue } from './slack.mjs';
+import {
+  appendFactoryEvent,
+  updateFactoryWait,
+  pruneFactoryEvents,
+  enqueueWeeklyReport,
+  markFactoryObservationFailure,
+} from './report.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -94,6 +101,9 @@ const factoryNotifications = new AsyncLocalStorage();
 const notificationGeneration = () => createHash('sha256').update(randomUUID()).digest('hex');
 
 async function notificationLog(context, reason) {
+  if (reason.startsWith('observation-')) {
+    await markFactoryObservationFailure(context).catch(() => false);
+  }
   try {
     await (context.log ?? writeFactoryLog)(join(context.stateRoot, 'watcher.jsonl'), {
       level: 'error',
@@ -107,14 +117,74 @@ async function notificationLog(context, reason) {
   return true;
 }
 
+async function observeFactoryEvent(event) {
+  const context = factoryNotifications.getStore();
+  if (!context) return;
+  try {
+    await (context.observe ?? appendFactoryEvent)(
+      { ...event, at: event.at ?? (context.now ?? new Date()).toISOString() },
+      context,
+    );
+  } catch {
+    await notificationLog(context, 'observation-failed');
+  }
+}
+async function observeFactoryWait(issue, reason, waiting, identity = {}) {
+  const context = factoryNotifications.getStore();
+  if (!context) return;
+  try {
+    await updateFactoryWait(issue, reason, waiting, { ...context, ...identity });
+  } catch {
+    await notificationLog(context, 'observation-wait-failed');
+  }
+}
+async function factoryGeneration(issue, reset = false) {
+  const context = factoryNotifications.getStore();
+  if (!context) return notificationGeneration();
+  try {
+    const identity = await updateSlackIssue(
+      issue,
+      (current) => ({
+        ...current,
+        generation: reset
+          ? notificationGeneration()
+          : (current.generation ?? notificationGeneration()),
+      }),
+      context,
+    );
+    return identity.generation;
+  } catch {
+    return notificationGeneration();
+  }
+}
+
 async function flushFactoryNotifications() {
   const context = factoryNotifications.getStore();
   if (!context || context.flushed) return;
   context.flushed = true;
   try {
+    try {
+      await pruneFactoryEvents(context);
+      if (context.weeklyReports) {
+        const weekly = await enqueueWeeklyReport(context);
+        if (weekly.created)
+          await observeFactoryEvent({ type: 'slack-enqueued', deliveryId: weekly.id });
+      }
+    } catch {
+      await notificationLog(context, 'observation-report-failed');
+    }
     await (context.flush ?? flushSlackOutbox)({
       stateRoot: context.stateRoot,
       now: context.now ?? new Date(),
+      onDelivery: async (event) => {
+        const { attempts, ...fields } = event;
+        await observeFactoryEvent({
+          ...fields,
+          generation: createHash('sha256')
+            .update(JSON.stringify([event.deliveryId, attempts ?? 0]))
+            .digest('hex'),
+        });
+      },
     });
   } catch {
     await notificationLog(context, 'flush-failed');
@@ -134,14 +204,32 @@ export async function withFactoryNotifications(options, action) {
 async function notifyFactoryEvent(event) {
   const context = factoryNotifications.getStore();
   if (!context) return;
+  const generation = await factoryGeneration(event.issue, event.type === 'task-started');
+  const observationType = {
+    'task-started': 'task-started',
+    'pr-created': 'pr-created',
+    'review-approved': 'approval',
+    'task-blocked': 'blocked',
+    'task-failed': 'failed',
+  }[event.type];
+  if (observationType)
+    await observeFactoryEvent({
+      type: observationType,
+      issue: event.issue,
+      generation,
+      pullRequest: event.pullRequest,
+      headSha: event.headSha,
+      model: event.model,
+      reason: event.reason,
+    });
   try {
     const identity = await updateSlackIssue(
       event.issue,
       (current) => {
-        if (event.type === 'task-started') return { generation: notificationGeneration() };
+        if (event.type === 'task-started') return { generation };
         return {
           ...current,
-          generation: current.generation ?? notificationGeneration(),
+          generation,
           ...(event.pullRequest ? { pullRequest: event.pullRequest } : {}),
           ...(event.headSha ? { headSha: event.headSha } : {}),
         };
@@ -152,10 +240,12 @@ async function notifyFactoryEvent(event) {
       ? { ...identity, ...event }
       : { ...event };
     delete enriched.quotaGeneration;
-    await (context.enqueue ?? enqueueSlackEvent)(
+    const receipt = await (context.enqueue ?? enqueueSlackEvent)(
       { ...enriched, occurredAt: (context.now ?? new Date()).toISOString() },
       context,
     );
+    if (receipt?.created)
+      await observeFactoryEvent({ type: 'slack-enqueued', deliveryId: receipt.id });
   } catch {
     await notificationLog(context, 'enqueue-failed');
   }
@@ -164,6 +254,7 @@ async function notifyFactoryEvent(event) {
 export async function notifyFactoryQuota(issue, allowed) {
   const context = factoryNotifications.getStore();
   if (!context || !issue) return;
+  await observeFactoryWait(issue, 'quota', !allowed);
   try {
     const identity = await updateSlackIssue(
       issue,
@@ -175,8 +266,8 @@ export async function notifyFactoryQuota(issue, allowed) {
       },
       context,
     );
-    if (!allowed)
-      await (context.enqueue ?? enqueueSlackEvent)(
+    if (!allowed) {
+      const receipt = await (context.enqueue ?? enqueueSlackEvent)(
         {
           type: 'quota-wait',
           issue,
@@ -186,6 +277,9 @@ export async function notifyFactoryQuota(issue, allowed) {
         },
         context,
       );
+      if (receipt?.created)
+        await observeFactoryEvent({ type: 'slack-enqueued', deliveryId: receipt.id });
+    }
   } catch {
     await notificationLog(context, 'enqueue-failed');
   }
@@ -456,12 +550,23 @@ export async function planIssue(
     mode: 0o600,
   });
   let runner;
+  const generation = notificationGeneration();
+  let completedAttempt;
   for (let attempt = 0; attempt < 2; attempt += 1) {
     await unlink(resultPath).catch((error) => {
       if (error?.code !== 'ENOENT') throw error;
     });
     try {
       await ensureQuota(readAccount, env, issue.number);
+      completedAttempt = attempt + 1;
+      await observeFactoryEvent({
+        type: 'stage-started',
+        issue: number,
+        stage: 'planning',
+        model: PLANNER_MODEL,
+        generation,
+        attempt: completedAttempt,
+      });
       runner = await runRunner({
         args: plannerArguments(issue, repoRoot, schemaPath, resultPath),
         runDir,
@@ -472,6 +577,23 @@ export async function planIssue(
       break;
     } catch (error) {
       if (error?.usage) throw error;
+      await observeFactoryEvent({
+        type: 'stage-finished',
+        issue: number,
+        stage: 'planning',
+        model: PLANNER_MODEL,
+        generation,
+        attempt: attempt + 1,
+        outcome: 'failed',
+      });
+      if (attempt === 0)
+        await observeFactoryEvent({
+          type: 'retry',
+          issue: number,
+          generation,
+          model: PLANNER_MODEL,
+          reason: 'infrastructure',
+        });
       if (attempt === 1) {
         error.plannerInfrastructure = true;
         throw error;
@@ -492,6 +614,15 @@ export async function planIssue(
   try {
     plan = validatePlan(runner.result, number);
   } catch (error) {
+    await observeFactoryEvent({
+      type: 'stage-finished',
+      issue: number,
+      stage: 'planning',
+      model: PLANNER_MODEL,
+      generation,
+      attempt: completedAttempt,
+      outcome: 'blocked',
+    });
     error.planInvalid = true;
     throw error;
   }
@@ -511,6 +642,15 @@ export async function planIssue(
     },
     { command: commandAdapter },
   );
+  await observeFactoryEvent({
+    type: 'stage-finished',
+    issue: number,
+    stage: 'planning',
+    model: PLANNER_MODEL,
+    generation,
+    attempt: completedAttempt,
+    outcome: plan.outcome,
+  });
   return plan;
 }
 
@@ -641,6 +781,19 @@ export async function inspectReviewCandidate(
   } catch {
     return blockReviewCandidate(number, 'invalid-checks', commandAdapter);
   }
+  await observeFactoryWait(number, 'ci', checkState.state === 'pending', {
+    headSha: pull.headRefOid,
+    outcome: checkState.state === 'failed' ? 'failed' : 'passed',
+  });
+  if (checkState.state !== 'pending')
+    await observeFactoryEvent({
+      type: checkState.state === 'failed' ? 'ci-failed' : 'ci-passed',
+      issue: number,
+      pullRequest: pull.number,
+      headSha: pull.headRefOid,
+      generation: createHash('sha256').update(pull.headRefOid).digest('hex'),
+      ...(checkState.state === 'failed' ? { reason: 'ci' } : {}),
+    });
   if (checkState.state === 'pending') return { state: 'pending', reason: checkState.reason };
   if (checkState.state === 'failed') {
     return blockReviewCandidate(number, checkState.reason, commandAdapter);
@@ -698,6 +851,13 @@ export async function transitionIssue(issue, from, to, { command: commandAdapter
   if ((await issueState(issue, commandAdapter)) !== to) {
     throw new Error('issue state transition was not applied');
   }
+  if (to === STATES.RECOVERY)
+    await observeFactoryEvent({
+      type: 'recovery',
+      issue,
+      generation: await factoryGeneration(issue),
+      reason: 'infrastructure',
+    });
   if (to === STATES.RUNNING && from === STATES.READY)
     await notifyFactoryEvent({ type: 'task-started', issue });
   if (to === STATES.BLOCKED)
@@ -1661,6 +1821,8 @@ export async function reviewIssue(
   const { repo } = await planContext(commandAdapter);
   let commentId;
   let model = candidate.model;
+  const generation = candidate.ciFingerprint;
+  let completedAttempt;
   for (;;) {
     const runDir = join(
       stateRoot,
@@ -1679,6 +1841,7 @@ export async function reviewIssue(
         if (error?.code !== 'ENOENT') throw error;
       });
       let home;
+      let observationStarted = false;
       try {
         await ensureQuota(readAccount, env, number);
         if (!worktree) {
@@ -1696,6 +1859,18 @@ export async function reviewIssue(
         }
         home = await mkdtemp(join(tmpdir(), 'ai-factory-review-home-'));
         const isolatedEnv = reviewerEnv(env, home);
+        completedAttempt = attempt + 1;
+        await observeFactoryEvent({
+          type: 'stage-started',
+          issue: number,
+          stage: 'review',
+          model,
+          generation,
+          attempt: completedAttempt,
+          headSha: candidate.headSha,
+          pullRequest: candidate.pullRequest,
+        });
+        observationStarted = true;
         runner = await runRunner({
           args: reviewerArguments(
             candidate,
@@ -1739,6 +1914,18 @@ export async function reviewIssue(
         if (error?.usage) {
           return { state: STATES.REVIEW, reason: error.message, usage: error.usage };
         }
+        if (observationStarted)
+          await observeFactoryEvent({
+            type: 'stage-finished',
+            issue: number,
+            stage: 'review',
+            model,
+            generation,
+            attempt: attempt + 1,
+            headSha: candidate.headSha,
+            pullRequest: candidate.pullRequest,
+            outcome: 'failed',
+          });
         if (error?.reviewPreparationInvalid) {
           await transitionIssue(number, STATES.REVIEW, STATES.BLOCKED, { command: commandAdapter });
           return { state: STATES.BLOCKED, reason: error.message };
@@ -1750,6 +1937,14 @@ export async function reviewIssue(
               `${JSON.stringify({ issue: number, headSha: candidate.headSha, model })}\n`,
               { flag: 'wx', mode: 0o600 },
             );
+            await observeFactoryEvent({
+              type: 'retry',
+              issue: number,
+              generation,
+              headSha: candidate.headSha,
+              model,
+              reason: 'infrastructure',
+            });
             continue;
           } catch (markerError) {
             if (markerError?.code !== 'EEXIST') throw markerError;
@@ -1793,6 +1988,17 @@ export async function reviewIssue(
       },
       { command: commandAdapter },
     );
+    await observeFactoryEvent({
+      type: 'stage-finished',
+      issue: number,
+      stage: 'review',
+      model,
+      generation,
+      attempt: completedAttempt,
+      headSha: candidate.headSha,
+      pullRequest: candidate.pullRequest,
+      outcome: result.outcome,
+    });
     if (reinspectCandidate) {
       const current = await reinspectCandidate(
         { number, labels: candidate.labels ?? [] },
@@ -1812,6 +2018,13 @@ export async function reviewIssue(
       }
     }
     if (result.outcome === 'escalate') {
+      await observeFactoryEvent({
+        type: 'escalation',
+        issue: number,
+        generation,
+        headSha: candidate.headSha,
+        model,
+      });
       model = REVIEW_MODELS.ASTRA;
       continue;
     }
@@ -2156,6 +2369,7 @@ export async function executeIssue(
   await writeFile(schemaPath, `${JSON.stringify(RUNNER_RESULT_SCHEMA, null, 2)}\n`, {
     mode: 0o600,
   });
+  const generation = await factoryGeneration(number);
   let attempt = 1;
   let commentId;
   let runner;
@@ -2220,6 +2434,14 @@ export async function executeIssue(
       }
     };
     try {
+      await observeFactoryEvent({
+        type: 'stage-started',
+        issue: number,
+        stage: 'running',
+        model,
+        generation,
+        attempt,
+      });
       runner = await runAttempt(runRunner, {
         args,
         runDir,
@@ -2228,6 +2450,15 @@ export async function executeIssue(
         onHeartbeat: heartbeatRecord,
       });
     } catch (error) {
+      await observeFactoryEvent({
+        type: 'stage-finished',
+        issue: number,
+        stage: 'running',
+        model,
+        generation,
+        attempt,
+        outcome: 'failed',
+      });
       await writeFactoryLog(join(stateRoot, 'watcher.jsonl'), {
         level: 'error',
         event: 'runner-infrastructure-failed',
@@ -2238,6 +2469,15 @@ export async function executeIssue(
       const recoveredState = await recoverInfrastructureFailure(number, runDir, commandAdapter);
       return { state: recoveredState, worktree: prepared.worktree };
     }
+    await observeFactoryEvent({
+      type: 'stage-finished',
+      issue: number,
+      stage: 'running',
+      model,
+      generation,
+      attempt,
+      outcome: runner.result.outcome,
+    });
     threadId = runner.threadId;
     await heartbeatRecord({
       runnerPid: runner.runnerPid,
@@ -2247,6 +2487,13 @@ export async function executeIssue(
 
     if (runner.result.outcome === 'blocked') break;
     if (canRetryRunner(runner.result, attempt)) {
+      await observeFactoryEvent({
+        type: 'retry',
+        issue: number,
+        generation: createHash('sha256').update(`${generation}:${attempt}`).digest('hex'),
+        model,
+        reason: 'validation',
+      });
       attempt += 1;
       continue;
     }
@@ -2262,6 +2509,13 @@ export async function executeIssue(
         };
         break;
       }
+      await observeFactoryEvent({
+        type: 'retry',
+        issue: number,
+        generation: createHash('sha256').update(`${generation}:${attempt}`).digest('hex'),
+        model,
+        reason: 'validation',
+      });
       attempt += 1;
     }
   }
@@ -2312,7 +2566,9 @@ async function resolveExecutionPlan(issue, options) {
     await transitionIssue(number, STATES.READY, STATES.BLOCKED, { command: options.command });
     return { result: { state: STATES.BLOCKED, reason: plan.reason } };
   }
-  if (!(await dependenciesClosed(plan, options.command))) {
+  const dependencyWait = !(await dependenciesClosed(plan, options.command));
+  await observeFactoryWait(number, 'dependency', dependencyWait);
+  if (dependencyWait) {
     return { result: { state: STATES.READY, reason: 'dependencies-open', plan } };
   }
   return { plan };
@@ -2338,7 +2594,10 @@ async function fillAvailableSlots(active, options, recovered = []) {
     const resolved = await resolveExecutionPlan(issue, options);
     if ('result' in resolved) continue;
     const candidate = { issue, plan: resolved.plan };
-    if (selectRunnablePlans([candidate], [...activePlans, ...selected], 1).length === 0) continue;
+    const conflictWait =
+      selectRunnablePlans([candidate], [...activePlans, ...selected], 1).length === 0;
+    await observeFactoryWait(issue.number, 'conflict', conflictWait);
+    if (conflictWait) continue;
     const promise = options
       .runIssue(issue, { ...options, plan: resolved.plan })
       .catch(async (error) => {
@@ -2895,7 +3154,7 @@ export async function watch({ pollMs = 30_000, ...options } = {}) {
   try {
     for (;;) {
       try {
-        await withFactoryNotifications({ ...options, stateRoot }, async () => {
+        await withFactoryNotifications({ ...options, stateRoot, weeklyReports: true }, async () => {
           await runScheduledCycle({ ...options, stateRoot, active });
           ({ activeReview } = await runReviewCycle({
             ...options,
@@ -3013,7 +3272,9 @@ async function main() {
     const dryRun = args.has('--dry-run');
     const result = dryRun
       ? await runOnce({ dryRun })
-      : await withFactoryNotifications({ stateRoot: FACTORY_ROOT }, () => runOnce());
+      : await withFactoryNotifications({ stateRoot: FACTORY_ROOT, weeklyReports: true }, () =>
+          runOnce(),
+        );
     process.stdout.write(`${JSON.stringify(result)}\n`);
     return;
   }
