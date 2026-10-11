@@ -1,6 +1,6 @@
 # 🛠️ 開発ガイド
 
-## 開発環境セットアップ
+## ローカル開発環境セットアップ
 
 ### 必要な環境
 
@@ -345,4 +345,3 @@ GitHub Actions で lint / format / type-check / build を実行している（�
 
 - [PostgreSQL Documentation](https://www.postgresql.org/docs/)
 - [Prisma Documentation](https://www.prisma.io/docs/)
-
