@@ -4,7 +4,7 @@
 # ============================================
 # Stage 1: Dependencies
 # ============================================
-FROM node:24-alpine AS deps
+FROM node:26-alpine AS deps
 
 WORKDIR /app
 
@@ -27,7 +27,7 @@ RUN npm ci && npx prisma generate
 # ============================================
 # Stage 2: Build
 # ============================================
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 
 WORKDIR /app
 
@@ -89,7 +89,7 @@ RUN npm prune --omit=dev && \
 # ============================================
 # Prisma CLI と tsx を必要とするのはマイグレーションと seed だけなので、
 # Web 用イメージから切り離す。
-FROM node:24-alpine AS migrator
+FROM node:26-alpine AS migrator
 
 # GHCR のパッケージをこのリポジトリに紐づける。これが無いと Packages ページが
 # ソース不明の孤立したイメージとして表示され、権限も repo から継承されない。
@@ -137,7 +137,7 @@ CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
 # **このステージは必ずファイル末尾に置くこと。** docker は --target 省略時に
 # 最後のステージをビルドするため、順序を変えると `docker build` や
 # compose の build（target 未指定）が Web イメージを作らなくなる。
-FROM node:24-alpine AS runner
+FROM node:26-alpine AS runner
 
 # GHCR のパッケージをこのリポジトリに紐づける。これが無いと Packages ページが
 # ソース不明の孤立したイメージとして表示され、権限も repo から継承されない。
