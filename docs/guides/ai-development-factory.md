@@ -256,3 +256,13 @@ rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/observa
 同日の隔離検証で、導入済み依存を再利用するreview契約、同headの固定CI証拠、検索結果の状態照合、run記録不在の表示を修正した。Reviewerと同じnetwork無効・root/共有tmp denyのsandboxでNode、Git、OCR delegate preview、check-code (19ファイル395テスト) が成功した。OpenSSLの単一設定ファイル読取りと固定CommandLineTools/Git設定で動作し、共有cacheの書込み権限は追加していない。依存そのものは更新せず、開発ガイドをpackage.jsonの範囲とlockfileの実版に照合した。変異テストは不具合を戻す6件をすべて検知し、無害なコメント変更1件は通過した。既存npm ciのhigh 11件・deprecated警告は依存差分なしの既知事項として保持する。
 
 この検証はIssue #269の再実行ではない。developへのマージと恒久runtimeへの反映は承認待ちで、既存PRの `human:approval`、Slack目視、手動週次予約の確認は引き続き未完了。末尾空行削除は固定検証・commit hookの対象外で、原因は特定できていない。
+
+### 2026-10-12の再確認
+
+人の承認後、修正 [PR #271](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/271) をdevelopへマージし、恒久runtimeを統合commit `2d80ede` へfast-forwardして再起動した。既存PR #270へdevelopを取り込み、末尾空行をdevelopと一致させた。現在のdiffは承認済み見出し1行だけで、headは `d551311992a2d7f77c64b0ca646dffb55ecc238e`。実装済みのためworkerを重複起動せず、既存Issueをreviewキューへ戻した。
+
+[CI run 38207089528](https://github.com/kazumadev619-dev/FishingConditionsApp/actions/runs/38207089528) は同headで5項目すべて成功した。Solは受領CI証拠のfingerprint `b4fa46c18c36d3c0831252552e9d3cbae2288932d666981ea7211714e1196fa0` を再計算して照合し、`approved` / `documentationCurrent=true` を返した。WatcherがIssue #269を `human:approval` へ自動遷移した。今回のAstra昇格はない。
+
+実Reviewerではlint・format・型検査・391テストが成功した一方、FIFO作成4テスト、buildのport bind、OCR previewのxcrun一時cacheにsandbox制約が残った。Solはこれらを確認不能事項として報告し、同headの実CI成功と内容検証に基づいて承認した。隔離probeと独立pr-verifierでのcheck-code395件成功を、実Reviewerで全件成功した証拠へ読み替えない。
+
+新headのSlack配送記録はreview開始 `f0a11c81133f` と承認待ち `645401e3fb76` が各1件sent。pending 0、health healthy、worker/reviewer 0、観測の未完了・不明0。直近reportのapprovalsは1件となった。Slackチャンネルの人の目視確認と、未承認の手動週次予約による重複抑止検証は未完了であり、Phase 3-05全体の完了とはまだ扱わない。E2EのIssue/PRはopen、PRは未mergeで保持し、cleanup・main昇格・deployは行っていない。
