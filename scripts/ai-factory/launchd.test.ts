@@ -70,3 +70,106 @@ describe('launchd plist', () => {
     );
   });
 });
+
+describe('Slack installation', () => {
+  it('stores the supplied secret outside plist, preserves it across install/uninstall, and reports only health', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-launchd-slack-'));
+    const fakeWebhook = 'https://hooks.slack.com/services/T/B/FAKE_TEST_ONLY';
+    const options = {
+      nodePath: '/opt/node',
+      watcherPath: '/repo/watcher.mjs',
+      workingDirectory: '/repo',
+      path: '/usr/bin:/bin',
+      plistPath: join(root, 'factory.plist'),
+      stateRoot: root,
+      uid: 501,
+      command: async () => ({ stdout: 'daemon running' }),
+    };
+    try {
+      await install({ ...options, slackWebhookUrl: fakeWebhook });
+      const { readFile, stat } = await import('node:fs/promises');
+      const { status, uninstall } = await import('./launchd.mjs');
+      expect(await readFile(join(root, 'slack-webhook-url'), 'utf8')).toBe(`${fakeWebhook}\n`);
+      expect((await stat(join(root, 'slack-webhook-url'))).mode & 0o777).toBe(0o600);
+      expect(await readFile(options.plistPath, 'utf8')).not.toContain(fakeWebhook);
+      expect(await readFile(options.plistPath, 'utf8')).not.toContain('SLACK_WEBHOOK_URL');
+      await install(options);
+      const result = await status(options);
+      expect(result.stdout).toContain('daemon running');
+      expect(result.stdout).toContain('Slack: healthy');
+      expect(JSON.stringify(result)).not.toContain(fakeWebhook);
+      await uninstall(options);
+      expect(await readFile(join(root, 'slack-webhook-url'), 'utf8')).toBe(`${fakeWebhook}\n`);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('validates an invalid webhook before altering the existing plist or launching commands', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'ai-factory-launchd-invalid-'));
+    const { readFile, writeFile } = await import('node:fs/promises');
+    const commands: string[] = [];
+    const plistPath = join(root, 'factory.plist');
+    try {
+      await writeFile(plistPath, 'existing plist');
+      await expect(
+        install({
+          stateRoot: root,
+          plistPath,
+          slackWebhookUrl: 'https://wrong.example/secret',
+          command: async (file: string) => {
+            commands.push(file);
+            return { stdout: '' };
+          },
+        }),
+      ).rejects.toThrow('invalid Slack webhook URL');
+      expect(await readFile(plistPath, 'utf8')).toBe('existing plist');
+      expect(commands).toEqual([]);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('factory status', () => {
+  it('shows GitHub queues and unknown process liveness without exposing launchctl paths', async () => {
+    const { status } = await import('./launchd.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-status-'));
+    try {
+      const result = await status({
+        stateRoot: root,
+        command: async (file: string) => ({
+          stdout:
+            file === 'launchctl'
+              ? 'state = running\npid = 123\npath = /Users/PRIVATE_NAME/private'
+              : JSON.stringify([
+                  { number: 42, labels: [{ name: 'agent:running' }] },
+                  { number: 43, labels: [{ name: 'agent:review' }] },
+                ]),
+        }),
+      });
+      expect(result.stdout).toContain('"runningIssues":1');
+      expect(result.stdout).toContain('"reviewQueue":1');
+      expect(result.stdout).toContain('unknown');
+      expect(result.stdout).not.toContain('PRIVATE_NAME');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+  it('shows local Slack health when launchctl and GitHub are unavailable', async () => {
+    const { status } = await import('./launchd.mjs');
+    const root = await mkdtemp(join(tmpdir(), 'factory-status-fail-'));
+    try {
+      const result = await status({
+        stateRoot: root,
+        command: async () => {
+          throw new Error('RAW_SECRET');
+        },
+      });
+      expect(result.stdout).toContain('unavailable');
+      expect(result.stdout).toContain('Slack:');
+      expect(result.stdout).not.toContain('RAW_SECRET');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+});

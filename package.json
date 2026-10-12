@@ -34,7 +34,8 @@
     "factory:dry-run": "node scripts/ai-factory/watcher.mjs --once --dry-run",
     "factory:once": "node scripts/ai-factory/watcher.mjs --once",
     "factory:install": "node scripts/ai-factory/launchd.mjs install",
-    "factory:status": "node scripts/ai-factory/launchd.mjs status"
+    "factory:status": "node scripts/ai-factory/launchd.mjs status",
+    "factory:report": "node scripts/ai-factory/report.mjs"
   },
   "prisma": {
     "seed": "node --import tsx/esm prisma/seed.ts"
