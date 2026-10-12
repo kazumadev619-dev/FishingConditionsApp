@@ -563,6 +563,7 @@ export function renderRunComment(record) {
 }
 
 export function parseRunComment(comment, { issue, viewer }) {
+  if (!comment) throw new Error('run comment is missing');
   if (comment?.user?.login !== viewer) throw new Error('run comment author mismatch');
   if (!comment.body?.startsWith(`${RUN_COMMENT_MARKER}\n`)) {
     throw new Error('invalid run comment marker');

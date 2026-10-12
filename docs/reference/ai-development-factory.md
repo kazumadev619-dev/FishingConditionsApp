@@ -26,6 +26,8 @@ WatcherはNode.js標準ライブラリと `gh`、`git`、`codex` を使う。独
 
 ## 状態遷移
 
+状態別検索の結果は、返された現在の状態ラベルが検索条件と一致するIssueだけを扱う。GitHubの検索反映遅延で別状態のIssueが返っても復旧処理しない。
+
 現在Watcherが自動実行する正常系は次のとおり。
 
 ```text
@@ -130,11 +132,11 @@ checks取得直後にPRを再読し、先に取得したhead SHAと一致する�
 
 Solだけが同じhead SHAをAstraへ1回昇格できる。Astraの再昇格は不正結果として `agent:blocked` にする。固定Schemaは `outcome`、短いsummary、最大20件のbounded findings、最大30件のverified commands、`documentationCurrent` を返す。`approved` は `documentationCurrent=true` の場合だけ受理し、それ以外は修正必須として停止する。
 
-Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、HEAD一致を確認してからfreshな `HOME` と秘密を除いた環境で `npm ci --ignore-scripts` を実行する。Reviewerへ渡す環境は別のfreshな `HOME` と `PATH`、`CODEX_HOME`、localeだけに限定し、`TMPDIR` はprivate HOMEへ固定し、npmのscript shellは `/bin/sh` に固定する。共有tmpのdenyにはWatcher側で取得した絶対パスを使い、private HOMEへ解決される `:tmpdir` トークンとの衝突を避ける。`CODEX_HOME` が未設定ならWatcherのホーム配下の `.codex` を明示し、ChatGPT認証を維持する。GitHub token、Slack Webhook、API key、本番資格情報を渡さない。
+Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、HEAD一致を確認してからfreshな `HOME` と秘密を除いた環境で `npm ci --ignore-scripts` を実行する。Reviewerは導入済み依存を再インストールせず利用する。Reviewerへ渡す環境は別のfreshな `HOME` と `PATH`、`CODEX_HOME`、localeと固定のツール設定に限定し、`TMPDIR` はprivate HOMEへ固定し、npmのscript shellは `/bin/sh` に固定する。OpenSSLはHomebrewの許可済み設定、`DEVELOPER_DIR` はCommandLineToolsに固定し、`GIT_CONFIG_NOSYSTEM=1` でシステムGit設定を読まない。共有xcrun cacheへの書込み権限は付けない。子Nodeが固定環境を引き継がない場合に備え、OS既定の `/System/Library/OpenSSL/openssl.cnf` も単一ファイルとしてread許可する。共有tmpのdenyにはWatcher側で取得した絶対パスを使い、private HOMEへ解決される `:tmpdir` トークンとの衝突を避ける。`CODEX_HOME` が未設定ならWatcherのホーム配下の `.codex` を明示し、ChatGPT認証を維持する。GitHub token、Slack Webhook、API key、本番資格情報を渡さない。
 
 Reviewerは `--no-daemon --ignore-user-config --ignore-rules` と固定の `factory-review` permission profileを使う。approvalはnever、networkは無効、filesystemのrootと共有tmpはdenyにし、OS最小runtime、Node/Codex runtime（Homebrewのbin/Cellar/Caskroom/opt、起動中Nodeの配置先とOpenSSL既定設定ファイル）、Command Line Tools、Git共通管理ディレクトリはread、private HOMEと専用verification worktreeだけをwrite許可する。worktreeの `.git` と `.codex` はreadに限定する。CLI本体は認証用 `CODEX_HOME` を使うが、実行コマンドからのアクセスはdenyにする。これによりホストの `.env.local` や認証ディレクトリをコマンドから読ませない。
 
-Reviewerは `.codex/agents/pr-verifier.toml` の `mode=watcher` 契約に従い、`gh`、fetch、checkout、秘密依存の検証、commit、push、GitHub書き込み、自動修正を行わない。秘密が必要な検証は確認不能として `changes-required` を返す。
+Reviewerは `.codex/agents/pr-verifier.toml` の `mode=watcher` 契約に従い、`gh`、fetch、checkout、秘密依存の検証、commit、push、GitHub書き込み、自動修正を行わない。promptにversion=1、head SHA、CI fingerprint、checkのname/workflow/bucket/completedAtだけのCIスナップショットを渡す。check文字列を非信頼として扱い、Reviewerはhead・全pass・fingerprint再計算を照合してローカル実行結果とは区別する。秘密が必要な検証は確認不能として `changes-required` を返す。
 
 ## レビュー証拠と1枠復旧
 

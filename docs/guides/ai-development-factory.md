@@ -228,3 +228,31 @@ npm run factory:report -- --send
 ```bash
 rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/observation-incomplete"
 ```
+
+## 最終手動E2E確認
+
+2026-10-11に [Issue #269](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/269) と [PR #270](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/270) で手動確認した。基点はdevelopの `dea49e9`、PR headは `9e7d401c785de8e21169072f8ae1bc6ce09c9eb1`。対象は `docs/guides/development.md` の一意な見出し `## 開発環境セットアップ` → `## ローカル開発環境セットアップ`。実差分には末尾空行1行の削除もあり、厳密な見出しだけの置換にはならなかった。
+
+**結果は未完了（`agent:blocked`）。Phase 3-05の完了条件である `human:approval` は未確認で、運用確定とは扱わない。** merge/deployは実行していない。PR/Issueはopenで保持し、worker worktreeはcleanを確認したが削除していない。review用worktreeはWatcherのclean後処理で削除済み。検証資産をclose・削除するには、対象と状態を確認して人の承認を得る。
+
+### 確認できた経路
+
+- Sol（`gpt-5.6-sol`）が対象1ファイルの計画を作成し、Luna（`gpt-5.6-luna`）が実装・固定検証・PR作成まで進んだ。
+- [GitHub Actions run 38141415399](https://github.com/kazumadev619-dev/FishingConditionsApp/actions/runs/38141415399) のheadは上記PR headと一致し、CI Summary、Code Quality Check、Build Verification、Kubernetes Manifests、Docker Imagesの5項目が成功した。
+- 同head・CI fingerprint `ce3233bd3a50bf93f869f0af9280131a4feee303781b678718a8587caf7dc2f1` でSolがreviewを開始し、検証不能によりAstra（`gpt-6-astra`）へ1回昇格した。Astraは `changes-required`、`documentationCurrent=false` を返し、安全側に停止した。
+- Slack outboxのsent記録は、開始・PR作成・Sol review開始・Astra review開始が各1件、quota待機1件、停止が異なる原因で2件。同じイベントIDの重複recordはなく、未配送0件・health healthy。Slackチャンネルでの目視確認は未実施。承認待ち通知は状態未到達のため未確認。手動週次予約の重複抑止は未検証。
+- 直近7日reportはstarted 1、pullRequests 1、approvals 0、blocked 2、retry 1、Slack失敗0、Astra昇格1を表示した。観測は正常、未完了・不明0。planning約28秒、worker約68秒、CI待機約75秒、review中央値約123秒・最長約191秒。quota待機は約3時間23分であり、worker実行時間とは分けて読む。
+
+### 再開前に解決すること
+
+1. GitHubの状態更新時に通信切断が発生し、run記録を作る前に処理が止まった。復旧時の `run comment author mismatch` はこの実行では作者不一致ではなく、runコメント不在に対する表示だった。メッセージだけを根拠に認証変更しない。
+2. 手動でblockedからreadyへ戻した直後、GitHubのblockedラベル検索が「実ラベルはready」のIssueを返し、ready検索にはまだ現れない反映遅延を実測した。daemonの復旧走査が再びblockedにしたため、worker不在を確認してdaemonを一時停止し、検索と直接取得のラベル一致を待って再起動すると実働へ進んだ。検索結果と現状態が不一致のIssueを復旧対象にしない対策が必要である。実働workerがある場合にこの手順を無条件で適用しない。
+3. network無効のreviewerで `npm ci` を再実行し、依存コマンドが見つからず検証不能になった。Watcherが導入済みの依存をreviewerが再導入する契約と、OpenSSL設定・OCR/xcrunの権限を再確認する。
+4. reviewer promptにはheadと検証要求があるが、実CIの成功項目・完了時刻・fingerprintを含む証拠が渡されていない。`gh`禁止のreviewerが同headのCIを照合できる、非秘密・固定形式の証拠を渡す必要がある。
+5. 対象ガイドの既存バージョン表はpackage.jsonと不一致だった。今回の許可範囲外のため変更しなかったが、恒久文書が最新という判定は成立しなかった。実在する文書修正とreview契約の修正後に、改めて承認されたE2Eで `human:approval` と各通知を確認する。
+
+### 阻害要因の修正検証
+
+同日の隔離検証で、導入済み依存を再利用するreview契約、同headの固定CI証拠、検索結果の状態照合、run記録不在の表示を修正した。Reviewerと同じnetwork無効・root/共有tmp denyのsandboxでNode、Git、OCR delegate preview、check-code (19ファイル395テスト) が成功した。OpenSSLの単一設定ファイル読取りと固定CommandLineTools/Git設定で動作し、共有cacheの書込み権限は追加していない。依存そのものは更新せず、開発ガイドをpackage.jsonの範囲とlockfileの実版に照合した。変異テストは不具合を戻す6件をすべて検知し、無害なコメント変更1件は通過した。既存npm ciのhigh 11件・deprecated警告は依存差分なしの既知事項として保持する。
+
+この検証はIssue #269の再実行ではない。developへのマージと恒久runtimeへの反映は承認待ちで、既存PRの `human:approval`、Slack目視、手動週次予約の確認は引き続き未完了。末尾空行削除は固定検証・commit hookの対象外で、原因は特定できていない。
