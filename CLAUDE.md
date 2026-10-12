@@ -37,3 +37,17 @@ git commit -m "🐛 fix: バグ修正の説明 #123"
 ## 詳細ドキュメント（必要時のみ参照）
 
 まず `docs/README.md`（索引）を見ること。目的別の一覧と置き場所の判断基準はそこにある。
+
+## Agent skills
+
+### Issue tracker
+
+issue は GitHub Issues（`gh` CLI）で管理する。See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+既定の5ラベル（`needs-triage` / `needs-info` / `ready-for-agent` / `ready-for-human` / `wontfix`）を使う。AI factory の `agent:*` ラベルとは別系統。See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+single-context（ルートの `CONTEXT.md` + `docs/adr/`）。See `docs/agents/domain.md`.
