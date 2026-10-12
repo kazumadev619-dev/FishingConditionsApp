@@ -675,3 +675,8 @@ describe('run recovery record', () => {
     expect(canRetryRunner({ outcome: 'blocked' }, 1)).toBe(false);
   });
 });
+
+
+it('distinguishes an absent run record from an author mismatch', () => {
+  expect(() => parseRunComment(undefined, { issue: 42, viewer: 'factory-bot' })).toThrow('run comment is missing');
+});
