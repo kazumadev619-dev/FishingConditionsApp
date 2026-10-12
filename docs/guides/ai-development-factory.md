@@ -233,7 +233,7 @@ rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/observa
 
 2026-10-11に [Issue #269](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/269) と [PR #270](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/270) で手動確認した。基点はdevelopの `dea49e9`、PR headは `9e7d401c785de8e21169072f8ae1bc6ce09c9eb1`。対象は `docs/guides/development.md` の一意な見出し `## 開発環境セットアップ` → `## ローカル開発環境セットアップ`。実差分には末尾空行1行の削除もあり、厳密な見出しだけの置換にはならなかった。
 
-**結果は未完了（`agent:blocked`）。Phase 3-05の完了条件である `human:approval` は未確認で、運用確定とは扱わない。** merge/deployは実行していない。PR/Issueはopenで保持し、worker worktreeはcleanを確認したが削除していない。review用worktreeはWatcherのclean後処理で削除済み。検証資産をclose・削除するには、対象と状態を確認して人の承認を得る。
+**初回実行の結果は未完了（`agent:blocked`）。** 以下は2026-10-11時点の記録であり、修正後の到達結果とPhase 3-05の最終判定は後続の節に記載する。merge/deployは実行していない。PR/Issueはopenで保持し、worker worktreeはcleanを確認したが削除していない。review用worktreeはWatcherのclean後処理で削除済み。検証資産をclose・削除するには、対象と状態を確認して人の承認を得る。
 
 ### 確認できた経路
 
@@ -259,10 +259,18 @@ rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/observa
 
 ### 2026-10-12の再確認
 
-人の承認後、修正 [PR #271](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/271) をdevelopへマージし、恒久runtimeを統合commit `2d80ede` へfast-forwardして再起動した。既存PR #270へdevelopを取り込み、末尾空行をdevelopと一致させた。現在のdiffは承認済み見出し1行だけで、headは `d551311992a2d7f77c64b0ca646dffb55ecc238e`。実装済みのためworkerを重複起動せず、既存Issueをreviewキューへ戻した。
+人の承認後、修正 [PR #271](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/271) をdevelopへマージし、恒久runtimeを統合commit `2d80ede` へfast-forwardして再起動した。既存PR #270へdevelopを取り込み、末尾空行をdevelopと一致させた。再review時点のdiffは承認済み見出し1行だけで、headは `d551311992a2d7f77c64b0ca646dffb55ecc238e`。実装済みのためworkerを重複起動せず、既存Issueをreviewキューへ戻した。
 
 [CI run 38207089528](https://github.com/kazumadev619-dev/FishingConditionsApp/actions/runs/38207089528) は同headで5項目すべて成功した。Solは受領CI証拠のfingerprint `b4fa46c18c36d3c0831252552e9d3cbae2288932d666981ea7211714e1196fa0` を再計算して照合し、`approved` / `documentationCurrent=true` を返した。WatcherがIssue #269を `human:approval` へ自動遷移した。今回のAstra昇格はない。
 
 実Reviewerではlint・format・型検査・391テストが成功した一方、FIFO作成4テスト、buildのport bind、OCR previewのxcrun一時cacheにsandbox制約が残った。Solはこれらを確認不能事項として報告し、同headの実CI成功と内容検証に基づいて承認した。隔離probeと独立pr-verifierでのcheck-code395件成功を、実Reviewerで全件成功した証拠へ読み替えない。
 
-新headのSlack配送記録はreview開始 `f0a11c81133f` と承認待ち `645401e3fb76` が各1件sent。pending 0、health healthy、worker/reviewer 0、観測の未完了・不明0。直近reportのapprovalsは1件となった。Slackチャンネルの人の目視確認と、未承認の手動週次予約による重複抑止検証は未完了であり、Phase 3-05全体の完了とはまだ扱わない。E2EのIssue/PRはopen、PRは未mergeで保持し、cleanup・main昇格・deployは行っていない。
+新headのSlack配送記録はreview開始 `f0a11c81133f` と承認待ち `645401e3fb76` が各1件sent。pending 0、health healthy、worker/reviewer 0、観測の未完了・不明0。直近reportのapprovalsは1件となった。この再確認時点ではSlack目視と手動週次予約の検証が残っていた。後続の最終確認で両項目を完了した。
+
+### 2026-10-12の最終確認
+
+人がSlackチャンネルのreview開始・承認待ち通知を目視確認した。[Issue #269の確認記録](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/269#issuecomment-6118336843) と合わせ、Watcherによる `human:approval` 到達と通知配送・目視を確認済みとする。
+
+人の明示承認後、15:00 JSTに恒久runtimeで `factory:report -- --send` 相当のCLIエントリポイントを1回実行した。対象は2026-10-05週（10月5日00:00〜12日00:00 JST）。送信済みID `46bd66dd9b4fb62831ed89e0cac131bd8478ccd2bf3df6a74e2c83ef12b7edfb` を保持し、出力は `週次通知: 予約済みIDを保持`。既存outbox recordは実行前後でバイト単位に一致し、status `sent`、sentAt `2026-10-12T01:18:36.131Z`（10:18 JST）、attempts 0が不変だった。同週の新規予約・再送は発生していない。sent記録・観測ログは削除していない。
+
+これによりPhase 3-05の手動E2E・Slack目視・同週手動予約の重複抑止検証は完了した。PR #270は外部操作でdevelopへマージ済み（統合commit `927e8f1`、14:27 JST）と読み取り確認した。Issue #269はOPEN / `human:approval`、検証worktreeは保持している。この最終検証ではmerge・cleanup・main昇格・deployを行っていない。恒久runtimeは承認済み `2d80ede` のままで、以降のdevelop差分は見出しと検証記録のみのため、この検証にruntime更新は不要である。Issue #260 / #265 / #267はmain昇格まで閉じない。
