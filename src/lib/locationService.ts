@@ -9,7 +9,7 @@ import type {
   LocationSearchResponse,
   LocationSearchResult,
 } from '@/types/location';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, withCache } from './cache';
+import { CACHE_PREFIX, CACHE_TTL, fetchWithOptionalCache, generateCacheKey } from './cache';
 import { geocode } from './googleMapsClient';
 
 /**
@@ -104,23 +104,17 @@ export async function searchLocations(
     return response.results.slice(0, limit).map(formatLocationResult);
   };
 
-  // キャッシュを使用して検索実行
-  if (skipCache) {
-    const data = await fetchLocations();
-    return {
-      data,
-      fromCache: false,
-      fetchedAt: new Date().toISOString(),
-      query,
-    };
-  }
-
-  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.LOCATION, fetchLocations);
+  const { data, fromCache, fetchedAt } = await fetchWithOptionalCache(
+    cacheKey,
+    CACHE_TTL.LOCATION,
+    skipCache,
+    fetchLocations,
+  );
 
   return {
     data,
     fromCache,
-    fetchedAt: new Date().toISOString(),
+    fetchedAt,
     query,
   };
 }
