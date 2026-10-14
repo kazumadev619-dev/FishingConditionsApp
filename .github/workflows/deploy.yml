@@ -100,7 +100,11 @@ jobs:
   # ============================================
   deploy:
     name: Deploy to k3s
-    runs-on: ubuntu-latest
+    # ubuntu-latest にしない。ラベルの指す先が変わると（2026-10-19 に Ubuntu 26）、
+    # PR では走らないこのジョブは本番デプロイが初回実行になる。下の kubectl は
+    # ランナー同梱のものなので、イメージが変われば版も変わる（#263）
+    # 上げるときは別ブランチの workflow_dispatch で通してから。
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     needs: build
     permissions:

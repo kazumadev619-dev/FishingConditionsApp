@@ -70,7 +70,7 @@ AGENTS.md の禁止事項を守る。
 
 ```bash
 # ワークフローの run: の中身を切り出して、ランナー相当の環境でそのまま流す。
-# deploy ジョブは runs-on: ubuntu-latest（amd64）、build ジョブは
+# deploy ジョブは runs-on: ubuntu-24.04（amd64）、build ジョブは
 # ubuntu-24.04-arm なので、再現したい方に --platform を合わせる
 SCRATCH=$(mktemp -d)
 cat > "$SCRATCH/step.sh" <<'SH'

@@ -36,7 +36,7 @@ PR作成/push → GitHub Actions CI起動
 - `main`, `develop` ブランチへの `pull_request`
 
 **実行環境:**
-- OS: `ubuntu-latest`
+- OS: `ubuntu-24.04`（`ubuntu-latest` にはしない。Docker Images ジョブは `ubuntu-24.04-arm`）
 - Node.js: `24.x` (最新LTS)
 - タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分
 
