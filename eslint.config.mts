@@ -14,6 +14,7 @@ export default [
       '**/out/',
       '**/.next/',
       '**/node_modules/',
+      '**/.claude/worktrees/',
     ],
   },
 
