@@ -31,6 +31,11 @@
       "recommended": true
     }
   },
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
   "files": {
     "includes": [
       "**",
@@ -45,8 +50,6 @@
       "!.serena",
       "!node_modules",
       "!.next",
-      "!next-env.d.ts",
-      "!.claude/worktrees",
       "!src/generated"
     ]
   }
