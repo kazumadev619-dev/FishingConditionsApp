@@ -1,6 +1,13 @@
 import { logger } from '../logger';
 import { cache } from './client';
 
+/** キャッシュ経由の取得結果。 */
+export interface CacheResponse<T> {
+  data: T;
+  fromCache: boolean;
+  fetchedAt: string;
+}
+
 /**
  * キャッシュキーを生成するヘルパー関数
  */
@@ -73,4 +80,23 @@ export async function withCache<T>(
   });
 
   return { data, fromCache: false };
+}
+
+/**
+ * skipCache 時はキャッシュを一切使わず、通常時はキャッシュ経由で取得する。
+ */
+export async function fetchWithOptionalCache<T>(
+  cacheKey: string,
+  ttl: number,
+  skipCache: boolean,
+  fetcher: () => Promise<T>,
+  revive?: (cached: T) => T,
+): Promise<CacheResponse<T>> {
+  if (skipCache) {
+    const data = await fetcher();
+    return { data, fromCache: false, fetchedAt: new Date().toISOString() };
+  }
+
+  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, revive);
+  return { data, fromCache, fetchedAt: new Date().toISOString() };
 }
