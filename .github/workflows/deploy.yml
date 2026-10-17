@@ -52,9 +52,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 実行ごとに一意にする。sha だけだと同じコミットの再実行でマニフェストが
+      # 変わらず、apply が unchanged になって Pod が入れ替わらない。NEXT_PUBLIC_*
+      # の Secret はビルド時に焼き込まれるので、その変更が本番に届かない（#275）。
+      # run_attempt は「Re-run」で増える（run_number は増えない）。
+      # SHA は GITHUB_SHA から取る。$(git rev-parse) は失敗しても echo が通り、
+      # SHA の無いタグが黙って出来てしまう
       - name: Compute image tag
         id: meta
-        run: echo "tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "tag=sha-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
