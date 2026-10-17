@@ -58,8 +58,16 @@ class ApiClient {
         generateCacheKey(cacheOptions.prefix || 'api', restOptions.params || {});
 
       return (
-        await withCache(cacheKey, cacheOptions.ttl, () =>
-          this.request<T>(endpoint, restOptions, attempt),
+        await withCache<T>(
+          cacheKey,
+          cacheOptions.ttl,
+          () => this.request<T>(endpoint, restOptions, attempt),
+          // T は呼び出し側が主張する「API の JSON の形」で、キャッシュミス側も
+          // `response.json() as Promise<T>` で同じ主張をしている。値はどちらの経路でも
+          // JSON そのものなので、このキャストが足す穴は無い。T が汎用のままだと
+          // `Jsonified<T> extends T` を解決できず revive を省けないため、ここで明示する。
+          // `T extends Jsonified<T>` で縛る案は循環制約として tsc に拒否される。
+          (cached) => cached as T,
         )
       ).data;
     }

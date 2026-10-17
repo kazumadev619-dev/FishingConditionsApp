@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 const cacheMock = vi.hoisted(() => ({
   get: vi.fn(),
@@ -8,13 +8,49 @@ const cacheMock = vi.hoisted(() => ({
 vi.mock('./client', () => ({ cache: cacheMock }));
 vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
 
-import { fetchWithOptionalCache } from './helpers';
+import { fetchWithOptionalCache, withCache } from './helpers';
 
 beforeEach(() => {
   vi.clearAllMocks();
   // 途中で落ちたテストの偽の時計を次のテストに持ち越さない
   vi.useRealTimers();
   cacheMock.set.mockResolvedValue(true);
+});
+
+// 型テスト: tsc（npm run type-check）が検査する。vitest は実行時の中身しか見ない
+describe('revive の型による強制', () => {
+  type Payload = { observedAt: Date };
+  const fetchPayload = async (): Promise<Payload> => ({ observedAt: new Date() });
+
+  it('Date を含む値は revive なしでキャッシュできない', () => {
+    const calls = [
+      // @ts-expect-error Date が JSON で文字列になるため revive が必須
+      () => withCache('test:key', 60, fetchPayload),
+      // @ts-expect-error Date が JSON で文字列になるため revive が必須
+      () => fetchWithOptionalCache('test:key', 60, false, fetchPayload),
+    ];
+
+    expectTypeOf(calls).toBeArray();
+  });
+
+  it('revive は JSON 往復後の型を受け取り、Date として扱うと型エラーになる', () => {
+    const call = () =>
+      withCache('test:key', 60, fetchPayload, (cached) => {
+        expectTypeOf(cached.observedAt).toEqualTypeOf<string>();
+        // @ts-expect-error 実体は文字列なので Date のメソッドは無い
+        cached.observedAt.getTime();
+        return { observedAt: new Date(cached.observedAt) };
+      });
+
+    expectTypeOf(call).toBeFunction();
+  });
+
+  it('JSON 往復で型が変わらない値は revive を省ける', () => {
+    const call = () =>
+      fetchWithOptionalCache('test:key', 60, false, async () => ({ name: 'a', tags: ['b'] }));
+
+    expectTypeOf(call).toBeFunction();
+  });
 });
 
 describe('fetchWithOptionalCache', () => {

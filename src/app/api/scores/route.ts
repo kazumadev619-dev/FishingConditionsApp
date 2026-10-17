@@ -4,7 +4,14 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from '@/lib/cache';
+import {
+  CACHE_PREFIX,
+  CACHE_TTL,
+  generateCacheKey,
+  type Jsonified,
+  reviveDate,
+  withCache,
+} from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
@@ -39,7 +46,7 @@ const CACHE_KEY_COORDINATE_PRECISION = 2;
  * この値は DashboardGrid が toLocaleString() で描画するため、
  * 復元を怠るとキャッシュヒット時だけ実行時に壊れる。
  */
-function reviveScoringDates(data: ScoringResponse): ScoringResponse {
+function reviveScoringDates(data: Jsonified<ScoringResponse>): ScoringResponse {
   return {
     ...data,
     score: {
