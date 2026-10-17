@@ -996,7 +996,9 @@ async function listIssuesForState(state, commandAdapter) {
     '--json',
     'number,title,body,labels,url',
   ]);
-  return parseJson(stdout, 'recovery issue list').filter((issue) => readState(issue.labels) === state);
+  return parseJson(stdout, 'recovery issue list').filter(
+    (issue) => readState(issue.labels) === state,
+  );
 }
 
 async function inspectActivePlans(commandAdapter) {
@@ -1732,7 +1734,10 @@ ${JSON.stringify({
   headSha: candidate.headSha,
   ciFingerprint: candidate.ciFingerprint,
   checks: candidate.checks.map(({ name, workflow, bucket, completedAt }) => ({
-    name, workflow, bucket, completedAt,
+    name,
+    workflow,
+    bucket,
+    completedAt,
   })),
 })}
 </ci_evidence_json>
