@@ -42,20 +42,21 @@ const rawTide = {
 
 // サービスごとに、ヘルパーへ渡すキー・TTL と上流の呼び出しを固定する。upstream は
 // 上流のモックに応答を仕込み、そのモックを返す（mockResolvedValue の戻り値）。
-// キーは保存済みのキャッシュとの契約なので、形が変わったら落ちてほしい
+// キーは保存済みのキャッシュとの契約なので、形が変わったら落ちてほしい。
+// 座標は丸め（小数 2 桁）がキーに効くことを見るため、わざと桁を多く渡す
 const services = [
   {
     name: '天気',
-    call: (skipCache: boolean) => getCurrentWeather(35, 139, { skipCache }),
+    call: (skipCache: boolean) => getCurrentWeather(35.6789, 139.7654, { skipCache }),
     upstream: () => apiMock.openWeatherMapClient.get.mockResolvedValue(rawWeather),
-    key: 'weather:lang:ja:lat:35:lon:139:units:metric',
+    key: 'weather:lang:ja:lat:35.68:lon:139.77:units:metric',
     ttl: CACHE_TTL.WEATHER,
   },
   {
     name: '予報',
-    call: (skipCache: boolean) => getForecast(35, 139, { skipCache }),
+    call: (skipCache: boolean) => getForecast(35.6789, 139.7654, { skipCache }),
     upstream: () => apiMock.openWeatherMapClient.get.mockResolvedValue({ list: [] }),
-    key: 'weather:forecast:lang:ja:lat:35:lon:139:units:metric',
+    key: 'weather:forecast:lang:ja:lat:35.68:lon:139.77:units:metric',
     ttl: CACHE_TTL.WEATHER,
   },
   {

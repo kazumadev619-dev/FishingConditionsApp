@@ -12,12 +12,14 @@ import { fetchWithOptionalCache } from './helpers';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 途中で落ちたテストの偽の時計を次のテストに持ち越さない
+  vi.useRealTimers();
   cacheMock.set.mockResolvedValue(true);
 });
 
 describe('fetchWithOptionalCache', () => {
   it('skipCache ではキャッシュを読まず書かずに fetcher のデータを返す', async () => {
-    vi.useFakeTimers();
+    vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-12T00:00:00.000Z'));
     const fetcher = vi.fn().mockResolvedValue({ value: 'fresh' });
 
