@@ -74,6 +74,7 @@ jobs:
       # 落ちる。版をログに出すついでに、消えたらここで落とす。
       - name: Lint workflows (actionlint)
         env:
+          # renovate: datasource=github-releases depName=rhysd/actionlint extractVersion=^v(?<version>.+)$
           ACTIONLINT_VERSION: 1.7.12
           ACTIONLINT_SHA256: 8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8
         run: |
@@ -152,6 +153,7 @@ jobs:
       # releases/download/ は API ではなく単なるリダイレクトなので当たらない。
       - name: Install kustomize
         env:
+          # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.+)$
           KUSTOMIZE_VERSION: v5.8.1
           KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
         run: |
@@ -164,6 +166,7 @@ jobs:
 
       - name: Install kubeconform
         env:
+          # renovate: datasource=github-releases depName=yannh/kubeconform
           KUBECONFORM_VERSION: v0.8.0
           KUBECONFORM_SHA256: 9bc2bffbf71f261128533edaf912153948b7ff238f9a531ae6d34466ec287883
         run: |
