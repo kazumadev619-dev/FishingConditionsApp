@@ -20,15 +20,18 @@ env:
   BASE_URL: https://fishing.kazuma-lab.com
   # sops のリリースアセットはファイル名にバージョンが入るため
   # releases/latest/download/ が使えない。明示的に固定する
+  # renovate: datasource=github-releases depName=getsops/sops
   SOPS_VERSION: v3.13.3
   # *_SHA256 は各リリースが公開しているチェックサムファイルの linux amd64 の値。
   # 版を上げるときは一緒に書き換える（#164）
   SOPS_SHA256: e5bec3346a873ae91d871550f3e698c1aad962aff462a080e40f25fde17fef6b
   # 本番マニフェストをレンダリングするツール。ci.yml と同じ版に揃える。
   # ズレると「CI では通るが本番で出力が変わる」が起こりうる（#157）
+  # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.+)$
   KUSTOMIZE_VERSION: v5.8.1
   KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
   # ローカルで YAML を切り出すだけなので、版を固定して出力を安定させる
+  # renovate: datasource=github-releases depName=mikefarah/yq
   YQ_VERSION: v4.48.1
   YQ_SHA256: 99df6047f5b577a9d25f969f7c3823ada3488de2e2115b30a0abb10d9324fd9f
 
