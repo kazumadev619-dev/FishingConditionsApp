@@ -1,7 +1,7 @@
 import type { FishingScore } from '@/types/scoring';
 import type { FormattedWeatherData } from '../openWeatherService';
 import type { FormattedTideData } from '../tideService';
-import { formatDateLocal } from '../utils/dateUtils';
+import { formatDateInJapan } from '../utils/dateUtils';
 import { getScoreRank } from '../utils/scoreRank';
 import { generateExplanation } from './explanationGenerator';
 import { calculateTideScore } from './tideScore';
@@ -42,7 +42,7 @@ export class ScoringEngine {
       currentTime,
     );
 
-    const today = formatDateLocal(currentTime);
+    const today = formatDateInJapan(currentTime);
     const todayTides = tideData.tides.find((t) => t.date === today);
     const tideName = todayTides?.daily.moon?.title;
     const moonAge = todayTides?.daily.moon?.age;

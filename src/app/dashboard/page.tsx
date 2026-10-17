@@ -3,6 +3,7 @@ import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { getTideData } from '@/lib/tideService';
 import { getTimeCategory, getTimeExplanation } from '@/lib/utils/dashboardUtils';
+import { formatDateInJapan } from '@/lib/utils/dateUtils';
 import type { DashboardData } from '@/types/dashboard';
 import { type DashboardSearchParams, resolveLocation } from './resolveLocation';
 
@@ -15,7 +16,7 @@ type PageProps = {
 export default async function DashboardPage({ searchParams }: PageProps) {
   const params = await searchParams;
   const currentTime = new Date();
-  const today = currentTime.toISOString().split('T')[0];
+  const today = formatDateInJapan(currentTime);
 
   // URLクエリパラメータから釣り場情報を解決
   const location = await resolveLocation(params);

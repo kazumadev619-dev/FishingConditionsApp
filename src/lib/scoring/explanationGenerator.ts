@@ -1,6 +1,6 @@
 import type { FormattedWeatherData } from '../openWeatherService';
 import type { FormattedTideData } from '../tideService';
-import { formatDateLocal } from '../utils/dateUtils';
+import { formatDateInJapan } from '../utils/dateUtils';
 import { getScoreRank } from '../utils/scoreRank';
 
 export function getComponentLabel(component: 'tide' | 'weather' | 'time'): string {
@@ -46,7 +46,7 @@ export function generateExplanation(
   const bestLabel = getComponentLabel(bestComponent);
   explanation += `\n最も良い条件は${bestLabel}です。`;
 
-  const today = formatDateLocal(currentTime);
+  const today = formatDateInJapan(currentTime);
   const todayTides = tideData.tides.find((t) => t.date === today);
   if (todayTides?.daily.moon) {
     const moonAge = todayTides.daily.moon.age;
