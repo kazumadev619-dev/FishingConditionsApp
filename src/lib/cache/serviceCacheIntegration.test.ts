@@ -79,7 +79,7 @@ describe.each(services)('$name のキャッシュの配線', ({ call, upstream, 
   it('キャッシュミスでは決まったキーで読み、取得した値をそのキーと TTL で書く', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-12T00:00:00.000Z'));
-    cacheMock.get.mockResolvedValue(null);
+    cacheMock.get.mockResolvedValue({ hit: false });
     const upstreamMock = upstream();
 
     const result = await call(false);
@@ -93,7 +93,7 @@ describe.each(services)('$name のキャッシュの配線', ({ call, upstream, 
   });
 
   it('skipCache ではキャッシュに値があっても読まず書かず、上流を呼ぶ', async () => {
-    cacheMock.get.mockResolvedValue({ stale: true });
+    cacheMock.get.mockResolvedValue({ hit: true, value: { stale: true } });
     const upstreamMock = upstream();
 
     const result = await call(true);
@@ -108,9 +108,12 @@ describe.each(services)('$name のキャッシュの配線', ({ call, upstream, 
 describe('キャッシュを使うサービス', () => {
   it('天気のキャッシュヒットで Date フィールドを復元する', async () => {
     cacheMock.get.mockResolvedValue({
-      sunrise: '2026-10-12T00:00:00.000Z',
-      sunset: '2026-10-12T09:00:00.000Z',
-      dataTime: '2026-10-12T01:00:00.000Z',
+      hit: true,
+      value: {
+        sunrise: '2026-10-12T00:00:00.000Z',
+        sunset: '2026-10-12T09:00:00.000Z',
+        dataTime: '2026-10-12T01:00:00.000Z',
+      },
     });
 
     const result = await getCurrentWeather(35, 139);
@@ -124,9 +127,12 @@ describe('キャッシュを使うサービス', () => {
 
   it('潮汐のキャッシュヒットで Date フィールドを復元する', async () => {
     cacheMock.get.mockResolvedValue({
-      port: { prefecture_code: '13', port_code: '1', port_name: '東京' },
-      tides: [],
-      dataTime: '2026-10-12T01:00:00.000Z',
+      hit: true,
+      value: {
+        port: { prefecture_code: '13', port_code: '1', port_name: '東京' },
+        tides: [],
+        dataTime: '2026-10-12T01:00:00.000Z',
+      },
     });
 
     const result = await getTideData('13', '1', '2026-10-12');

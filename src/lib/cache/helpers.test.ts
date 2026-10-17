@@ -18,6 +18,21 @@ beforeEach(() => {
 });
 
 describe('fetchWithOptionalCache', () => {
+  it('値が null のキャッシュヒットでは fetcher を呼ばない', async () => {
+    cacheMock.get.mockResolvedValue({ hit: true, value: null });
+    const fetcher = vi.fn().mockResolvedValue('fresh');
+
+    await expect(
+      fetchWithOptionalCache<null | string>('test:key', 60, false, fetcher),
+    ).resolves.toMatchObject({
+      data: null,
+      fromCache: true,
+    });
+
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
   it('skipCache ではキャッシュを読まず書かずに fetcher のデータを返す', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-12T00:00:00.000Z'));
@@ -38,7 +53,7 @@ describe('fetchWithOptionalCache', () => {
   it('キャッシュヒット時は復元した値を返し fetcher を呼ばない', async () => {
     const cached = { observedAt: '2026-10-11T00:00:00.000Z' };
     const revived = { observedAt: new Date(cached.observedAt) };
-    cacheMock.get.mockResolvedValue(cached);
+    cacheMock.get.mockResolvedValue({ hit: true, value: cached });
     const fetcher = vi.fn().mockResolvedValue({ observedAt: new Date() });
     const revive = vi.fn().mockReturnValue(revived);
 
@@ -55,7 +70,7 @@ describe('fetchWithOptionalCache', () => {
   });
 
   it('キャッシュミス時は fetcher の結果をTTL付きでキャッシュする', async () => {
-    cacheMock.get.mockResolvedValue(null);
+    cacheMock.get.mockResolvedValue({ hit: false });
     const data = { value: 'fresh' };
     const fetcher = vi.fn().mockResolvedValue(data);
 
@@ -68,7 +83,7 @@ describe('fetchWithOptionalCache', () => {
   });
 
   it('fetcher の例外をそのまま伝播する', async () => {
-    cacheMock.get.mockResolvedValue(null);
+    cacheMock.get.mockResolvedValue({ hit: false });
     const error = new Error('upstream failed');
     const fetcher = vi.fn().mockRejectedValue(error);
 
