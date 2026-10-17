@@ -18,6 +18,8 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |
 | 外部 API の仕様を知りたい | [reference/api-integration.md](./reference/api-integration.md) ／ [Google Maps](./reference/google-maps-api.md) |
 | API エラーの扱い方を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
+| 監視の構成と選定理由を知りたい | [adr/005-monitoring-platform.md](./adr/005-monitoring-platform.md) |
+| 画面デザインの方針を知りたい | [adr/006-design-system.md](./adr/006-design-system.md) |
 | なぜこの技術を選んだか知りたい | [adr/](./adr/) |
 | 開発の進捗と今後の予定を知りたい | [roadmap.md](./roadmap.md) |
 
