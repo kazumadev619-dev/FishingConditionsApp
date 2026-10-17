@@ -11,6 +11,7 @@ import {
   type CacheResponse,
   fetchWithOptionalCache,
   generateCacheKey,
+  type Jsonified,
   reviveDate,
 } from './cache';
 
@@ -142,7 +143,7 @@ function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
  * この契約を守らないと呼び出し側（scoring/timeScore.ts の getHours() など）が
  * 実行時に壊れる。
  */
-function reviveWeatherDates(data: FormattedWeatherData): FormattedWeatherData {
+function reviveWeatherDates(data: Jsonified<FormattedWeatherData>): FormattedWeatherData {
   return {
     ...data,
     sunrise: reviveDate(data.sunrise, 'sunrise'),

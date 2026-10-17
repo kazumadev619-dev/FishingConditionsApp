@@ -11,6 +11,7 @@ import {
   type CacheResponse,
   fetchWithOptionalCache,
   generateCacheKey,
+  type Jsonified,
   reviveDate,
 } from './cache';
 
@@ -77,7 +78,7 @@ function formatTideData(raw: TideApiResponse): FormattedTideData {
  * FormattedTideData.dataTime は Date 宣言だが、キャッシュは JSON で往復するため
  * 復元しないと文字列のまま返り、型が実態と食い違う。
  */
-function reviveTideDates(data: FormattedTideData): FormattedTideData {
+function reviveTideDates(data: Jsonified<FormattedTideData>): FormattedTideData {
   return {
     ...data,
     dataTime: reviveDate(data.dataTime, 'dataTime'),
