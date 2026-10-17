@@ -1,0 +1,8 @@
+# actionlint 1.7.12 は ubuntu-26.04 / ubuntu-26.04-arm のラベルをまだ知らず、
+# runner-label 規則で落とす（上流の main にも未収載。2026-10-14 時点）。
+# GitHub ホストのラベルだが、ここに並べて既知として扱わせる（#263）
+# actionlint が対応した版に上げたら、このファイルごと消す。
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04
+    - ubuntu-26.04-arm

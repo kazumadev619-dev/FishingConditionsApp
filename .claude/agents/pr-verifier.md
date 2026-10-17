@@ -48,7 +48,7 @@ git diff --stat origin/<baseRefName>...HEAD
 | テスト / 型 / lint | `npm run check-code`、`npm run build` |
 | テストが退行を検知できるか | `.claude/skills/mutation-test/SKILL.md` を Read して、その手順（同じディレクトリの `mutate.py`）で確かめる。手で置換して戻す検証はしない |
 | k8s マニフェスト | `kustomize build k8s/` を `origin/<base>` と PR 先端で取り、`diff` する |
-| デプロイのワークフロー | `run:` の中身を `ubuntu:24.04` コンテナで実行する（`deploy.yml` は PR では走らない） |
+| デプロイのワークフロー | `run:` の中身を `ubuntu:26.04` コンテナで実行する（`deploy.yml` は PR では走らない） |
 | ライブラリの挙動変化 | CHANGELOG / リリースノートを WebFetch で読み、該当する使い方が `src/` にあるか grep する |
 
 一時ファイルは `mktemp -d` の下に置く。リポジトリの中に作ったら終了前に消す。
