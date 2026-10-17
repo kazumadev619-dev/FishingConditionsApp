@@ -45,6 +45,8 @@
       "!.serena",
       "!node_modules",
       "!.next",
+      "!next-env.d.ts",
+      "!.claude/worktrees",
       "!src/generated"
     ]
   }
