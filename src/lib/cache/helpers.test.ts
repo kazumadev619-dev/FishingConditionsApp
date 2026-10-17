@@ -71,6 +71,7 @@ describe('fetchWithOptionalCache', () => {
     const fetcher = vi.fn().mockRejectedValue(error);
 
     await expect(fetchWithOptionalCache('test:key', 60, false, fetcher)).rejects.toThrow(error);
+    await expect(fetchWithOptionalCache('test:key', 60, true, fetcher)).rejects.toThrow(error);
     expect(cacheMock.set).not.toHaveBeenCalled();
   });
 });
