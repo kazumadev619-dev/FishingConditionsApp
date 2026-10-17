@@ -40,7 +40,7 @@ jobs:
     name: Build arm64 images
     # public リポジトリでは arm64 ホストランナーが無料で使える。
     # QEMU を挟まないので Next.js のビルドが現実的な時間で終わる
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     timeout-minutes: 30
     permissions:
       contents: read
@@ -52,9 +52,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 実行ごとに一意にする。sha だけだと同じコミットの再実行でマニフェストが
+      # 変わらず、apply が unchanged になって Pod が入れ替わらない。NEXT_PUBLIC_*
+      # の Secret はビルド時に焼き込まれるので、その変更が本番に届かない（#275）。
+      # run_attempt は「Re-run」で増える（run_number は増えない）。
+      # SHA は GITHUB_SHA から取る。$(git rev-parse) は失敗しても echo が通り、
+      # SHA の無いタグが黙って出来てしまう
       - name: Compute image tag
         id: meta
-        run: echo "tag=sha-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: echo "tag=sha-${GITHUB_SHA::7}-${GITHUB_RUN_NUMBER}-${GITHUB_RUN_ATTEMPT}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -100,7 +106,11 @@ jobs:
   # ============================================
   deploy:
     name: Deploy to k3s
-    runs-on: ubuntu-latest
+    # ubuntu-latest にしない。ラベルの指す先が変わると、PR では走らない
+    # このジョブは本番デプロイが新しいイメージでの初回実行になる。下の kubectl は
+    # ランナー同梱のものなので、イメージが変われば版も変わる（#263）
+    # 上げるときは Install tools を新しいラベルの実ランナーで通してから。
+    runs-on: ubuntu-26.04
     timeout-minutes: 20
     needs: build
     permissions:

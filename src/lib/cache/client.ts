@@ -1,6 +1,8 @@
 import Redis from 'ioredis';
 import { logger } from '../logger';
 
+export type CacheReadResult<T> = { hit: true; value: T } | { hit: false };
+
 /**
  * ioredisを使用したキャッシュクライアント
  */
@@ -48,22 +50,30 @@ class CacheClient {
   /**
    * キャッシュからデータを取得
    * @param key キャッシュキー
-   * @returns キャッシュされたデータ、またはnull
+   * @returns キャッシュヒットの有無と、ヒット時の値
    */
-  public async get<T>(key: string): Promise<T | null> {
+  public async get<T>(key: string): Promise<CacheReadResult<T>> {
     if (!this.isAvailable() || !this.client) {
-      return null;
+      return { hit: false };
+    }
+
+    let result: string | null;
+    try {
+      result = await this.client.get(key);
+    } catch (error) {
+      logger.error({ key, error }, 'Failed to get cached data');
+      return { hit: false };
+    }
+
+    if (result === null) {
+      return { hit: false };
     }
 
     try {
-      const result = await this.client.get(key);
-      if (result === null) {
-        return null;
-      }
-      return JSON.parse(result) as T;
+      return { hit: true, value: JSON.parse(result) as T };
     } catch (error) {
-      logger.error({ key, error }, 'Failed to get or parse cached data');
-      return null;
+      logger.error({ key, error }, 'Failed to parse cached data');
+      return { hit: false };
     }
   }
 

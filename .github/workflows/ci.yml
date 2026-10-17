@@ -19,13 +19,15 @@ concurrency:
 permissions:
   contents: read
 
+# runs-on は ubuntu-latest にせず版を固定する。deploy.yml の deploy ジョブと
+# 同じイメージで検証するため（#263）。上げるときは deploy.yml と一緒に。
 jobs:
   # ============================================
   # コード品質チェック
   # ============================================
   quality-check:
     name: Code Quality Check
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 10
 
     strategy:
@@ -87,7 +89,7 @@ jobs:
   # ============================================
   build:
     name: Build Verification
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 15
     needs: quality-check # 品質チェック通過後に実行
 
@@ -130,7 +132,7 @@ jobs:
   # クラスタ不要の静的検証を入れる。
   manifests:
     name: Kubernetes Manifests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     timeout-minutes: 5
 
     steps:
@@ -300,7 +302,7 @@ jobs:
   # ほぼキャッシュで済む。
   docker:
     name: Docker Images
-    runs-on: ubuntu-24.04-arm
+    runs-on: ubuntu-26.04-arm
     timeout-minutes: 30
 
     steps:
@@ -318,7 +320,7 @@ jobs:
   # ============================================
   ci-summary:
     name: CI Summary
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     needs: [quality-check, build, manifests, docker]
     if: always() # 失敗してもサマリーは表示
 

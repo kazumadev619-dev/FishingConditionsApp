@@ -38,6 +38,19 @@ Google Maps API は、主に住所から座標への変換（ジオコーディ�
     本番では `k8s/secret.enc.yaml` から `envFrom` でランタイムに渡る
     （ビルド時には不要なので `deploy.yml` の `build-args` には渡さない）。
 
+### 本番のブラウザ用キーを替えるとき
+
+`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` / `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` は GitHub Secret から
+`deploy.yml` の `build-args` でイメージに焼き込まれる。Secret を替えただけでは本番は変わらない。
+
+1. GitHub の Settings → Secrets and variables → Actions で Secret を更新する
+2. `gh workflow run deploy.yml --ref main` で Deploy を流し直す（新しいコミットは要らない）
+3. ログの `Apply manifests` に `deployment.apps/fishing-app configured` が出ていること。
+   `unchanged` なら Pod は入れ替わっていない
+
+イメージのタグは `sha-<短縮SHA>-<run_number>-<run_attempt>` で実行ごとに変わるので、
+同じコミットでも Pod が入れ替わる（#275）。
+
 ## API クライアント
 
 Google Maps 用の API クライアントは `src/lib/googleMapsClient.ts` にあります。このモジュールは、Google Maps API エンドポイントへの `fetch` 呼び出しを抽象化します。サーバー専用のキー（`GOOGLE_MAPS_API_KEY`）を使うため、`'use client'` なファイルから import してはいけません。

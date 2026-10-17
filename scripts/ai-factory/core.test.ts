@@ -676,7 +676,8 @@ describe('run recovery record', () => {
   });
 });
 
-
 it('distinguishes an absent run record from an author mismatch', () => {
-  expect(() => parseRunComment(undefined, { issue: 42, viewer: 'factory-bot' })).toThrow('run comment is missing');
+  expect(() => parseRunComment(undefined, { issue: 42, viewer: 'factory-bot' })).toThrow(
+    'run comment is missing',
+  );
 });

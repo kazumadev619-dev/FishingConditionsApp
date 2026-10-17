@@ -5,7 +5,14 @@
 
 import type { DailyTide, TideApiResponse, TideEvent } from '@/types/tide';
 import { tide736Client } from './apiClient';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from './cache';
+import {
+  CACHE_PREFIX,
+  CACHE_TTL,
+  type CacheResponse,
+  fetchWithOptionalCache,
+  generateCacheKey,
+  reviveDate,
+} from './cache';
 
 // Re-export types for external use
 export type { DailyTide, TideEvent };
@@ -23,11 +30,7 @@ export interface TideOptions {
 /**
  * 潮汐サービスのレスポンス型
  */
-export interface TideResponse<T> {
-  data: T;
-  fromCache: boolean;
-  fetchedAt: string;
-}
+export interface TideResponse<T> extends CacheResponse<T> {}
 
 /**
  * アプリケーション用に整形された潮汐データ
@@ -127,22 +130,7 @@ export async function getTideData(
     return formatTideData(rawData);
   };
 
-  if (skipCache) {
-    const data = await fetchTide();
-    return {
-      data,
-      fromCache: false,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.TIDE, fetchTide, reviveTideDates);
-
-  return {
-    data,
-    fromCache,
-    fetchedAt: new Date().toISOString(),
-  };
+  return fetchWithOptionalCache(cacheKey, CACHE_TTL.TIDE, skipCache, fetchTide, reviveTideDates);
 }
 
 /**

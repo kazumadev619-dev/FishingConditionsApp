@@ -1,6 +1,13 @@
 import { logger } from '../logger';
 import { cache } from './client';
 
+/** キャッシュ経由の取得結果。 */
+export interface CacheResponse<T> {
+  data: T;
+  fromCache: boolean;
+  fetchedAt: string;
+}
+
 /**
  * キャッシュキーを生成するヘルパー関数
  */
@@ -46,7 +53,7 @@ export function reviveDate(value: unknown, field: string): Date {
  *
  * @param revive キャッシュヒット時に値を復元する関数。
  *   キャッシュは JSON で往復するため、Date のような構造を持つ値は読み出し時に
- *   素の文字列へ落ちる。`cache.get<T>()` は `JSON.parse(...) as T` で型を主張し直すので
+ *   素の文字列へ落ちる。`cache.get<T>()` はヒット時に `JSON.parse(...) as T` で型を主張し直すので
  *   TypeScript はこのズレを検出できない。**T が Date を含むなら必ず指定すること。**
  *   指定を忘れると「キャッシュヒットしたときだけ `getHours is not a function`」という、
  *   ローカルでは再現しにくい実行時エラーになる。
@@ -60,8 +67,8 @@ export async function withCache<T>(
   // キャッシュから取得を試みる
   const cached = await cache.get<T>(key);
 
-  if (cached !== null) {
-    return { data: revive ? revive(cached) : cached, fromCache: true };
+  if (cached.hit) {
+    return { data: revive ? revive(cached.value) : cached.value, fromCache: true };
   }
 
   // fetcherでデータを取得
@@ -73,4 +80,23 @@ export async function withCache<T>(
   });
 
   return { data, fromCache: false };
+}
+
+/**
+ * skipCache 時はキャッシュを一切使わず、通常時はキャッシュ経由で取得する。
+ */
+export async function fetchWithOptionalCache<T>(
+  cacheKey: string,
+  ttl: number,
+  skipCache: boolean,
+  fetcher: () => Promise<T>,
+  revive?: (cached: T) => T,
+): Promise<CacheResponse<T>> {
+  if (skipCache) {
+    const data = await fetcher();
+    return { data, fromCache: false, fetchedAt: new Date().toISOString() };
+  }
+
+  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, revive);
+  return { data, fromCache, fetchedAt: new Date().toISOString() };
 }

@@ -186,7 +186,8 @@ kubectl -n fishing get deploy fishing-app \
 このキーが Secret に無いと Pod は `CreateContainerConfigError` で止まる。
 
 ```bash
-TAG=sha-$(git rev-parse --short HEAD)   # デプロイしたイメージのタグに合わせる
+# いま動いているイメージのタグ（sha-<短縮SHA>-<run_number>-<run_attempt>。#275）
+TAG=$(kubectl -n fishing get deploy fishing-app -o jsonpath='{.spec.template.spec.containers[0].image}' | sed 's/.*://')
 sed "s|\(fishing-app-migrator\)$|\1:${TAG}|" k8s/job-db-seed.yaml | kubectl apply -f -
 kubectl -n fishing logs -f job/db-seed
 
