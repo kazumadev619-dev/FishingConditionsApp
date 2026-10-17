@@ -33,7 +33,7 @@
     {
       "matchManagers": ["custom.regex"],
       "prBodyNotes": [
-        "**この PR は版だけを書き換える。** 同じ env ブロックの `*_SHA256` を新しい版のリリースのチェックサムに書き換えてからマージすること。SOPS / yq は deploy.yml にしか無く、PR の CI では検査されない（main で初めて落ちる）"
+        "**この PR は版だけを書き換える。** 同じ env ブロックの `*_SHA256` を新しい版のリリースのチェックサムに書き換えてからマージすること。kustomize は ci.yml と deploy.yml の両方を直す（deploy.yml の値は CI の `Verify deploy.yml tool checksums` が照合する）"
       ]
     }
   ]

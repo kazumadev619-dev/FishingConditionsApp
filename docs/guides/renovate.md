@@ -11,6 +11,8 @@
 | ワークフローで固定しているツール（kustomize / sops / yq / kubeconform / actionlint） | `customManagers`。`*_VERSION:` の直前の `# renovate:` コメントで取得元を指定する |
 | `docker/Dockerfile` のベースイメージ、`docker/docker-compose.yml` のイメージ | dockerfile / docker-compose manager |
 
+`ci.yml` の `node-version: [24.x]`（matrix）は対象外。Node 26（#241）を承認すると上がるのは Dockerfile だけなので、CI の matrix は同じ PR で手で揃える。
+
 `k8s/` のイメージは自前の GHCR イメージだけで、タグは CI が差し込む（`newTag: latest` はプレースホルダ）ので Renovate の対象外になる。
 
 ツールを増やすときは、`*_VERSION:` の直前に同じ形のコメントを付ける。
@@ -35,9 +37,9 @@ FOO_VERSION: v1.2.3
 
 Renovate が書き換えるのは `*_VERSION` だけで、隣の `*_SHA256` はそのまま残る。マージする前に、新しい版のリリースが公開しているチェックサムの linux amd64 の値に書き換えること（PR 本文にも注意書きが出る）。
 
-- kustomize / kubeconform / actionlint は `ci.yml` で `sha256sum -c` されるので、書き換え忘れは PR の CI で落ちる
-- **sops / yq は `deploy.yml` にしか無く、PR の CI では検査されない。** 書き換え忘れると main への昇格後に deploy ジョブが落ちる
-- kustomize は `ci.yml` と `deploy.yml` の両方にあり、同じ PR で両方書き換わる
+- kustomize / kubeconform / actionlint は `ci.yml` の各インストールのステップで `sha256sum -c` される
+- `deploy.yml` の値（kustomize / sops / yq）は main に上がるまで使われないので、`ci.yml` の `Verify deploy.yml tool checksums` が `deploy.yml` から版と SHA256 を読んで照合する。kustomize は `ci.yml` と `deploy.yml` の両方にあり、同じ PR で両方の版が書き換わる。`ci.yml` 側の SHA256 だけ直しても、このステップで落ちる
+- yq は、deploy ではランナーに同梱の yq が無いときだけ `YQ_VERSION` を取得する。だから今は書き忘れても deploy は落ちない（同梱が消えた日に落ちる）。照合のステップは常に検知する
 
 ## 導入（初回のみ）
 
@@ -46,3 +48,4 @@ Renovate は設定を既定ブランチ（main）から読む。`renovate.json` 
 1. `renovate.json` が main に入ったことを確かめる
 2. [Mend Renovate の GitHub App](https://github.com/apps/renovate) をこのリポジトリにインストールする（main に設定があるのでオンボーディング PR は出ない）
 3. Dependency Dashboard の issue ができたことを確かめる
+4. Docker のイメージ（postgres / redis）が `minimumReleaseAge` で pending のまま止まっていないかを Dashboard で見る。手元の dry-run では Docker Hub の `releaseTimestamp` が取れず pending になった。App でも同じなら、Docker のイメージだけ `minimumReleaseAge` を外すか考える

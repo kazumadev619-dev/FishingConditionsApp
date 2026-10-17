@@ -176,6 +176,20 @@ jobs:
           tar xzf /tmp/kubeconform.tar.gz -C /tmp kubeconform
           sudo mv /tmp/kubeconform /usr/local/bin/
 
+      # deploy.yml の *_SHA256 は main に上がるまで照合されない。Renovate は
+      # 版だけを書き換えるので、SHA256 の書き換え忘れをここで止める（#165）。
+      # yq は deploy ではランナー同梱が無いときしか取得しないが、ここでは常に照合する
+      - name: Verify deploy.yml tool checksums
+        run: |
+          set -euo pipefail
+          v() { grep -oP "^\s+$1: \K\S+" .github/workflows/deploy.yml; }
+          curl -fsSL "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2F$(v KUSTOMIZE_VERSION)/kustomize_$(v KUSTOMIZE_VERSION)_linux_amd64.tar.gz" -o /tmp/deploy-kustomize.tar.gz
+          echo "$(v KUSTOMIZE_SHA256)  /tmp/deploy-kustomize.tar.gz" | sha256sum -c -
+          curl -fsSL "https://github.com/getsops/sops/releases/download/$(v SOPS_VERSION)/sops-$(v SOPS_VERSION).linux.amd64" -o /tmp/sops
+          echo "$(v SOPS_SHA256)  /tmp/sops" | sha256sum -c -
+          curl -fsSL "https://github.com/mikefarah/yq/releases/download/$(v YQ_VERSION)/yq_linux_amd64" -o /tmp/yq
+          echo "$(v YQ_SHA256)  /tmp/yq" | sha256sum -c -
+
       # -kubernetes-version を付けないと上流 master のスキーマで検証してしまい、
       # 本番の k3s とズレる。Pi は k3s v1.34.6+k3s1。
       - name: Build and validate manifests
