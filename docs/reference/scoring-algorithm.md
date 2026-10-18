@@ -34,10 +34,11 @@ calculateTideScore(tide: TideData, currentTime: Date): number {
 
 ### 潮汐タイミング評価
 
+時刻と日付はすべて日本時間（`Asia/Tokyo`）で扱う。潮汐データ（tide736）の日付と `HH:mm` は JST なので、実行環境のタイムゾーン（本番のコンテナは UTC）で `getHours()` や `toISOString()` を使うと、時刻がずれたり JST の 0〜9 時に前日の潮汐を引いたりする（#296）。`src/lib/utils/dateUtils.ts` の `getJapanDateTimeParts` / `formatDateInJapan` を使う。
+
 ```typescript
 private calculateTideTimingScore(tide: TideData, currentTime: Date): number {
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
+  const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
   const currentTotalMinutes = currentHour * 60 + currentMinutes;
   let maxScore = 0;
 
@@ -162,13 +163,15 @@ private calculatePressureScore(pressure: number): number {
 
 ```typescript
 calculateTimeScore(weatherData: FormattedWeatherData, currentTime: Date): number {
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
+  // 時・分は潮汐と同じく日本時間で取る（getHours() は実行環境のタイムゾーンになる）
+  const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
   const currentTotalMinutes = currentHour * 60 + currentMinutes;
 
   // 日の出・日の入り時刻を分単位で取得
-  const sunriseTotalMinutes = weatherData.sunrise.getHours() * 60 + weatherData.sunrise.getMinutes();
-  const sunsetTotalMinutes = weatherData.sunset.getHours() * 60 + weatherData.sunset.getMinutes();
+  const sunrise = getJapanDateTimeParts(weatherData.sunrise);
+  const sunset = getJapanDateTimeParts(weatherData.sunset);
+  const sunriseTotalMinutes = sunrise.hours * 60 + sunrise.minutes;
+  const sunsetTotalMinutes = sunset.hours * 60 + sunset.minutes;
 
   // 日の出・日の入りからの最短時間を計算（分単位）
   const diffFromSunrise = Math.abs(currentTotalMinutes - sunriseTotalMinutes);

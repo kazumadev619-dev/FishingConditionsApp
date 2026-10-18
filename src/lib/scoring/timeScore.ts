@@ -1,16 +1,16 @@
 import type { FormattedWeatherData } from '../openWeatherService';
+import { getJapanDateTimeParts } from '../utils/dateUtils';
 
 export function calculateTimeScore(weatherData: FormattedWeatherData, currentTime: Date): number {
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
+  const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
   const currentTotalMinutes = currentHour * 60 + currentMinutes;
 
-  const sunriseHour = weatherData.sunrise.getHours();
-  const sunriseMinutes = weatherData.sunrise.getMinutes();
+  const { hours: sunriseHour, minutes: sunriseMinutes } = getJapanDateTimeParts(
+    weatherData.sunrise,
+  );
   const sunriseTotalMinutes = sunriseHour * 60 + sunriseMinutes;
 
-  const sunsetHour = weatherData.sunset.getHours();
-  const sunsetMinutes = weatherData.sunset.getMinutes();
+  const { hours: sunsetHour, minutes: sunsetMinutes } = getJapanDateTimeParts(weatherData.sunset);
   const sunsetTotalMinutes = sunsetHour * 60 + sunsetMinutes;
 
   const diffFromSunrise = Math.abs(currentTotalMinutes - sunriseTotalMinutes);

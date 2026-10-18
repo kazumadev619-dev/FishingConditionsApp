@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 
 const redisMock = vi.hoisted(() => {
   // cache はモジュール読み込み時に生成されるので、import より前に REDIS_URL を置く
@@ -26,6 +26,17 @@ beforeEach(() => {
 });
 
 describe('CacheClient.get', () => {
+  it('Date を含む値は JSON 往復後の型で返す', async () => {
+    redisMock.get.mockResolvedValue('{"observedAt":"2026-10-11T00:00:00.000Z"}');
+
+    const result = await cache.get<{ observedAt: Date }>('test:key');
+
+    expect(result).toEqual({ hit: true, value: { observedAt: '2026-10-11T00:00:00.000Z' } });
+    if (result.hit) {
+      expectTypeOf(result.value.observedAt).toEqualTypeOf<string>();
+    }
+  });
+
   it('キーが無いときはミスを返す', async () => {
     redisMock.get.mockResolvedValue(null);
 

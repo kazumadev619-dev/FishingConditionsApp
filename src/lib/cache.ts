@@ -6,6 +6,7 @@ export {
   type CacheResponse,
   fetchWithOptionalCache,
   generateCacheKey,
+  type Jsonified,
   reviveDate,
   withCache,
 } from './cache/helpers';
