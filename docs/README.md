@@ -10,6 +10,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | Docker で動かしたい | [guides/docker.md](./guides/docker.md) |
 | Kubernetes にデプロイしたい | [../k8s/README.md](../k8s/README.md) |
 | CI が落ちた原因を知りたい | [guides/ci-cd.md](./guides/ci-cd.md) |
+| 依存の自動更新（Renovate）の PR を扱いたい | [guides/renovate.md](./guides/renovate.md) |
 | AI開発Watcherを運用したい | [guides/ai-development-factory.md](./guides/ai-development-factory.md) |
 | AI開発ファクトリーの現在仕様を知りたい | [reference/ai-development-factory.md](./reference/ai-development-factory.md) |
 | テストを書きたい | [guides/development.md](./guides/development.md#テスト戦略) ／ [選定理由](./adr/003-testing-strategy.md) |
