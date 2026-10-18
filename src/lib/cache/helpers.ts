@@ -1,5 +1,12 @@
 import { logger } from '../logger';
 import { cache } from './client';
+import type { Jsonified } from './types';
+
+export type { Jsonified } from './types';
+
+type CacheReviver<T> = (cached: Jsonified<T>) => T;
+type ReviverArgument<T> =
+  Jsonified<T> extends T ? [revive?: CacheReviver<T>] : [revive: CacheReviver<T>];
 
 /** キャッシュ経由の取得結果。 */
 export interface CacheResponse<T> {
@@ -28,7 +35,7 @@ export function generateCacheKey(prefix: string, params: Record<string, string |
  * エラーも出さずスコア計算へ流れ込み、同じリクエストでもコールドとウォームで
  * 結果が変わるという追跡困難な状態になる。ここで明示的に落とす。
  *
- * @param value キャッシュから読み出した生の値（型上は Date だが実体は文字列）
+ * @param value キャッシュから読み出した生の値
  * @param field エラーメッセージに出すフィールド名
  */
 export function reviveDate(value: unknown, field: string): Date {
@@ -51,24 +58,25 @@ export function reviveDate(value: unknown, field: string): Date {
  * キャッシュを通してデータを取得するヘルパー関数
  * キャッシュミス時はfetcherを実行してキャッシュに保存
  *
- * @param revive キャッシュヒット時に値を復元する関数。
- *   キャッシュは JSON で往復するため、Date のような構造を持つ値は読み出し時に
- *   素の文字列へ落ちる。`cache.get<T>()` はヒット時に `JSON.parse(...) as T` で型を主張し直すので
- *   TypeScript はこのズレを検出できない。**T が Date を含むなら必ず指定すること。**
- *   指定を忘れると「キャッシュヒットしたときだけ `getHours is not a function`」という、
- *   ローカルでは再現しにくい実行時エラーになる。
+ * キャッシュは JSON で往復するため、Date は読み出し時に ISO 文字列へ落ちる。
+ * `Jsonified<T>` が `T` に代入できない型（Date を含むなど）では revive が必須になり、
+ * revive は JSON 往復後の型を受け取る。指定漏れや `cached.sunrise.getTime()` のような
+ * 書き間違いは型エラーになる（以前は「キャッシュヒットしたときだけ
+ * `getHours is not a function`」という実行時エラーになっていた）。
  */
 export async function withCache<T>(
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<T>,
-  revive?: (cached: T) => T,
+  ...[revive]: ReviverArgument<T>
 ): Promise<{ data: T; fromCache: boolean }> {
   // キャッシュから取得を試みる
   const cached = await cache.get<T>(key);
 
   if (cached.hit) {
-    return { data: revive ? revive(cached.value) : cached.value, fromCache: true };
+    // revive を省けるのは ReviverArgument が `Jsonified<T> extends T` を確かめた型だけなので、
+    // このキャストは JSON 往復で型が変わらない場合に限られる
+    return { data: revive ? revive(cached.value) : (cached.value as T), fromCache: true };
   }
 
   // fetcherでデータを取得
@@ -90,13 +98,13 @@ export async function fetchWithOptionalCache<T>(
   ttl: number,
   skipCache: boolean,
   fetcher: () => Promise<T>,
-  revive?: (cached: T) => T,
+  ...reviveArgs: ReviverArgument<T>
 ): Promise<CacheResponse<T>> {
   if (skipCache) {
     const data = await fetcher();
     return { data, fromCache: false, fetchedAt: new Date().toISOString() };
   }
 
-  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, revive);
+  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, ...reviveArgs);
   return { data, fromCache, fetchedAt: new Date().toISOString() };
 }

@@ -1,5 +1,6 @@
 import Redis from 'ioredis';
 import { logger } from '../logger';
+import type { Jsonified } from './types';
 
 export type CacheReadResult<T> = { hit: true; value: T } | { hit: false };
 
@@ -52,7 +53,7 @@ class CacheClient {
    * @param key キャッシュキー
    * @returns キャッシュヒットの有無と、ヒット時の値
    */
-  public async get<T>(key: string): Promise<CacheReadResult<T>> {
+  public async get<T>(key: string): Promise<CacheReadResult<Jsonified<T>>> {
     if (!this.isAvailable() || !this.client) {
       return { hit: false };
     }
@@ -70,7 +71,7 @@ class CacheClient {
     }
 
     try {
-      return { hit: true, value: JSON.parse(result) as T };
+      return { hit: true, value: JSON.parse(result) as Jsonified<T> };
     } catch (error) {
       logger.error({ key, error }, 'Failed to parse cached data');
       return { hit: false };
