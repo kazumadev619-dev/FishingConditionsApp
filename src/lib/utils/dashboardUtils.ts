@@ -3,6 +3,7 @@
  */
 
 import type { ScoreRank } from '@/types/scoring';
+import { JAPAN_TIME_ZONE } from './dateUtils';
 
 export { getScoreRank } from './scoreRank';
 
@@ -35,21 +36,13 @@ export function getRankLabel(rank: ScoreRank): string {
 }
 
 /**
- * 表示に使うタイムゾーン。釣り場も潮汐データ（HH:mm）も日本の時刻なので固定する。
- *
- * 省くと実行環境のタイムゾーンで整形され、サーバー（コンテナは UTC）が描画した
- * HTML とブラウザ（JST）の最初の描画で文字列が食い違い、hydration エラー #418 になる（#234）
- */
-const DISPLAY_TIME_ZONE = 'Asia/Tokyo';
-
-/**
  * 時刻をフォーマット (HH:mm)
  */
 export function formatTime(date: Date): string {
   return date.toLocaleTimeString('ja-JP', {
     hour: '2-digit',
     minute: '2-digit',
-    timeZone: DISPLAY_TIME_ZONE,
+    timeZone: JAPAN_TIME_ZONE,
   });
 }
 
@@ -57,7 +50,7 @@ export function formatTime(date: Date): string {
  * 日時をフォーマット (YYYY/M/D H:mm:ss)
  */
 export function formatDateTime(date: Date): string {
-  return date.toLocaleString('ja-JP', { timeZone: DISPLAY_TIME_ZONE });
+  return date.toLocaleString('ja-JP', { timeZone: JAPAN_TIME_ZONE });
 }
 
 export { formatDisplayDate as formatDate } from './dateUtils';

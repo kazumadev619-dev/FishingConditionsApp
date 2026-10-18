@@ -1,8 +1,12 @@
 import type { FormattedTideData } from '../tideService';
-import { formatDateLocal } from '../utils/dateUtils';
+import { getJapanDateTimeParts } from '../utils/dateUtils';
 
 export function calculateTideScore(tideData: FormattedTideData, currentTime: Date): number {
-  const today = formatDateLocal(currentTime);
+  const {
+    date: today,
+    hours: currentHour,
+    minutes: currentMinutes,
+  } = getJapanDateTimeParts(currentTime);
   const todayTides = tideData.tides.find((t) => t.date === today);
 
   if (!todayTides) {
@@ -10,8 +14,6 @@ export function calculateTideScore(tideData: FormattedTideData, currentTime: Dat
   }
 
   const dailyTide = todayTides.daily;
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
   const currentTotalMinutes = currentHour * 60 + currentMinutes;
 
   const allExtremes = [
