@@ -48,4 +48,4 @@ Renovate は設定を既定ブランチ（main）から読む。`renovate.json` 
 1. `renovate.json` が main に入ったことを確かめる
 2. [Mend Renovate の GitHub App](https://github.com/apps/renovate) をこのリポジトリにインストールする（main に設定があるのでオンボーディング PR は出ない）
 3. Dependency Dashboard の issue ができたことを確かめる
-4. Docker のイメージ（postgres / redis）が `minimumReleaseAge` で pending のまま止まっていないかを Dashboard で見る。手元の dry-run では Docker Hub の `releaseTimestamp` が取れず pending になった。App でも同じなら、Docker のイメージだけ `minimumReleaseAge` を外すか考える
+4. Docker のイメージ（postgres / redis）が `minimumReleaseAge` で pending のまま止まっていないかを Dashboard で見る。2026-10-25 の初回は、Docker Hub の `releaseTimestamp` が取れず「Pending Status Checks」で止まった（手元の dry-run と同じ）。そのため Docker のイメージだけ `minimumReleaseAgeBehaviour: timestamp-optional` にした。main に入ったあとの次の実行で、postgres 18 と redis 8 が「Pending Approval」に移っていれば直っている
