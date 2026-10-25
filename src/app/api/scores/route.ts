@@ -17,8 +17,8 @@ import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
+import { getJapanDateTimeParts } from '@/lib/utils/dateUtils';
 import {
-  getTodayDateString,
   isValidDateString,
   PORT_CODE_REGEX,
   PREFECTURE_CODE_REGEX,
@@ -37,6 +37,27 @@ import type { ScoringResponse } from '@/types/scoring';
  * 機能しないまま外部 API を叩き続ける。
  */
 const CACHE_KEY_COORDINATE_PRECISION = 2;
+
+/** 今日のスコアのキャッシュを切る時間の幅（分）。CACHE_TTL.SCORE（30分）に揃える */
+const SCORE_SLOT_MINUTES = 30;
+
+/**
+ * スコアの基準時刻と、キャッシュキーに足す時間枠を決める（#301）。
+ *
+ * - 今日（JST）: 現在時刻で計算する。画面（/ と /dashboard）と同じ値になる。
+ *   時間帯スコアと潮汐タイミングは時刻で変わるので、キーに 30 分の枠を足す
+ * - 今日以外: 時刻の指定が無いので、その日の代表値として JST 9:00
+ *   （new Date('YYYY-MM-DD') は UTC 0 時）で計算する。キーは日付だけ
+ */
+function resolveScoreTime(dateStr: string, now: Date): { scoreTime: Date; slot?: string } {
+  const today = getJapanDateTimeParts(now);
+  if (dateStr !== today.date) {
+    return { scoreTime: new Date(dateStr) };
+  }
+  const slotMinutes = Math.floor(today.minutes / SCORE_SLOT_MINUTES) * SCORE_SLOT_MINUTES;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return { scoreTime: now, slot: `${pad(today.hours)}:${pad(slotMinutes)}` };
+}
 
 /**
  * キャッシュヒット時に Date フィールドを Date インスタンスへ復元する（withCache の revive）。
@@ -75,7 +96,8 @@ async function handleGet(
     const lon = searchParams.get('lon');
     const prefectureCode = searchParams.get('prefectureCode');
     const portCode = searchParams.get('portCode');
-    const dateStr = searchParams.get('date') || getTodayDateString();
+    const now = new Date();
+    const dateStr = searchParams.get('date') || getJapanDateTimeParts(now).date;
     const skipCache = searchParams.get('skipCache') === 'true';
 
     // バリデーション。
@@ -110,6 +132,8 @@ async function handleGet(
       );
     }
 
+    const { scoreTime, slot } = resolveScoreTime(dateStr, now);
+
     // キャッシュキーを生成
     const cacheKey = generateCacheKey(CACHE_PREFIX.SCORE, {
       lat: roundCoordinate(latitude, CACHE_KEY_COORDINATE_PRECISION),
@@ -117,6 +141,7 @@ async function handleGet(
       prefecture: prefectureCode,
       port: portCode,
       date: dateStr,
+      ...(slot ? { slot } : {}),
     });
 
     // キャッシュを使用してスコアを計算
@@ -125,7 +150,14 @@ async function handleGet(
         cacheKey,
         CACHE_TTL.SCORE,
         async () => {
-          return await computeScore(latitude, longitude, prefectureCode, portCode, dateStr);
+          return await computeScore(
+            latitude,
+            longitude,
+            prefectureCode,
+            portCode,
+            dateStr,
+            scoreTime,
+          );
         },
         reviveScoringDates,
       );
@@ -143,7 +175,14 @@ async function handleGet(
     }
 
     // キャッシュをスキップして直接計算
-    const result = await computeScore(latitude, longitude, prefectureCode, portCode, dateStr);
+    const result = await computeScore(
+      latitude,
+      longitude,
+      prefectureCode,
+      portCode,
+      dateStr,
+      scoreTime,
+    );
 
     return NextResponse.json(result, {
       headers: {
@@ -172,6 +211,7 @@ async function computeScore(
   prefectureCode: string,
   portCode: string,
   dateStr: string,
+  scoreTime: Date,
 ): Promise<ScoringResponse> {
   // 天気データを取得
   const weatherResponse = await getCurrentWeather(latitude, longitude, {
@@ -184,11 +224,7 @@ async function computeScore(
   });
 
   // スコアを計算
-  const fishingScore = calculateFishingScore(
-    tideResponse.data,
-    weatherResponse.data,
-    new Date(dateStr),
-  );
+  const fishingScore = calculateFishingScore(tideResponse.data, weatherResponse.data, scoreTime);
 
   return {
     score: fishingScore,
