@@ -98,4 +98,16 @@ describe('GET /api/scores の基準時刻（#301）', () => {
     expect(later.calculatedAt).toBe(first.calculatedAt);
     expect(first.key).toBe('score:date:2026-10-13:lat:35.68:lon:139.77:port:1:prefecture:13');
   });
+
+  it('skipCache=true でも今日は現在時刻で計算する', async () => {
+    vi.setSystemTime(new Date('2026-10-12T17:45:00+09:00'));
+    const url = request().nextUrl;
+    url.searchParams.set('skipCache', 'true');
+    const res = await GET(new NextRequest(url));
+    const body = await res.json();
+
+    expect(res.headers.get('X-From-Cache')).toBe('false');
+    expect(body.score.calculatedAt).toBe('2026-10-12T08:45:00.000Z');
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
 });
