@@ -1,0 +1,245 @@
+# AI開発ファクトリー現行仕様
+
+## 文書の役割
+
+この文書は、現在 `develop` に実装されているAI開発ファクトリーの仕様を記録する。将来設計は記載しない。操作手順は [AI開発Watcher運用ガイド](../guides/ai-development-factory.md) を参照する。
+
+## 現在の範囲
+
+GitHub Issueを開発キューの正本とし、macOS上のWatcherがIssueをSolで計画した後、IssueごとのGit worktreeでLunaまたはTerraを実行する。daemonでは競合しないworkerを最大3件まで並列実行し、成功時は `develop` 向けPRを作成する。PRの現在head SHAに対するCI成功後、SolまたはAstraの最終Reviewerを別枠で1件だけ実行し、合格時だけ `human:approval` へ引き渡す。
+
+Watcherはレビュー指摘を自動修正せず、merge、deployも実行しない。
+
+## 構成
+
+| 要素 | 現在の責務 |
+| --- | --- |
+| GitHub Issue | キュー、状態ラベル、計画・実行・レビュー証拠の正本 |
+| `launchd` | Watcherのログイン時起動と異常終了後の再起動 |
+| Watcher | quota、計画、依存・競合、worker枠、PR/CI照合、reviewer枠、worktree、復旧、PR作成の制御 |
+| Sol planner | Issueとコードをread-onlyで照合し、固定Schemaの計画を返す |
+| Luna/Terra worker | 隔離worktreeで実装と自己検証を行い、固定Schemaの結果を返す |
+| Sol/Astra reviewer | 専用detached worktreeでPRを変更せず検証し、固定Schemaの最終判定を返す |
+| 既存CI | 作成されたPRをGitHub Actionsで検証する。全check成功がReviewer起動条件 |
+
+WatcherはNode.js標準ライブラリと `gh`、`git`、`codex` を使う。独自DB、外部ジョブキュー、別workerサービスは持たない。
+
+## 状態遷移
+
+状態別検索の結果は、返された現在の状態ラベルが検索条件と一致するIssueだけを扱う。GitHubの検索反映遅延で別状態のIssueが返っても復旧処理しない。
+
+現在Watcherが自動実行する正常系は次のとおり。
+
+```text
+agent:ready -> agent:running -> agent:review -> human:approval
+```
+
+- `agent:ready`: 実行候補。依存待ちやパス競合ではこの状態を維持する。
+- `agent:running`: worktree準備またはworker実行中。
+- `agent:review`: PR/CI照合待ち、または最終Reviewer実行中。
+- `human:approval`: 対象head SHAのCIと最終レビューが合格し、人のmerge判断を待つ。
+- `agent:recovery`: 中断または一時的な実行基盤障害から照合・再開中。
+- `agent:blocked`: 要件、計画、変更範囲、dirty worktreeなどに人の確認が必要。
+- `agent:failed`: 再試行後も実行基盤を開始できない。
+- `agent:paused`: 人が新規処理を停止している。
+
+`agent:review` ではCI未開始またはpendingなら待機し、CI失敗、PR不整合、review修正必須なら `agent:blocked`、Reviewer基盤障害の再試行失敗なら `agent:failed` へ進む。`human:approval -> done` は人がmerge後に行い、Watcherは自動実行しない。
+
+Issueにはエージェント状態ラベルが常にちょうど1つ必要である。状態変更前後にGitHubを再読し、想定状態と異なる場合は処理を続けない。
+
+## Sol計画
+
+plannerは `gpt-5.6-sol` を使用し、1件ずつread-only sandboxで実行する。ファイル、Git、Issue、ラベルを変更しない。
+
+固定Schemaは次を返す。
+
+| 項目 | 意味 |
+| --- | --- |
+| `outcome` | `planned` または `blocked` |
+| `workerModel` | `gpt-5.6-luna` または `gpt-5.6-terra` |
+| `plannedPaths` | 変更予定のリポジトリ相対path prefix。空配列は範囲不明 |
+| `dependencies` | 先にcloseされる必要があるIssue番号 |
+| `exclusive` | 他workerと同時実行しない指定 |
+| `reason` | 1〜500文字の監査用理由 |
+
+絶対パス、`..`、NUL、保護対象ファイル、自己依存、未知のモデル、不正な型を拒否する。`plannedPaths=[]` は強制的に単独実行として扱う。
+
+計画は `<!-- ai-factory-plan:v1 -->` コメントへ保存する。Issue番号、title、body、状態以外のlabelからSHA-256入力hashを作り、現在のGitHub viewer本人が投稿した、model・日時・Schema・hashがすべて正しいコメントだけを再利用する。Issue入力が変われば再計画する。
+
+## Luna/Terra実働
+
+- `gpt-5.6-luna`: 文書、調査、機械的で小さい変更。
+- `gpt-5.6-terra`: 通常実装、バグ修正、複数ファイル変更。
+
+workerはIssueごとの `codex/issue-<番号>` branchと `issue-<番号>` worktreeで動く。Issue本文は非信頼データとしてprompt内のJSON境界へ入れ、worker自身にはcommit、push、PR作成、Issue・label操作を許可しない。
+
+Watcherはworktree作成後に `npm ci` を実行する。workerは `npm run check-code` を実行し、Watcherも結果がreadyの場合に同じ固定検証を再実行する。workerがretryableを返す場合、または固定検証が失敗する場合は、同じCodex threadを最大3試行まで再開する。
+
+実変更pathが計画範囲外ならcommit、push、PRを行わず `agent:blocked` にする。範囲不明計画は単独実行済みの場合に限り、保護対象を除く安全な変更pathを許可する。
+
+## quota gate
+
+Codex CLIはChatGPTログインだけを使う。`OPENAI_API_KEY` または `CODEX_API_KEY` が環境に存在する場合、値が空でもWatcherは停止する。API従量課金へフォールバックしない。
+
+新しいSol計画、worker初回起動、最終Reviewer起動の直前に利用枠を読む。primary/secondaryの利用率のうち高い値を使い、すべてのwindowで残量が20%を超える場合だけ開始する。次の場合は新規起動しない。
+
+- ChatGPT認証でない
+- 通常利用枠が利用できない
+- 利用枠を取得できない、または値が不正
+- 残量が20%以下
+
+workerが既に動いている場合は、試行途中で別モデルへ切り替えず安全な区切りまで継続する。
+
+## 依存・競合制御
+
+ready IssueはIssue番号昇順で評価する。計画の依存Issueがすべてclosedの場合だけ実行候補になる。
+
+変更予定pathは `/` 区切りへ正規化し、完全一致または親子prefixなら競合とする。単なる文字列prefixは競合にしない。`exclusive=true`、範囲不明、実行証拠が不確かな復旧対象は他workerと同時実行しない。
+
+daemonは最大3件のPromise poolを持つ。1件完了すると全件の終了を待たず、次の安全なIssueで空き枠を補充する。`--once` は最大1件だけ、`--dry-run` はSol/workerを起動せず既存計画から予定を表示する。
+
+## PR作成
+
+Watcherは検証済み変更だけを明示的にstageし、worker結果からプロジェクト規約に合うcommit messageを作る。branchをpushし、head branchにopen PRがなければ `develop` 向けPRを1件作成する。
+
+PR本文には変更ファイル、`npm run check-code`、関連Issue、人間レビューが必要であることを記載する。既存open PRがある場合は重複作成しない。PRを読み戻せた後、Issueを `agent:review` へ移す。
+
+## PR・CIゲート
+
+`agent:review` のIssueは決定的branch `codex/issue-<番号>` のopen PRをちょうど1件だけ許可する。PRがdraft、baseが `develop` 以外、head branch不一致、head SHA不正、またはopen PR件数が1件でなければ `agent:blocked` にする。
+
+Watcherは `gh pr checks` のbucketを対象PRの現在head SHAに結び付けて判定する。
+
+- checkが0件: PR作成から30分未満は待機し、30分以降は `agent:blocked`
+- `pending` が1件以上: `agent:review` のまま待機
+- `fail`、`cancel`、`skipping` が1件以上: `agent:blocked`
+- 1件以上あり、すべて `pass`: 最終Reviewerを起動可能
+
+checks取得直後にPRを再読し、先に取得したhead SHAと一致する場合だけReviewerを起動する。checks取得中にheadが更新された場合は `agent:review` のまま新SHAのCIを待つ。head SHAと、checkのname・workflow・bucket・completedAtを安定順にしたSHA-256 fingerprintをレビュー証拠へ保存する。review完了後にもPRとCIを再読し、head SHAまたはfingerprintが変わっていれば古い結果を破棄して `agent:review` に留める。
+
+## Sol/Astra最終レビュー
+
+通常変更は `gpt-5.6-sol`、次の高リスク変更は `gpt-6-astra` でレビューする。
+
+- `risk:high` label
+- `src/` 内のauth、authentication、secret関連path
+- `prisma/migrations/`
+- `.github/workflows/`
+- `k8s/`
+- `scripts/ai-factory/`
+- `.codex/agents/pr-verifier.toml`
+- この現行仕様またはAI開発Watcher運用ガイド
+
+Solだけが同じhead SHAをAstraへ1回昇格できる。Astraの再昇格は不正結果として `agent:blocked` にする。固定Schemaは `outcome`、短いsummary、最大20件のbounded findings、最大30件のverified commands、`documentationCurrent` を返す。`approved` は `documentationCurrent=true` の場合だけ受理し、それ以外は修正必須として停止する。
+
+Reviewerは実働worker最大3枠と別の最大1枠で動く。起動直前に同じ20% quota gateを適用する。Watcherは対象head SHAから `reviews/issue-<番号>-<SHA先頭12文字>` のdetached verification worktreeを作り、HEAD一致を確認してからfreshな `HOME` と秘密を除いた環境で `npm ci --ignore-scripts` を実行する。Reviewerは導入済み依存を再インストールせず利用する。Reviewerへ渡す環境は別のfreshな `HOME` と `PATH`、`CODEX_HOME`、localeと固定のツール設定に限定し、`TMPDIR` はprivate HOMEへ固定し、npmのscript shellは `/bin/sh` に固定する。OpenSSLはHomebrewの許可済み設定、`DEVELOPER_DIR` はCommandLineToolsに固定し、`GIT_CONFIG_NOSYSTEM=1` でシステムGit設定を読まない。共有xcrun cacheへの書込み権限は付けない。子Nodeが固定環境を引き継がない場合に備え、OS既定の `/System/Library/OpenSSL/openssl.cnf` も単一ファイルとしてread許可する。共有tmpのdenyにはWatcher側で取得した絶対パスを使い、private HOMEへ解決される `:tmpdir` トークンとの衝突を避ける。`CODEX_HOME` が未設定ならWatcherのホーム配下の `.codex` を明示し、ChatGPT認証を維持する。GitHub token、Slack Webhook、API key、本番資格情報を渡さない。
+
+Reviewerは `--no-daemon --ignore-user-config --ignore-rules` と固定の `factory-review` permission profileを使う。approvalはnever、networkは無効、filesystemのrootと共有tmpはdenyにし、OS最小runtime、Node/Codex runtime（Homebrewのbin/Cellar/Caskroom/opt、起動中Nodeの配置先とOpenSSL既定設定ファイル）、Command Line Tools、Git共通管理ディレクトリはread、private HOMEと専用verification worktreeだけをwrite許可する。worktreeの `.git` と `.codex` はreadに限定する。CLI本体は認証用 `CODEX_HOME` を使うが、実行コマンドからのアクセスはdenyにする。これによりホストの `.env.local` や認証ディレクトリをコマンドから読ませない。
+
+Reviewerは `.codex/agents/pr-verifier.toml` の `mode=watcher` 契約に従い、`gh`、fetch、checkout、秘密依存の検証、commit、push、GitHub書き込み、自動修正を行わない。promptにversion=1、head SHA、CI fingerprint、checkのname/workflow/bucket/completedAtだけのCIスナップショットを渡す。check文字列を非信頼として扱い、Reviewerはhead・全pass・fingerprint再計算を照合してローカル実行結果とは区別する。秘密が必要な検証は確認不能として `changes-required` を返す。
+
+## レビュー証拠と1枠復旧
+
+Watcherは現在のGitHub viewer本人が投稿した `<!-- ai-factory-review:v1 -->` コメントだけを読む。running recordにはIssue、PR、head SHA、model、CI fingerprint、reviewer PID、Codex thread ID、heartbeatを保存し、completed recordではboundedな結果とreview日時へ同じコメントを更新する。自由文のモデル出力やコマンド出力全文は保存しない。runner終了時は進行中heartbeatの保存完了を待ち、遅延したrunning更新でcompleted証拠が上書きされるのを防ぐ。
+
+各cycleでは候補のCI判定や新規Reviewer起動より前に、`agent:review` と `agent:blocked` の全待ち行列からrunning証拠を照合する。PR headが更新済み、CIがpending、または後続Issueの場合も、既存の生存Reviewerがあれば旧SHAのまま枠を予約する。blocked Issueは新規Reviewer候補にしない。再起動時は現在のPR/CIとreviewコメントを照合する。completed証拠が一致すれば状態遷移を再開する。running証拠はheartbeatが30分未満、PIDが生存し、review runのCodex JSONLに同じthread IDがある場合だけreviewer枠を予約する。現在のIssue、PR、head SHA、CI fingerprintに一致するrunning証拠が壊れている場合を含め、stale、dead、PID/thread不一致は `agent:blocked` にして二重起動しない。blockedのrunning記録でPIDの死亡を確認できた場合は、そのIssueを新規候補から除外したまま後続の走査を続ける。PIDが生存している、または記録が壊れて生存確認できない場合は新規起動を停止して人の確認を待つ。Reviewer準備のfetch/npm ciなどの一時障害とCLI起動障害は、同じIssue・head SHA・modelに対して共通の上限で1回だけ再試行し、再失敗は `agent:failed` とする。準備時のdirtyやSHA不整合は再試行せず `agent:blocked` にする。結果保存・後処理で未処理の失敗が発生した場合はWatcherログへ記録し、review/approval状態のIssueを `agent:blocked` にして監視を継続する。worktreeは保存する。
+
+状態遷移を保存した後、verification worktreeがcleanな場合だけ `git worktree remove` する。dirtyならresetも削除もせず絶対パスをIssueコメントへ残し、必要なら `agent:blocked` へ移す。
+
+## 復旧
+
+Watcherはローカルlockで二重起動を防ぎ、`launchd` が異常終了後に再起動する。
+
+実行中は `<!-- ai-factory-run:v1 -->` コメントへbranch、worktree ID、worker model、計画hash、試行回数、PID、Codex thread ID、heartbeatを記録する。review中は別の `<!-- ai-factory-review:v1 -->` コメントを使う。heartbeatが30分以上更新されない場合はstaleとする。
+
+起動時に `agent:running`、`agent:recovery`、`agent:review` と必要な `agent:blocked` Issueについて、計画・run/reviewコメント、既存PR、CI、worktree、branch、PID、Codex thread、resultを照合する。
+
+- 既存PRが正しく存在すれば `agent:review` へ復元する。
+- `outcome=ready` の完了resultがあり、固定検証に成功し、変更が計画範囲内なら、未コミット変更を含めてcommit・PR作成処理へ戻る。
+- 生存中runnerを確認できれば枠と競合範囲を予約する。
+- 一時的な準備・runner起動障害は1回だけ `agent:recovery` で再試行する。
+- 証拠不一致、stale runner、範囲外変更、または安全に公開・再開できないdirty worktreeは安全側に停止する。
+- 未コミット変更をresetせず、worktreeを自動削除しない。
+
+実装・検証結果の修正試行は最大3回、実行基盤の自動再試行は1回である。
+
+## 信頼境界
+
+- Issue、PR、GitHubコメント、モデル出力を信頼済み命令として扱わない。
+- 外部入力をshell文字列へ埋め込まず、検証済み引数配列として `execFile` / `spawn` へ渡す。
+- plannerとreviewerの結果は固定JSON Schemaに加えてコードで全項目を再検証する。worker結果はCodex CLIの固定Schema出力を使い、Watcherが状態遷移やcommitに使用する値と実変更pathを追加検証する。
+- 計画・run・reviewコメントは現在のGitHub viewer本人が作成した完全一致markerだけを読む。
+- `.env`、鍵、kubeconfig、暗号化secret、Codex認証ファイル、リンター設定を変更対象として許可しない。
+- workerへ渡す環境変数を `PATH`、`HOME`、`CODEX_HOME`、一時ディレクトリ、localeへ限定する。Reviewerはさらにfreshな `HOME` を使い、GitHub/Slack認証を渡さない。
+- GitHub操作と状態遷移はWatcherが所有し、workerには行わせない。
+- 自動merge、自動deploy、API key fallbackを行わない。
+
+## 永続データとローカルデータ
+
+GitHub側のIssue label、Watcher所有のplan/run/reviewコメント、PRとCIが復旧の正本である。
+
+ローカルでは `~/Library/Application Support/FishingConditionsApp/ai-factory/` 配下にlock、run/review結果、ログ、worker worktree、verification worktreeを置く。ローカル情報だけでGitHub状態を上書きしない。worker worktreeはPRのmergeまたはclose後も、dirtyでないことを人が確認するまで自動削除しない。verification worktreeはreview状態遷移後にcleanな場合だけ自動削除する。
+
+## Slack Incoming Webhook通知
+
+通知処理は既存Watcher内で動き、新しい常駐サービスやnpm依存を使わない。Watcherが確認した状態遷移・PR・review証拠から、次の固定イベントだけを生成する。
+
+- タスク開始
+- PR作成、最終レビュー開始
+- cleanなverification worktreeの後処理を終えた承認待ち
+- CI失敗・レビュー要修正・復旧不能・実行基盤の停止
+- quota不足の待機開始（同じ待機episodeでは1件）
+- 通知機能の復旧（同じ障害episodeでは1件）
+
+依存待ち・パス競合は通知しない。Issue/PRのタイトル・本文、モデルの自由文、コマンド出力、HTTP応答本文を通知へ含めない。payloadは固定の日本語文と検証済みIssue/PR番号・モデル・短いイベントIDだけで組み立てる。
+
+### Webhookの秘密
+
+HTTPSの `hooks.slack.com/services/...` Incoming Webhook URLだけを受理し、userinfo、query、fragment、追加port、別hostnameを拒否する。`factory:install` の `SLACK_WEBHOOK_URL` が設定された時だけ、`~/Library/Application Support/FishingConditionsApp/ai-factory/slack-webhook-url` へmode `0600`でatomicに保存する。未設定なら既存ファイルを保持する。uninstallでは削除しない。
+
+URLをリポジトリ、plist、引数、標準出力、Issue/PR、ログへ書かない。worker/Reviewerの環境へ渡さない。読み取り時にsymlink・公開権限・不正なURLを拒否し、未設定・不正設定でも開発フローは動く。
+
+### Outboxと配送
+
+`slack-outbox/<SHA-256イベントID>.json` にpending/sentの記録をmode `0600`で保存する。IDは種別・Issue/PR・head SHA・run/待機の世代・モデル・理由から決定し、発生日時の変化では変えない。enqueueは一時ファイルとexclusive hard linkで既存IDを上書きしない。送信結果の更新はatomic renameを使う。送信済み記録を保持し、再enqueue・再起動で通常の重複を抑止する。
+
+配送はat-least-onceである。Slackが受理した直後にMacが停止した場合やHTTP応答が失われた場合は、次回の再送で重複し得る。メッセージの短いイベントIDで照合できる。enqueueやローカル保存の失敗時には通知が欠落し得るが、Issue状態を戻さず、秘密を含まない分類ログを残す。
+
+送信は既存Watcher lockの所有者だけが、1cycleにつき最大1件行う。HTTP timeoutは10秒、redirectは禁止。429・その他の非2xx・network失敗ではpendingを保持し、1分、5分、30分、1時間、以後6時間で再送する。有効な429の `Retry-After` がより長い場合は24時間までその下限を尊重する。応答本文・例外の自由文を読んだり保存したりしない。
+
+sent保存後に復旧通知をenqueueする前に停止しても、次回flushで補完する。復旧通知自身の失敗から新しい復旧通知を生成しない。通知flushはGitHub側cycleの失敗時にも試し、通知・ログの失敗でworker/Reviewerを失敗させない。手動onceのflushはlock解放前に行い、既存daemonがlockを所有している場合は送信しない。
+
+送信済み記録はこの段階では自動削除しない。長期稼働では保存量と一覧読み取り時間が増える。削除すると古いイベントの再送抑止が失われるため、保持期間・再送対象期間を定義してから整理する。
+
+`slack-issues/<Issue番号>.json` は通知ID用のrun/待機世代とPR/head identityを保持する派生データであり、GitHub状態の復旧根拠にしない。
+
+### Health
+
+`factory:status` は既存LaunchAgent状態に加え、`configured`、`health`、`outboxPending`、`oldestPendingAt`、`lastSuccessAt` を表示する。Webhook未設定・不正、outbox不正、失敗後のpendingがある場合はunhealthy。Webhook値は返さない。
+
+## 現在の対象外
+
+- AIによるレポート分析と改善Issueの自動作成
+- Slack Socket Mode双方向Bot
+- Jevによる分類補助
+- API key fallbackとAPI従量課金
+- 自動mergeと自動deploy
+- Slackからのmerge/deploy
+
+## 全体観測と週次レポート
+
+Watcherはlive実行のplanning、running、CI、reviewの開始・終了、タスク開始、PR、承認待ち、停止、retry/recovery、quota/dependency/conflict/CI待機をローカル観測へ記録する。観測は派生データであり、GitHub状態の復旧根拠にしない。観測保存・集計の失敗でworker、Reviewer、状態遷移、Slack配送を失敗させない。
+
+`events/YYYY-MM-DD.jsonl` はUTC日付の固定Schema記録で、通常ファイル・所有者・0600権限を検証する。symlink、FIFO、公開権限、過大ファイルを拒否する。末尾の改行未完了行だけを無視し、不正な完全行は内容を出さず不完全観測と表示する。UTC日付差が35日を超える実在日付の通常ファイルだけを削除し、35日前は残す。outboxと秘密は保持対象外である。
+
+イベントには種別、UTC時刻、検証済みIssue/PR番号、head SHA、実行世代、試行、段階、モデル、固定outcome/reason、通知IDだけを許可する。タイトル・本文・モデル自由文・コマンド出力を保存しない。待機episodeは`observation-waits/`へatomic保存し、再起動越しに同じ開始IDを使う。CI head更新では旧episodeを終了し、新しい世代を計測する。レビュー起動ごとにCI fingerprintとUUIDから実行世代を生成し、同じ起動内のretryとSol/Astraはその世代を共有する。quota停止後の次cycleで新しく起動したレビューは別世代として数える。
+
+`factory:report`は直近7日の開始/PR/承認/停止件数、段階時間の中央値/最長、モデル、待機、原因、Astra昇格、retry/recovery/通知失敗、停滞と改善要確認を表示する。集計は[from,to)とし、段階完了が期間内の場合に時間を計上し、待機は期間へclipする。世代・試行・head・モデルが一致する開始/終了だけを対応させ、重複IDは除外する。未対応終了は不明、未対応開始は未完了として、どちらも観測不完全と表示する。Sol→Astra昇格率の分母は、期間内に開始・対応する完了・昇格のいずれかがある同じSolレビュー集合（Issue・実行世代・head）とする。期間前に開始したレビューも期間内に昇格した場合は含め、同じレビュー内のretryは分母を増やさない。対応するSol開始がない昇格は観測不完全とし、率には含めない。保持前の開始と未導入時の履歴は復元できない。
+
+改善要確認は24時間以上の未完了、同一固定原因3回以上、未復旧Slack障害だけである。AIによる分析・自動Issue作成は行わない。
+
+週次はAsia/Tokyo月曜00:00から次の月曜00:00を対象とし、月曜09:00以降に直前週だけenqueueする。停止中なら次回cycleでcatch-upし、過去週を連続送信しない。週開始日をIDに使い、最初の集計snapshotとsent記録を保持する。再集計や再起動で通常の重複を抑止する。配送は既存outboxによるat-least-onceである。
+
+statusはlaunchdの分類状態、GitHubのrunning/recovery Issue数とreviewキュー、確認できたworker/Reviewer process数、直近quota待機時間、Slack health・最終週次送信を表示する。process数はWatcher所有コメント・PIDのコマンド・ローカルthread証拠を照合し、不一致・取得不能はunknownとする。Issue数には準備中も含む。quotaの現在利用枠はstatusで問い合わせずlive unknownと明示する。GitHub停止でもローカルhealthを表示する。launchctlの生出力・絶対path・任意例外を返さない。
+
+保存・待機episode・週次集計に失敗した場合は固定の`observation-incomplete` markerも残す。markerが存在する間はレポートを不完全と表示する。marker自体を保存できないディスク障害では分類ログだけが残り得るため、ログの観測失敗も確認する。

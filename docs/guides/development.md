@@ -1,27 +1,29 @@
 # 🛠️ 開発ガイド
 
-## 開発環境セットアップ
+## ローカル開発環境セットアップ
 
 ### 必要な環境
 
-- **Node.js**: v24.11.0
-- **TypeScript**: v5.9.3
+- **Node.js**: 26.x (CI/Docker)
+- **TypeScript**: 6.0.3 (type-check: 7.0.2)
 
 ### 技術スタック詳細バージョン
 
-| 技術          | バージョン    | 用途               |
-| ------------- | ------------- | ------------------ |
-| Next.js       | 16.0.10       | フレームワーク     |
-| React         | 19.2.3        | UIライブラリ       |
-| TypeScript    | 5.9.3         | 型安全性           |
-| Tailwind CSS  | 4.1.16        | スタイリング       |
-| Zustand       | 5.0.8         | 状態管理           |
-| React Query   | 5.90.7        | サーバー状態管理   |
-| Auth.js       | 5.0.0-beta.30 | 認証               |
-| shadcn/ui     | latest        | UIコンポーネント   |
-| PostgreSQL    | 17.0          | データベース       |
-| Prisma        | latest        | ORM                |
-| ioredis       | latest        | キャッシュ         |
+2026-10-11時点の `package.json` の指定範囲と `package-lock.json` の固定版。`npm ci` は固定版を導入する。依存更新時はこの表も照合する。
+
+| 技術 | 指定範囲 | 固定版 |
+| --- | --- | --- |
+| Next.js | `^16.3.6` | 16.3.6 |
+| React | `^19.2.8` | 19.3.0 |
+| TypeScript | `^6.0.3` | 6.0.3 |
+| TypeScript 7 (type-check) | `npm:typescript@^7.0.2` | 7.0.2 |
+| Tailwind CSS | `^4.1.17` | 4.3.3 |
+| Zustand | `^5.0.15` | 5.0.15 |
+| Auth.js | `^5.0.0-beta.30` | 5.0.0-beta.32 |
+| Prisma | `^7.9.1` | 7.10.0 |
+| ioredis | `^6.0.0` | 6.0.0 |
+
+UIコンポーネントはshadcn/ui由来のソースとRadix UIを使う。React Queryは導入していない。ローカルPostgreSQLは `docker/docker-compose.yml` の `postgres:17-alpine` を使う。
 
 ---
 
@@ -277,7 +279,7 @@ logger.info('User login successful', { userId, timestamp });
 
 - **画像最適化**: Next.js Image コンポーネント使用
 - **コード分割**: 動的インポートでバンドルサイズ削減
-- **キャッシュ活用**: SWR/React Query でデータキャッシュ
+- **キャッシュ活用**: 用途に応じたデータキャッシュ (Redisなど)
 - **Core Web Vitals**: LCP、FID、CLS の監視・改善
 
 ### バックエンド最適化
@@ -312,7 +314,7 @@ logger.info('User login successful', { userId, timestamp });
 
 ### 現状
 
-**本番環境はまだ公開していない。** デプロイ先として Raspberry Pi 5 上の k3s（Cloudflare Tunnel + Traefik）を用意しており、初回デプロイはこれから行う。
+本番向けの構成は Raspberry Pi 5 上の k3s (Cloudflare Tunnel + Traefik)。稼働状態はデプロイ履歴とヘルスチェックで確認する。
 
 - **ローカル**: docker compose に一本化（k8s のローカル環境は用意していない）
 - **本番相当**: Raspberry Pi 5 + k3s（arm64）。マニフェストは [k8s/README.md](../../k8s/README.md)
@@ -320,8 +322,8 @@ logger.info('User login successful', { userId, timestamp });
 
 ### CI/CD の現状
 
-GitHub Actions で lint / format / type-check / build を実行している（詳細は [ci-cd.md](./ci-cd.md)）。
-**k3s への自動デプロイは未導入**で、現時点のデプロイは手動で行う。
+GitHub Actions で lint / format / type-check / test / build、KubernetesマニフェストとDockerイメージを検証している（詳細は [ci-cd.md](./ci-cd.md)）。
+`.github/workflows/deploy.yml` は `main` へのpushまたは手動実行で本番向けのビルド・デプロイを行う。developへのマージではデプロイしない。
 
 ---
 

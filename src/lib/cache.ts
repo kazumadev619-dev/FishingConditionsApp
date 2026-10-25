@@ -2,4 +2,11 @@
 
 export { cache } from './cache/client';
 export { CACHE_PREFIX, CACHE_TTL } from './cache/config';
-export { generateCacheKey, reviveDate, withCache } from './cache/helpers';
+export {
+  type CacheResponse,
+  fetchWithOptionalCache,
+  generateCacheKey,
+  type Jsonified,
+  reviveDate,
+  withCache,
+} from './cache/helpers';

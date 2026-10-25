@@ -5,7 +5,15 @@
 
 import type { CurrentWeatherData, ForecastData } from '@/types/weather';
 import { openWeatherMapClient } from './apiClient';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from './cache';
+import {
+  CACHE_PREFIX,
+  CACHE_TTL,
+  type CacheResponse,
+  fetchWithOptionalCache,
+  generateCacheKey,
+  type Jsonified,
+  reviveDate,
+} from './cache';
 
 /**
  * 天気取得時のオプション
@@ -22,11 +30,7 @@ export interface WeatherOptions {
 /**
  * 天気サービスのレスポンス型
  */
-export interface WeatherResponse<T> {
-  data: T;
-  fromCache: boolean;
-  fetchedAt: string;
-}
+export interface WeatherResponse<T> extends CacheResponse<T> {}
 
 /**
  * アプリケーション用に整形された天気データ
@@ -95,25 +99,6 @@ function roundCoordinates(lat: number, lon: number): { roundedLat: number; round
 }
 
 /**
- * skipCache オプションを考慮してキャッシュ経由でデータ取得し、WeatherResponse 形式で返す
- */
-async function fetchWithOptionalCache<T>(
-  cacheKey: string,
-  ttl: number,
-  skipCache: boolean,
-  fetcher: () => Promise<T>,
-  revive?: (cached: T) => T,
-): Promise<WeatherResponse<T>> {
-  if (skipCache) {
-    const data = await fetcher();
-    return { data, fromCache: false, fetchedAt: new Date().toISOString() };
-  }
-
-  const { data, fromCache } = await withCache(cacheKey, ttl, fetcher, revive);
-  return { data, fromCache, fetchedAt: new Date().toISOString() };
-}
-
-/**
  * OpenWeatherMap APIからのレスポンスをアプリ用に整形
  */
 function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
@@ -158,7 +143,7 @@ function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
  * この契約を守らないと呼び出し側（scoring/timeScore.ts の getHours() など）が
  * 実行時に壊れる。
  */
-function reviveWeatherDates(data: FormattedWeatherData): FormattedWeatherData {
+function reviveWeatherDates(data: Jsonified<FormattedWeatherData>): FormattedWeatherData {
   return {
     ...data,
     sunrise: reviveDate(data.sunrise, 'sunrise'),

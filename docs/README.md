@@ -10,13 +10,17 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | Docker で動かしたい | [guides/docker.md](./guides/docker.md) |
 | Kubernetes にデプロイしたい | [../k8s/README.md](../k8s/README.md) |
 | CI が落ちた原因を知りたい | [guides/ci-cd.md](./guides/ci-cd.md) |
+| 依存の自動更新（Renovate）の PR を扱いたい | [guides/renovate.md](./guides/renovate.md) |
 | AI開発Watcherを運用したい | [guides/ai-development-factory.md](./guides/ai-development-factory.md) |
+| AI開発ファクトリーの現在仕様を知りたい | [reference/ai-development-factory.md](./reference/ai-development-factory.md) |
 | テストを書きたい | [guides/development.md](./guides/development.md#テスト戦略) ／ [選定理由](./adr/003-testing-strategy.md) |
 | システム全体の構成を知りたい | [reference/architecture.md](./reference/architecture.md) |
 | 認証の仕組みを知りたい | [reference/authentication.md](./reference/authentication.md) ／ [図解](./reference/authentication-diagrams.md) |
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |
 | 外部 API の仕様を知りたい | [reference/api-integration.md](./reference/api-integration.md) ／ [Google Maps](./reference/google-maps-api.md) |
 | API エラーの扱い方を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
+| 監視の構成と選定理由を知りたい | [adr/005-monitoring-platform.md](./adr/005-monitoring-platform.md) |
+| 画面デザインの方針を知りたい | [adr/006-design-system.md](./adr/006-design-system.md) |
 | なぜこの技術を選んだか知りたい | [adr/](./adr/) |
 | 開発の進捗と今後の予定を知りたい | [roadmap.md](./roadmap.md) |
 
@@ -30,6 +34,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | `reference/` | 実装が何をしているか調べるために読むか？ | アーキテクチャ、認証仕様、スコア算出式 |
 | `adr/` | なぜ A ではなく B を選んだかを説明しているか？ | ツールチェーン選定、ディレクトリ構成の決定 |
 | `perf/` | 数値の記録か？ | パフォーマンス計測結果 |
+| `agents/` | エージェントスキルが読む設定か？ | issue tracker の場所、triage ラベル、ドメイン文書の読み方 |
 | 直下 | 上のどれでもなく、プロジェクト全体を俯瞰するものか？ | この索引、ロードマップ |
 
 ## git 管理外のディレクトリ

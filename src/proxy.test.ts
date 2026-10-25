@@ -17,7 +17,7 @@ import { unstable_doesMiddlewareMatch } from 'next/experimental/testing/server';
 import { NextRequest } from 'next/server';
 import type { Session } from 'next-auth';
 import { encode } from 'next-auth/jwt';
-import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { auth, authorized } from '@/auth/edge';
 import proxy, { config } from './proxy';
 
@@ -341,15 +341,10 @@ describe('NextAuth への配線', () => {
   //
   // 認証済みの経路は署名済み JWT クッキーが要るので扱わない。配線が外れたときに
   // 開くのは未認証の経路なので、そこが押さえられていれば目的は果たせる。
-  beforeAll(() => {
-    // 実際の値は使わない。未設定だと @auth/core が MissingSecret を吐くだけで
-    // 判定結果は変わらないが、テストを例外経路に依存させない
-    vi.stubEnv('AUTH_SECRET', 'test-secret-not-used-for-signing');
-  });
-
-  afterAll(() => {
-    vi.unstubAllEnvs();
-  });
+  //
+  // secret はファイル先頭の vi.hoisted で設定した値が効いている（ここで stubEnv
+  // しても NextAuth() の設定には届かない）。未設定でも @auth/core が MissingSecret を
+  // 吐くだけで判定結果は変わらないが、例外経路で通るテストにはしない。
 
   /** proxy として呼ばれたときの auth() の応答 */
   async function callAuth(pathname: string): Promise<Response> {

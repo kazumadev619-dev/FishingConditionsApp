@@ -70,15 +70,15 @@ AGENTS.md の禁止事項を守る。
 
 ```bash
 # ワークフローの run: の中身を切り出して、ランナー相当の環境でそのまま流す。
-# deploy ジョブは runs-on: ubuntu-latest（amd64）、build ジョブは
-# ubuntu-24.04-arm なので、再現したい方に --platform を合わせる
+# deploy ジョブは runs-on: ubuntu-26.04（amd64）、build ジョブは
+# ubuntu-26.04-arm なので、再現したい方に --platform を合わせる
 SCRATCH=$(mktemp -d)
 cat > "$SCRATCH/step.sh" <<'SH'
 set -euo pipefail
 # ここにワークフローの run: の中身を貼る
 SH
 docker run --rm --platform linux/amd64 \
-  -v "$SCRATCH":/scratch:ro -v "$PWD":/repo:ro ubuntu:24.04 bash /scratch/step.sh
+  -v "$SCRATCH":/scratch:ro -v "$PWD":/repo:ro ubuntu:26.04 bash /scratch/step.sh
 ```
 
 k8s マニフェストは `develop` との**レンダリング差分**を取る。意図した行だけが変わっていることを示す。

@@ -1,0 +1,45 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended", "schedule:weekly"],
+  "timezone": "Asia/Tokyo",
+  "baseBranchPatterns": ["develop"],
+  "semanticCommits": "disabled",
+  "commitMessagePrefix": "⬆️ package:",
+  "minimumReleaseAge": "3 days",
+  "prConcurrentLimit": 5,
+  "osvVulnerabilityAlerts": true,
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "ワークフローで固定しているツール。直前の行の `# renovate:` コメントで取得元を指定する",
+      "managerFilePatterns": ["/^\\.github/workflows/.+\\.ya?ml$/"],
+      "matchStrings": [
+        "# renovate: datasource=(?<datasource>\\S+) depName=(?<depName>\\S+)( extractVersion=(?<extractVersion>\\S+))?\\s+\\w+_VERSION: (?<currentValue>\\S+)"
+      ]
+    }
+  ],
+  "packageRules": [
+    {
+      "description": "パッチとマイナーは1本の PR にまとめる。ツールは SHA256 の書き換えが要るので外す",
+      "matchUpdateTypes": ["minor", "patch"],
+      "matchManagers": ["!custom.regex"],
+      "groupName": "all non-major dependencies"
+    },
+    {
+      "description": "メジャーとパッケージの置き換え（framer-motion → motion など）は個別 PR。Dependency Dashboard で承認したものだけ作る（Node 26 や TypeScript 7 のように保留中のものがあるため）",
+      "matchUpdateTypes": ["major", "replacement"],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Docker Hub は公開日時（releaseTimestamp）を返さないことがあり、そのままでは minimumReleaseAge の pending が終わらず、メジャーが Dashboard の承認待ちにも並ばない（#165）。公開日時が無い版だけ待たずに扱い、ある版は従来どおり3日待つ",
+      "matchDatasources": ["docker"],
+      "minimumReleaseAgeBehaviour": "timestamp-optional"
+    },
+    {
+      "matchManagers": ["custom.regex"],
+      "prBodyNotes": [
+        "**この PR は版だけを書き換える。** 同じ env ブロックの `*_SHA256` を新しい版のリリースのチェックサムに書き換えてからマージすること。kustomize は ci.yml と deploy.yml の両方を直す（deploy.yml の値は CI の `Verify deploy.yml tool checksums` が照合する）"
+      ]
+    }
+  ]
+}

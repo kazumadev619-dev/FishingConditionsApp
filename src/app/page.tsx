@@ -3,6 +3,7 @@ import { getCurrentWeather } from '@/lib/openWeatherService';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { getTideData } from '@/lib/tideService';
 import { getTimeCategory, getTimeExplanation } from '@/lib/utils/dashboardUtils';
+import { formatDateInJapan } from '@/lib/utils/dateUtils';
 import type { DashboardData } from '@/types/dashboard';
 
 export const dynamic = 'force-dynamic';
@@ -17,7 +18,7 @@ const DEFAULT_LOCATION = {
 
 export default async function Home() {
   const currentTime = new Date();
-  const today = currentTime.toISOString().split('T')[0];
+  const today = formatDateInJapan(currentTime);
 
   const weatherResponse = await getCurrentWeather(
     DEFAULT_LOCATION.latitude,

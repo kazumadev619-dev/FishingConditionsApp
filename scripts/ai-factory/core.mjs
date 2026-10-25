@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export const STATES = Object.freeze({
   READY: 'agent:ready',
   RUNNING: 'agent:running',
@@ -12,16 +14,23 @@ export const STATES = Object.freeze({
 
 const stateNames = new Set(Object.values(STATES));
 const transitions = new Map([
-  [STATES.READY, new Set([STATES.RUNNING, STATES.PAUSED])],
+  [STATES.READY, new Set([STATES.RUNNING, STATES.BLOCKED, STATES.FAILED, STATES.PAUSED])],
   [
     STATES.RUNNING,
-    new Set([STATES.REVIEW, STATES.BLOCKED, STATES.FAILED, STATES.RECOVERY, STATES.PAUSED]),
+    new Set([
+      STATES.READY,
+      STATES.REVIEW,
+      STATES.BLOCKED,
+      STATES.FAILED,
+      STATES.RECOVERY,
+      STATES.PAUSED,
+    ]),
   ],
   [STATES.RECOVERY, new Set([STATES.RUNNING, STATES.REVIEW, STATES.BLOCKED, STATES.FAILED])],
   [STATES.BLOCKED, new Set([STATES.READY, STATES.PAUSED])],
   [STATES.FAILED, new Set([STATES.READY, STATES.PAUSED])],
   [STATES.PAUSED, new Set([STATES.READY])],
-  [STATES.REVIEW, new Set([STATES.APPROVAL, STATES.BLOCKED])],
+  [STATES.REVIEW, new Set([STATES.APPROVAL, STATES.BLOCKED, STATES.FAILED])],
   [STATES.APPROVAL, new Set([STATES.DONE, STATES.BLOCKED])],
 ]);
 
@@ -37,8 +46,88 @@ export const RUNNER_RESULT_SCHEMA = Object.freeze({
   additionalProperties: false,
 });
 
+export const PLANNER_MODEL = 'gpt-5.6-sol';
+export const WORKER_MODELS = Object.freeze(['gpt-5.6-luna', 'gpt-5.6-terra']);
+export const REVIEW_MODELS = Object.freeze({
+  SOL: 'gpt-5.6-sol',
+  ASTRA: 'gpt-6-astra',
+});
+
+const reviewFindingSchema = Object.freeze({
+  type: 'object',
+  properties: {
+    severity: { enum: ['critical', 'high', 'medium', 'low'] },
+    title: { type: 'string', minLength: 1, maxLength: 200 },
+    evidence: { type: 'string', minLength: 1, maxLength: 1000 },
+  },
+  required: ['severity', 'title', 'evidence'],
+  additionalProperties: false,
+});
+
+export const REVIEW_RESULT_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    outcome: { enum: ['approved', 'changes-required', 'escalate'] },
+    summary: { type: 'string', minLength: 1, maxLength: 1000 },
+    findings: { type: 'array', items: reviewFindingSchema, maxItems: 20 },
+    verifiedCommands: {
+      type: 'array',
+      items: { type: 'string', maxLength: 300 },
+      maxItems: 30,
+    },
+    documentationCurrent: { type: 'boolean' },
+  },
+  required: ['outcome', 'summary', 'findings', 'verifiedCommands', 'documentationCurrent'],
+  additionalProperties: false,
+});
+
+export const PLANNER_RESULT_SCHEMA = Object.freeze({
+  type: 'object',
+  properties: {
+    outcome: { enum: ['planned', 'blocked'] },
+    workerModel: { enum: WORKER_MODELS },
+    plannedPaths: { type: 'array', items: { type: 'string' } },
+    dependencies: { type: 'array', items: { type: 'integer', minimum: 1 } },
+    exclusive: { type: 'boolean' },
+    reason: { type: 'string', minLength: 1, maxLength: 500 },
+  },
+  required: ['outcome', 'workerModel', 'plannedPaths', 'dependencies', 'exclusive', 'reason'],
+  additionalProperties: false,
+});
+
 export function transitionAllowed(from, to) {
   return transitions.get(from)?.has(to) ?? false;
+}
+
+export function evaluatePrChecks(checks, createdAt, now = new Date()) {
+  if (!Array.isArray(checks)) throw new Error('invalid PR checks');
+  if (!isoTimestamp(createdAt) || Number.isNaN(new Date(now).getTime())) {
+    throw new Error('invalid PR timestamp');
+  }
+  if (
+    checks.some(
+      (check) =>
+        !check ||
+        typeof check.name !== 'string' ||
+        check.name.length === 0 ||
+        !['pending', 'pass', 'fail', 'cancel', 'skipping'].includes(check.bucket),
+    )
+  ) {
+    throw new Error('invalid PR check');
+  }
+  if (checks.length === 0) {
+    const age = new Date(now).getTime() - Date.parse(createdAt);
+    return age < 30 * 60 * 1000
+      ? { state: 'pending', reason: 'checks-not-started' }
+      : { state: 'failed', reason: 'checks-missing' };
+  }
+  if (checks.some(({ bucket }) => bucket === 'pending')) {
+    return { state: 'pending', reason: 'checks-pending' };
+  }
+  if (checks.some(({ bucket }) => bucket !== 'pass')) {
+    return { state: 'failed', reason: 'checks-failed' };
+  }
+  return { state: 'passed', reason: 'checks-passed' };
 }
 
 export function readState(labels) {
@@ -75,37 +164,367 @@ export function parseChangedPaths(porcelain) {
   return [...new Set(paths)];
 }
 
+function normalizeSafePath(file) {
+  if (
+    typeof file !== 'string' ||
+    file.length === 0 ||
+    file.includes('\0') ||
+    file.startsWith('/') ||
+    /^[A-Za-z]:[\\/]/.test(file) ||
+    file.split(/[\\/]/).includes('..')
+  ) {
+    throw new Error('unsafe changed path');
+  }
+  const normalized = file.replaceAll('\\', '/').replace(/\/+$/, '');
+  if (normalized.split('/').some((segment) => segment === '' || segment === '.')) {
+    throw new Error('unsafe changed path');
+  }
+  const name = normalized.split('/').at(-1);
+  if (
+    name === '.env' ||
+    name === '.env.local' ||
+    name === 'kubeconfig' ||
+    name?.endsWith('.key') ||
+    name?.endsWith('.pem') ||
+    normalized === 'k8s/secret.enc.yaml' ||
+    normalized === '.codex/auth.json' ||
+    name === 'biome.json' ||
+    name === '.oxlintrc.json' ||
+    name?.startsWith('eslint.config.')
+  ) {
+    throw new Error('protected changed path');
+  }
+  return normalized;
+}
+
 export function validateChangedPaths(paths) {
   if (paths.length === 0) throw new Error('no changed paths');
-  for (const file of paths) {
+  paths.forEach(normalizeSafePath);
+  return paths;
+}
+
+export function selectReviewModel({ labels, changedPaths }) {
+  if (!Array.isArray(labels) || !Array.isArray(changedPaths)) {
+    throw new Error('invalid review risk input');
+  }
+  const labelNames = labels.map((label) => (typeof label === 'string' ? label : label?.name));
+  if (labelNames.some((label) => typeof label !== 'string')) {
+    throw new Error('invalid review risk input');
+  }
+  const paths = changedPaths.map(normalizeSafePath);
+  const highRisk =
+    labelNames.includes('risk:high') ||
+    paths.some((path) => {
+      const segments = path.split('/');
+      return (
+        (path.startsWith('src/') &&
+          segments.some((segment) =>
+            /^(auth|authentication|secret|secrets)(\.[^/]+)?$/.test(segment),
+          )) ||
+        path.startsWith('prisma/migrations/') ||
+        path.startsWith('.github/workflows/') ||
+        path.startsWith('k8s/') ||
+        path.startsWith('scripts/ai-factory/') ||
+        path === '.codex/agents/pr-verifier.toml' ||
+        path === 'docs/reference/ai-development-factory.md' ||
+        path === 'docs/guides/ai-development-factory.md'
+      );
+    });
+  return highRisk ? REVIEW_MODELS.ASTRA : REVIEW_MODELS.SOL;
+}
+
+function exactProperties(value, properties) {
+  const keys = Object.keys(value);
+  return keys.length === properties.length && keys.every((key) => properties.includes(key));
+}
+
+function boundedString(value, minimum, maximum) {
+  const length = typeof value === 'string' ? Array.from(value).length : -1;
+  return length >= minimum && length <= maximum;
+}
+
+function isoTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const match = value.match(/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})(?:\.(\d+))?Z$/);
+  if (!match || Number.isNaN(Date.parse(value))) return false;
+  const milliseconds = (match[2] ?? '').padEnd(3, '0').slice(0, 3);
+  return new Date(value).toISOString() === `${match[1]}.${milliseconds}Z`;
+}
+
+export function validateReviewResult(result, model) {
+  if (!Object.values(REVIEW_MODELS).includes(model)) throw new Error('invalid review model');
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error('invalid review result');
+  }
+  if (!exactProperties(result, REVIEW_RESULT_SCHEMA.required)) {
+    throw new Error('invalid review result properties');
+  }
+  if (!REVIEW_RESULT_SCHEMA.properties.outcome.enum.includes(result.outcome)) {
+    throw new Error('invalid review outcome');
+  }
+  if (!boundedString(result.summary, 1, 1000)) throw new Error('invalid review summary');
+  if (
+    !Array.isArray(result.findings) ||
+    result.findings.length > 20 ||
+    result.findings.some(
+      (finding) =>
+        !finding ||
+        typeof finding !== 'object' ||
+        Array.isArray(finding) ||
+        !exactProperties(finding, reviewFindingSchema.required) ||
+        !reviewFindingSchema.properties.severity.enum.includes(finding.severity) ||
+        !boundedString(finding.title, 1, 200) ||
+        !boundedString(finding.evidence, 1, 1000),
+    )
+  ) {
+    throw new Error('invalid review finding');
+  }
+  if (
+    !Array.isArray(result.verifiedCommands) ||
+    result.verifiedCommands.length > 30 ||
+    result.verifiedCommands.some((command) => !boundedString(command, 0, 300))
+  ) {
+    throw new Error('invalid verified commands');
+  }
+  if (typeof result.documentationCurrent !== 'boolean') {
+    throw new Error('invalid documentation status');
+  }
+  if (result.outcome === 'approved' && !result.documentationCurrent) {
+    throw new Error('documentation is not current');
+  }
+  if (result.outcome === 'escalate' && model === REVIEW_MODELS.ASTRA) {
+    throw new Error('Astra cannot escalate');
+  }
+  return result;
+}
+
+export function reviewFingerprint(headSha, checks) {
+  if (typeof headSha !== 'string' || !/^[0-9a-f]{40}$/.test(headSha)) {
+    throw new Error('invalid review head SHA');
+  }
+  if (!Array.isArray(checks)) throw new Error('invalid PR checks');
+  const normalized = checks.map((check) => {
     if (
-      typeof file !== 'string' ||
-      file.length === 0 ||
-      file.includes('\0') ||
-      file.startsWith('/') ||
-      /^[A-Za-z]:[\\/]/.test(file) ||
-      file.split(/[\\/]/).includes('..')
+      !check ||
+      typeof check.name !== 'string' ||
+      typeof check.workflow !== 'string' ||
+      !['pending', 'pass', 'fail', 'cancel', 'skipping'].includes(check.bucket) ||
+      !isoTimestamp(check.completedAt)
     ) {
-      throw new Error('unsafe changed path');
+      throw new Error('invalid PR check');
     }
-    const normalized = file.replaceAll('\\', '/');
-    const name = normalized.split('/').at(-1);
+    return {
+      name: check.name,
+      workflow: check.workflow,
+      bucket: check.bucket,
+      completedAt: check.completedAt,
+    };
+  });
+  normalized.sort((left, right) => JSON.stringify(left).localeCompare(JSON.stringify(right)));
+  return createHash('sha256')
+    .update(JSON.stringify({ headSha, checks: normalized }))
+    .digest('hex');
+}
+
+const REVIEW_COMMENT_MARKER = '<!-- ai-factory-review:v1 -->';
+
+export function renderReviewComment(record) {
+  return `${REVIEW_COMMENT_MARKER}\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\`\n`;
+}
+
+export function parseReviewComment(comment, expected) {
+  if (comment?.user?.login !== expected.viewer) throw new Error('review comment author mismatch');
+  if (!comment.body?.startsWith(`${REVIEW_COMMENT_MARKER}\n`)) {
+    throw new Error('invalid review comment marker');
+  }
+  const match = comment.body.match(/^<!-- ai-factory-review:v1 -->\n```json\n([^\n]+)\n```\n?$/);
+  if (!match) throw new Error('invalid review comment body');
+  let record;
+  try {
+    record = JSON.parse(match[1]);
+  } catch {
+    throw new Error('invalid review comment JSON');
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('invalid review comment record');
+  }
+  if (record.issue !== expected.issue) throw new Error('review issue mismatch');
+  if (record.pullRequest !== expected.pullRequest) throw new Error('review PR mismatch');
+  if (record.headSha !== expected.headSha) throw new Error('review head SHA mismatch');
+  if (record.ciFingerprint !== expected.ciFingerprint) {
+    throw new Error('review CI fingerprint mismatch');
+  }
+  if (!Object.values(REVIEW_MODELS).includes(record.model)) throw new Error('invalid review model');
+  const common = ['issue', 'pullRequest', 'headSha', 'model', 'ciFingerprint', 'status'];
+  if (record.status === 'running') {
+    if (!exactProperties(record, [...common, 'reviewerPid', 'threadId', 'heartbeatAt'])) {
+      throw new Error('invalid running review record');
+    }
+    if (!Number.isSafeInteger(record.reviewerPid) || record.reviewerPid <= 0) {
+      throw new Error('invalid reviewer PID');
+    }
+    if (typeof record.threadId !== 'string' || record.threadId.length === 0) {
+      throw new Error('invalid reviewer thread');
+    }
+    if (!isoTimestamp(record.heartbeatAt)) throw new Error('invalid review heartbeat');
+  } else if (record.status === 'completed') {
+    if (record.result === undefined) throw new Error('invalid review result');
+    if (!exactProperties(record, [...common, 'reviewedAt', 'result'])) {
+      throw new Error('invalid completed review record');
+    }
+    if (!isoTimestamp(record.reviewedAt)) throw new Error('invalid review timestamp');
+    validateReviewResult(record.result, record.model);
+  } else {
+    throw new Error('invalid review status');
+  }
+  return { ...record, commentId: comment.id };
+}
+
+export function planInputHash(issue) {
+  const input = {
+    number: validateIssueNumber(issue.number),
+    title: issue.title ?? '',
+    body: issue.body ?? '',
+    labels: (issue.labels ?? [])
+      .map((label) => (typeof label === 'string' ? label : label.name))
+      .filter((label) => !stateNames.has(label))
+      .sort(),
+  };
+  return createHash('sha256').update(JSON.stringify(input)).digest('hex');
+}
+
+export function validatePlan(result, issueNumber) {
+  const number = validateIssueNumber(issueNumber);
+  if (!result || typeof result !== 'object' || Array.isArray(result)) {
+    throw new Error('invalid plan');
+  }
+  if (Object.keys(result).some((key) => !PLANNER_RESULT_SCHEMA.required.includes(key))) {
+    throw new Error('invalid plan properties');
+  }
+  if (!['planned', 'blocked'].includes(result.outcome)) throw new Error('invalid plan outcome');
+  if (!WORKER_MODELS.includes(result.workerModel)) throw new Error('invalid worker model');
+  if (
+    !Array.isArray(result.plannedPaths) ||
+    result.plannedPaths.some((path) => typeof path !== 'string') ||
+    new Set(result.plannedPaths).size !== result.plannedPaths.length
+  ) {
+    throw new Error('invalid planned paths');
+  }
+  const plannedPaths = result.plannedPaths.map(normalizeSafePath);
+  if (new Set(plannedPaths).size !== plannedPaths.length) throw new Error('invalid planned paths');
+  if (
+    !Array.isArray(result.dependencies) ||
+    result.dependencies.some((dependency) => !Number.isSafeInteger(dependency) || dependency < 1) ||
+    new Set(result.dependencies).size !== result.dependencies.length
+  ) {
+    throw new Error('invalid plan dependencies');
+  }
+  if (result.dependencies.includes(number)) throw new Error('plan cannot depend on itself');
+  if (typeof result.exclusive !== 'boolean') throw new Error('invalid plan exclusivity');
+  if (
+    typeof result.reason !== 'string' ||
+    Array.from(result.reason).length < 1 ||
+    Array.from(result.reason).length > 500
+  ) {
+    throw new Error('invalid plan reason');
+  }
+  return {
+    outcome: result.outcome,
+    workerModel: result.workerModel,
+    plannedPaths,
+    dependencies: result.dependencies,
+    exclusive: plannedPaths.length === 0 ? true : result.exclusive,
+    reason: result.reason,
+  };
+}
+
+const PLAN_COMMENT_MARKER = '<!-- ai-factory-plan:v1 -->';
+
+export function renderPlanComment(record) {
+  return `${PLAN_COMMENT_MARKER}\n\`\`\`json\n${JSON.stringify(record)}\n\`\`\`\n`;
+}
+
+export function parsePlanComment(comment, { issue, viewer }) {
+  if (comment?.user?.login !== viewer) throw new Error('plan comment author mismatch');
+  if (!comment.body?.startsWith(`${PLAN_COMMENT_MARKER}\n`)) {
+    throw new Error('invalid plan comment marker');
+  }
+  const match = comment.body.match(/^<!-- ai-factory-plan:v1 -->\n```json\n([^\n]+)\n```\n?$/);
+  if (!match) throw new Error('invalid plan comment body');
+  let record;
+  try {
+    record = JSON.parse(match[1]);
+  } catch {
+    throw new Error('invalid plan comment JSON');
+  }
+  if (!record || typeof record !== 'object' || Array.isArray(record)) {
+    throw new Error('invalid plan comment record');
+  }
+  if (record.issue !== issue.number) throw new Error('plan issue mismatch');
+  if (record.model !== PLANNER_MODEL) throw new Error('invalid planner model');
+  if (
+    typeof record.plannedAt !== 'string' ||
+    Number.isNaN(Date.parse(record.plannedAt)) ||
+    new Date(record.plannedAt).toISOString() !== record.plannedAt
+  ) {
+    throw new Error('invalid plan timestamp');
+  }
+  if (record.inputHash !== planInputHash(issue)) throw new Error('plan input hash mismatch');
+  return {
+    ...record,
+    plan: validatePlan(record.plan, issue.number),
+    commentId: comment.id,
+  };
+}
+
+export function plansConflict(left, right) {
+  const leftPaths = left.map(normalizeSafePath);
+  const rightPaths = right.map(normalizeSafePath);
+  if (leftPaths.length === 0 || rightPaths.length === 0) return true;
+  return leftPaths.some((leftPath) =>
+    rightPaths.some(
+      (rightPath) =>
+        leftPath === rightPath ||
+        leftPath.startsWith(`${rightPath}/`) ||
+        rightPath.startsWith(`${leftPath}/`),
+    ),
+  );
+}
+
+export function selectRunnablePlans(candidates, active, limit) {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 3) {
+    throw new Error('runner limit must be between 1 and 3');
+  }
+  const activePlans = active.map((entry) => entry.plan ?? entry);
+  const selected = [];
+  for (const candidate of [...candidates].sort(
+    (left, right) =>
+      validateIssueNumber(left.issue.number) - validateIssueNumber(right.issue.number),
+  )) {
+    if (selected.length === limit) break;
+    const plan = candidate.plan;
+    const plans = [...activePlans, ...selected.map((entry) => entry.plan)];
+    const exclusive = plan.exclusive || plan.plannedPaths.length === 0;
     if (
-      name === '.env' ||
-      name === '.env.local' ||
-      name === 'kubeconfig' ||
-      name?.endsWith('.key') ||
-      name?.endsWith('.pem') ||
-      normalized === 'k8s/secret.enc.yaml' ||
-      normalized === '.codex/auth.json' ||
-      name === 'biome.json' ||
-      name === '.oxlintrc.json' ||
-      name?.startsWith('eslint.config.')
+      exclusive
+        ? plans.length === 0
+        : !plans.some(
+            (other) => other.exclusive || plansConflict(plan.plannedPaths, other.plannedPaths),
+          )
     ) {
-      throw new Error('protected changed path');
+      selected.push(candidate);
     }
   }
-  return paths;
+  return selected;
+}
+
+export function changesWithinPlan(changedPaths, plannedPaths) {
+  const changes = changedPaths.map(normalizeSafePath);
+  const planned = plannedPaths.map(normalizeSafePath);
+  if (planned.length === 0) return true;
+  return changes.every((change) =>
+    planned.some((path) => change === path || change.startsWith(`${path}/`)),
+  );
 }
 
 const COMMIT_EMOJI = Object.freeze({
@@ -132,8 +551,9 @@ export function buildCommitMessage(result, issue) {
   }
   const prefix = `${emoji} ${result.commitType}: `;
   const suffix = ` #${number}`;
+  const summary = result.summary.replaceAll('#', '＃');
   const budget = 100 - [...prefix, ...suffix].length;
-  return `${prefix}${[...result.summary].slice(0, budget).join('')}${suffix}`;
+  return `${prefix}${[...summary].slice(0, budget).join('')}${suffix}`;
 }
 
 const RUN_COMMENT_MARKER = '<!-- ai-factory-run:v1 -->';
@@ -143,6 +563,7 @@ export function renderRunComment(record) {
 }
 
 export function parseRunComment(comment, { issue, viewer }) {
+  if (!comment) throw new Error('run comment is missing');
   if (comment?.user?.login !== viewer) throw new Error('run comment author mismatch');
   if (!comment.body?.startsWith(`${RUN_COMMENT_MARKER}\n`)) {
     throw new Error('invalid run comment marker');
@@ -160,9 +581,14 @@ export function parseRunComment(comment, { issue, viewer }) {
     record.issue !== issue ||
     record.branch !== identity.branch ||
     record.worktreeId !== identity.worktreeId ||
-    record.model !== 'gpt-5.6-terra'
+    !WORKER_MODELS.includes(record.model)
   ) {
     throw new Error('run identity mismatch');
+  }
+  if (record.planHash === undefined) {
+    if (record.model !== 'gpt-5.6-terra') throw new Error('invalid run plan hash');
+  } else if (typeof record.planHash !== 'string' || !/^[0-9a-f]{64}$/.test(record.planHash)) {
+    throw new Error('invalid run plan hash');
   }
   if (!Number.isInteger(record.attempt) || record.attempt < 1 || record.attempt > 3) {
     throw new Error('invalid run attempt');
@@ -246,7 +672,7 @@ export function buildPrBody(issue, changedFiles) {
   const files = changedFiles.map((file) => `- \`${file.replaceAll('`', '\\`')}\``).join('\n');
   return `## Summary
 
-Automated implementation for Issue #${issue.number} by the single Terra runner.
+Automated implementation for Issue #${issue.number} by a single worker.
 
 ## Changed files
 

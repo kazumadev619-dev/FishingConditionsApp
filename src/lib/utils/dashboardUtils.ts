@@ -3,6 +3,7 @@
  */
 
 import type { ScoreRank } from '@/types/scoring';
+import { JAPAN_TIME_ZONE } from './dateUtils';
 
 export { getScoreRank } from './scoreRank';
 
@@ -38,7 +39,18 @@ export function getRankLabel(rank: ScoreRank): string {
  * 時刻をフォーマット (HH:mm)
  */
 export function formatTime(date: Date): string {
-  return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString('ja-JP', {
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: JAPAN_TIME_ZONE,
+  });
+}
+
+/**
+ * 日時をフォーマット (YYYY/M/D H:mm:ss)
+ */
+export function formatDateTime(date: Date): string {
+  return date.toLocaleString('ja-JP', { timeZone: JAPAN_TIME_ZONE });
 }
 
 export { formatDisplayDate as formatDate } from './dateUtils';
@@ -79,12 +91,11 @@ export interface TideEventDisplay {
 }
 
 export function formatTideEvent(timeStr: string, cm: number): TideEventDisplay {
+  // timeStr は既に日本時刻の HH:mm。Date を経由すると実行環境のタイムゾーンで解釈されるので、文字列のまま揃える
   const [hours, minutes] = timeStr.split(':');
-  const timeDate = new Date();
-  timeDate.setHours(parseInt(hours, 10), parseInt(minutes, 10));
 
   return {
-    time: formatTime(timeDate),
+    time: `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`,
     height: `${(cm / 100).toFixed(1)}m`,
   };
 }

@@ -5,7 +5,15 @@
 
 import type { DailyTide, TideApiResponse, TideEvent } from '@/types/tide';
 import { tide736Client } from './apiClient';
-import { CACHE_PREFIX, CACHE_TTL, generateCacheKey, reviveDate, withCache } from './cache';
+import {
+  CACHE_PREFIX,
+  CACHE_TTL,
+  type CacheResponse,
+  fetchWithOptionalCache,
+  generateCacheKey,
+  type Jsonified,
+  reviveDate,
+} from './cache';
 
 // Re-export types for external use
 export type { DailyTide, TideEvent };
@@ -23,11 +31,7 @@ export interface TideOptions {
 /**
  * 潮汐サービスのレスポンス型
  */
-export interface TideResponse<T> {
-  data: T;
-  fromCache: boolean;
-  fetchedAt: string;
-}
+export interface TideResponse<T> extends CacheResponse<T> {}
 
 /**
  * アプリケーション用に整形された潮汐データ
@@ -74,7 +78,7 @@ function formatTideData(raw: TideApiResponse): FormattedTideData {
  * FormattedTideData.dataTime は Date 宣言だが、キャッシュは JSON で往復するため
  * 復元しないと文字列のまま返り、型が実態と食い違う。
  */
-function reviveTideDates(data: FormattedTideData): FormattedTideData {
+function reviveTideDates(data: Jsonified<FormattedTideData>): FormattedTideData {
   return {
     ...data,
     dataTime: reviveDate(data.dataTime, 'dataTime'),
@@ -127,22 +131,7 @@ export async function getTideData(
     return formatTideData(rawData);
   };
 
-  if (skipCache) {
-    const data = await fetchTide();
-    return {
-      data,
-      fromCache: false,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  const { data, fromCache } = await withCache(cacheKey, CACHE_TTL.TIDE, fetchTide, reviveTideDates);
-
-  return {
-    data,
-    fromCache,
-    fetchedAt: new Date().toISOString(),
-  };
+  return fetchWithOptionalCache(cacheKey, CACHE_TTL.TIDE, skipCache, fetchTide, reviveTideDates);
 }
 
 /**

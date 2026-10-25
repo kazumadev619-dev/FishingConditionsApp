@@ -1,6 +1,8 @@
 # AI開発Watcher運用ガイド
 
-GitHub Issueをキューとして、単一のTerra runnerが`develop`向けPRを作るPhase 1の運用手順。
+GitHub Issueをキューとして、Solが計画し、Luna/TerraがIssueごとのworktreeで`develop`向けPRを作り、CI成功後にSol/Astraが最終レビューする運用手順。
+
+現在の実装仕様は [AI開発ファクトリー現行仕様](../reference/ai-development-factory.md) を参照する。このガイドは操作手順だけを扱う。
 
 ## 前提確認
 
@@ -13,7 +15,7 @@ node -e "const names=['OPENAI_API_KEY','CODEX_API_KEY'].filter((name)=>Object.ha
 ```
 
 - Node.js 24を使う。
-- Codex CLI 0.155.1以上を使い、ChatGPTでログインする。
+- Codex CLI 0.159.3以上を使い、ChatGPTでログインする。
 - `OPENAI_API_KEY`と`CODEX_API_KEY`は設定しない。存在するとWatcherは停止する。
 - `gh`は対象リポジトリを読み書きできるアカウントで認証する。
 
@@ -34,7 +36,7 @@ gh label list --limit 200 | rg '^(agent:|human:approval|done)'
 npm run factory:dry-run
 ```
 
-出力で対象Issue、利用枠の残量、`gpt-5.6-terra`、`codex/issue-<N>`、`issue-<N>`、次状態`agent:running`を確認する。dry-runはIssue、ラベル、branch、worktree、PR、Codex turnを変更しない。
+出力で対象Issue、利用枠の残量、`codex/issue-<N>`、`issue-<N>`、次状態`agent:running`を確認する。`reason: "planning-required"`は有効な計画キャッシュがないことを示し、計画済みなら選択されたLuna/Terraモデルと計画が表示される。dry-runはSolもworkerも起動せず、Issue、ラベル、branch、worktree、PRを変更しない。
 
 実行が承認された場合だけ1回動かす。
 
@@ -42,7 +44,7 @@ npm run factory:dry-run
 npm run factory:once
 ```
 
-成功時は`agent:ready`から`agent:running`、`agent:review`へ進み、`develop`向けPRを1件作る。Watcherはmergeもdeployも行わない。
+onceは有効な計画cacheがなければSolでread-only計画を行い、最大1つのLuna/Terra workerを実行する。成功時は`agent:ready`から`agent:running`、`agent:review`へ進み、`develop`向けPRを1件作る。計画とworker起動の直前にCodex利用枠を確認し、残量20%以下なら起動しない。既存 `agent:review` のCI監視と最終レビューはdaemon cycleが行う。Watcherは修正、merge、deployを行わない。
 
 ## 常駐運用
 
@@ -52,6 +54,31 @@ npm run factory:status
 launchctl print gui/$(id -u)/com.kazuma-lab.fishing-conditions-ai-factory
 ```
 
+daemonはSol計画を直列に行い、workerは最大3件を並列実行する。最終Reviewerはworker枠と別に最大1件だけ実行する。依存Issueが未完了、計画の対象パスが競合する、PR checkが未開始またはpending、quota残量が20%以下の場合は待機する。空き枠は次のサイクルで補充される。自動テストはIssueやPRを作成しない。
+
+実Issueの手動E2Eは、人が承認してから行う。まず互いに異なるdocsファイルから、実在する軽微な置換を人が1件ずつ選ぶ。架空の誤字を指定しない。各候補は、変更前の文字列が対象ファイルにちょうど1件あることを確認する。
+
+```bash
+TARGET='docs/guides/development.md' # docs/guides/docker.md や docs/README.md と重複させない
+OLD='人が確認した変更前の正確な文字列'
+NEW='変更後の正確な文字列'
+rg -n --fixed-strings "$OLD" "$TARGET"
+rg --count-matches --fixed-strings "$OLD" "$TARGET"
+gh issue create --title 'E2E: docs の軽微な置換' --body "対象: $TARGET
+変更: \`$OLD\` → \`$NEW\`
+確認: 変更前文字列は対象ファイル内で1件"
+```
+
+`rg -n`で対象行を確認し、`rg --count-matches`が`1`を返すこと、Issue本文に対象ファイルと正確な旧→新があることを確認する。同じ手順を最大3回繰り返し、対象ファイルを重複させない。この時点では各Issueに`agent:ready`を付けない。人が開始を判断した時だけ次を実行する。
+
+```bash
+gh issue edit <A> <B> <C> --add-label agent:ready
+launchctl kickstart -k gui/$(id -u)/com.kazuma-lab.fishing-conditions-ai-factory
+npm run factory:status
+```
+
+期待結果は、各Issueが`agent:running`、`agent:review`、またはCIと最終レビュー合格後の`human:approval`になり、同時worker数が3以下、Reviewerが1以下で、対象がdocsの各1ファイルに限られること。検証後は人がIssueとPRをcloseし、状態ラベルを整理する。
+
 停止とアンインストールは固定labelのLaunchAgentだけを対象にする。
 
 ```bash
@@ -60,6 +87,85 @@ node scripts/ai-factory/launchd.mjs uninstall
 
 この操作はworktree、run log、Issue、branch、PRを削除しない。
 
+## Slack通知の設定
+
+SlackテストチャンネルのIncoming Webhookを用意し、そのチャンネルへ通知してよいことを確認してから設定する。URLをチャット、Issue、PR、コマンド引数へ貼らない。Webhookの設定方法は [Slack公式ガイド](https://docs.slack.dev/messaging/sending-messages-using-incoming-webhooks/) を参照する。
+
+次はzshの非表示入力。履歴へURLを残さず、既存の恒久runtimeからinstallする。installは実行元のcheckoutをdaemonの起動先へ設定するため、実装用の一時worktreeから実行しない。
+
+```zsh
+FACTORY_ROOT="$HOME/Library/Application Support/FishingConditionsApp/ai-factory"
+cd "$FACTORY_ROOT/runtime"
+read -rs 'SLACK_WEBHOOK_URL?Slack Incoming Webhook URL: '
+printf '\n'
+export SLACK_WEBHOOK_URL
+npm run factory:install
+unset SLACK_WEBHOOK_URL
+npm run factory:status
+```
+
+`Slack: healthy` と `configured:true` を確認する。URLはmode `0600`のローカル秘密ファイルへ保存され、plist・worker・Reviewerへ渡らない。URL未設定のinstallとuninstallは既存の秘密ファイルを保持する。
+
+通知の表示を確認するには、選択済みの実在するdocs修正Issueを上記手動E2E手順で開始し、開始・PR作成・最終レビュー・承認待ち通知のIssue/PR番号と短いイベントIDを照合する。Webhook設定だけではテストメッセージを送信しない。既存outboxがある場合、設定後のdaemonで順次送信される。
+
+### 通知の障害復旧
+
+`factory:status` の `outboxPending`、`oldestPendingAt`、`lastSuccessAt` を確認する。未設定、不正な秘密ファイル、送信失敗、outbox不正はunhealthyになる。通知が停止してもIssueの状態遷移は継続する。
+
+```bash
+FACTORY_ROOT="$HOME/Library/Application Support/FishingConditionsApp/ai-factory"
+rg -n 'slack-notification-failed' "$FACTORY_ROOT/watcher.jsonl"
+```
+
+分類値は `enqueue-failed`、`identity-failed`、`flush-failed`。ログへURLやHTTP応答本文を出さない。秘密ファイルをcatしたり、workerへコピーしたりしない。
+
+通信失敗はpendingに残り、最大1件/cycle、10秒timeoutでbackoff再送する。通常の再enqueueは送信済みIDで抑止するが、送信成功直後のクラッシュ・応答喪失では重複し得る。重複の確認にはメッセージのイベントIDを使う。復旧通知自身の再送から新しい復旧通知は作らない。
+
+送信済み記録は保持される。outboxを削除すると過去イベントを再送する可能性があるため、稼働中の削除・手編集はしない。unhealthyでoutbox不正が疑われる場合は、Watcherを停止して記録を保全し、人が原因を確認する。
+
+通知設定だけを削除する場合は、Watcherを停止した上で対象の秘密ファイルだけを削除する。
+
+```bash
+rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/slack-webhook-url"
+```
+
+週次レポートの操作は末尾の「全体観測を確認する」を参照する。Slack Botは後続段階である。
+
+## 最終レビューの確認
+
+`agent:review`、対象PR、現在head SHAのcheckをread-onlyで確認する。
+
+```bash
+gh issue list --state open --label agent:review
+ISSUE=<番号>
+BRANCH="codex/issue-$ISSUE"
+gh pr list --state open --head "$BRANCH" --json number,isDraft,baseRefName,headRefName,headRefOid,createdAt,files
+PR=<PR番号>
+gh pr checks "$PR" --json name,workflow,bucket,completedAt
+```
+
+checkが0件ならPRの`createdAt`から30分までは待つ。1件でも`pending`なら待機し、`fail`、`cancel`、`skipping`は `agent:blocked` になる。すべて`pass`の場合だけReviewerが始まる。
+
+Watcher所有のreview証拠とローカル状態を確認する。
+
+```bash
+gh issue view "$ISSUE" --comments --json labels,comments --jq '.comments[] | select(.body | contains("<!-- ai-factory-review:v1 -->")) | .body'
+FACTORY_ROOT="$HOME/Library/Application Support/FishingConditionsApp/ai-factory"
+find "$FACTORY_ROOT/review-runs" -maxdepth 2 -type f -print
+git worktree list --porcelain
+```
+
+新規起動前に `agent:review` と `agent:blocked` の全Issueのrunning証拠を調べる。後続IssueやCI pending、head更新済みでも、生存Reviewerがあれば1枠を予約する。checks取得中のhead更新はblockedにせず新SHAのCI待機になる。blockedのReviewerはPID死亡を確認できれば後続Issueを進める。生存中または記録不正で確認できない場合は、人が確認するまで新規起動を止める。準備のfetch/npm ci失敗はCLI起動と共通の上限で1回再試行し、再失敗で `agent:failed` になる。dirty/SHA不整合は即blockedである。結果保存・後処理などの未処理失敗はWatcherログの `scheduled-reviewer-failed` を確認し、保存されたworktreeを調べる。
+
+running recordでは`model`、`headSha`、`ciFingerprint`、`reviewerPid`、`threadId`、`heartbeatAt`を照合する。現在のidentityに一致するrecordが壊れている場合も二重起動せず `agent:blocked` になる。verification worktreeの依存導入は隔離HOMEでlifecycle scriptを無効化した `npm ci --ignore-scripts` を使う。Reviewer本体はfresh HOMEでも認証できるよう `CODEX_HOME`（未設定時はWatcherホームの `.codex`）を保持する。実行コマンドには固定permission profileでホストroot・共有tmp・認証ディレクトリへのアクセスを拒否し、private HOME・専用worktreeと必要なruntime/Git metadataだけを許可する。ユーザー設定・rulesの権限上書きを無効にし、networkも無効にする。CLIがこのpermission profileに対応していることを運用前に確認する。PIDは値を表示せず引数として使える。
+
+```bash
+REVIEWER_PID=<reviewerPid>
+ps -p "$REVIEWER_PID" -o pid=,command=
+```
+
+completed recordの`approved`は`documentationCurrent=true`の場合だけ有効である。`changes-required`、確認不能、不正なAstra再昇格では `agent:blocked` になる。Watcherは指摘を自動修正せず、mergeもdeployも行わない。
+
 ## 障害復旧
 
 再起動前に状態をread-onlyで確認する。
@@ -67,17 +173,104 @@ node scripts/ai-factory/launchd.mjs uninstall
 ```bash
 gh issue list --state open --label agent:running
 gh issue list --state open --label agent:recovery
+gh issue list --state open --label agent:review
 git worktree list --porcelain
 git branch --list 'codex/issue-*'
 gh pr list --state all --base develop
 ```
 
-Issueの`<!-- ai-factory-run:v1 -->` commentにあるbranch、worktree ID、PID、thread ID、heartbeatを確認してからWatcherを再起動する。Watcherは既存PR、runner、resultの順に照合し、dirty worktreeを削除・resetしない。
+Issue commentを取得するには対象番号を指定する。
 
-`agent:blocked`と`agent:failed`は人が原因とworktreeを確認する。安全に再開できる場合だけ、他の状態ラベルを外して`agent:ready`へ戻す。
+```bash
+ISSUE=<番号>
+gh issue view "$ISSUE" --comments --json number,labels,comments --jq '.comments[] | select(.body | contains("<!-- ai-factory-plan:v1 -->") or contains("<!-- ai-factory-run:v1 -->") or contains("<!-- ai-factory-review:v1 -->") or contains("changed paths are outside the planned paths") or contains("dirty verification worktree preserved")) | .body'
+```
+
+依存待ちは`<!-- ai-factory-plan:v1 -->`の`dependencies`に未closeのIssueがあり、競合待ちは同markerの`plannedPaths`または`exclusive`が稼働中Issueの計画と重なることを確認して、どちらも`agent:ready`に留める。範囲外の変更では`<!-- ai-factory-run:v1 -->`の`planHash`とworktreeを照合し、`changed paths are outside the planned paths`と`agent:blocked`を確認する。worker復旧時は同markerのbranch、worktree ID、PID、thread ID、heartbeat、計画hashを確認し、plan markerの入力hashと一致する場合だけ`agent:recovery`を再開する。Reviewer復旧時はreview markerと現在のPR番号、head SHA、CI fingerprint、model、PID、thread ID、heartbeatを照合する。Watcherは既存PR、runner/reviewer、resultの順に照合し、dirty worktreeを削除・resetしない。
+
+`agent:blocked`と`agent:failed`は人が原因とworktreeを確認する。review修正必須の場合は人が指摘を反映してPR headを更新し、新しいhead SHAのCIを確認する。安全に再開できる場合だけ、他の状態ラベルを外して`agent:ready`へ戻す。
+
+```bash
+gh issue edit "$ISSUE" --remove-label agent:blocked --add-label agent:ready
+```
+
+この操作は自動修正ではない。人が変更内容、dirty worktree、PR head、再実行の安全性を確認した後だけ行う。
 
 worktreeの削除はPRのmergeまたはclose後に、未コミット変更がないことを人が確認してから行う。
 
-## Phase 1の境界
+## 現在の境界
 
-Phase 1には自動merge/deploy、Sol/Astraレビュー、3並列runner、Slack通知、Slack Bot、Jev、API key fallback、API従量課金を含めない。
+現在のWatcherには自動修正、自動merge/deploy、AIによるレポート分析・改善Issue自動作成、Slack Bot、Jev、API key fallback、API従量課金を含めない。
+
+## 全体観測を確認する
+
+```bash
+npm run factory:status
+npm run factory:report
+```
+
+reportは外部書込なしで直近7日を表示する。未導入時の履歴は復元しない。観測が不完全な場合、0件を全期間の実績と判断せず、Watcherログの固定分類`observation-failed`、`observation-wait-failed`、`observation-report-failed`を確認する。未完了は開始しかない記録、不明は対応する開始がない終了などを示す。
+
+statusのrunningIssuesはGitHubのrunning/recovery件数で準備中を含む。workerProcesses/reviewerProcessは所有コメント・PID・コマンド・threadを照合した数である。unknownは不在を意味しない。reviewQueueはagent:reviewの件数で、CI待ちも含む。quotaは直近7日の観測待機時間で、現在残量ではない。lastWeeklySuccessAtはoutboxへsent保存できた最終時刻である。
+
+週次通知はJST月曜09:00以降のcycleで直前週を予約する。Mac停止後は次回cycleで直前週のみを送る。手動予約も同じ対象週・IDを使う。
+
+```bash
+npm run factory:report -- --send
+```
+
+`--send`は直前週を表示してoutboxへ予約するだけで、直接HTTP送信しない。月曜09:00前は予約しない。同じ週の既存snapshotは上書きしないため、予約後に記録が増えても通知は最初の集計を使う。daemon停止中は予約が残り、再開後に送る。outbox/sent記録を削除すると再送抑止が失われるので、観測ログと一緒に削除しない。
+
+観測ファイルはUTC日付で35日保持する。35日前を残し、それより古い通常日別ファイルだけを削除する。CI head変更・再試行・Astra昇格は別計測となる。24時間停滞・同一原因3回以上・未復旧通知障害は人が調べてIssue化する。
+
+`observation-incomplete`は過去の欠落を示すため成功cycleで自動解除しない。原因を直した後も、欠落期間を含む集計は不完全として読む。欠落期間が保持範囲を外れたことを確認してから、人がこの固定markerだけを削除できる。
+
+```bash
+rm -- "$HOME/Library/Application Support/FishingConditionsApp/ai-factory/observation-incomplete"
+```
+
+## 最終手動E2E確認
+
+2026-10-11に [Issue #269](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/269) と [PR #270](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/270) で手動確認した。基点はdevelopの `dea49e9`、PR headは `9e7d401c785de8e21169072f8ae1bc6ce09c9eb1`。対象は `docs/guides/development.md` の一意な見出し `## 開発環境セットアップ` → `## ローカル開発環境セットアップ`。実差分には末尾空行1行の削除もあり、厳密な見出しだけの置換にはならなかった。
+
+**初回実行の結果は未完了（`agent:blocked`）。** 以下は2026-10-11時点の記録であり、修正後の到達結果とPhase 3-05の最終判定は後続の節に記載する。merge/deployは実行していない。PR/Issueはopenで保持し、worker worktreeはcleanを確認したが削除していない。review用worktreeはWatcherのclean後処理で削除済み。検証資産をclose・削除するには、対象と状態を確認して人の承認を得る。
+
+### 確認できた経路
+
+- Sol（`gpt-5.6-sol`）が対象1ファイルの計画を作成し、Luna（`gpt-5.6-luna`）が実装・固定検証・PR作成まで進んだ。
+- [GitHub Actions run 38141415399](https://github.com/kazumadev619-dev/FishingConditionsApp/actions/runs/38141415399) のheadは上記PR headと一致し、CI Summary、Code Quality Check、Build Verification、Kubernetes Manifests、Docker Imagesの5項目が成功した。
+- 同head・CI fingerprint `ce3233bd3a50bf93f869f0af9280131a4feee303781b678718a8587caf7dc2f1` でSolがreviewを開始し、検証不能によりAstra（`gpt-6-astra`）へ1回昇格した。Astraは `changes-required`、`documentationCurrent=false` を返し、安全側に停止した。
+- Slack outboxのsent記録は、開始・PR作成・Sol review開始・Astra review開始が各1件、quota待機1件、停止が異なる原因で2件。同じイベントIDの重複recordはなく、未配送0件・health healthy。Slackチャンネルでの目視確認は未実施。承認待ち通知は状態未到達のため未確認。手動週次予約の重複抑止は未検証。
+- 直近7日reportはstarted 1、pullRequests 1、approvals 0、blocked 2、retry 1、Slack失敗0、Astra昇格1を表示した。観測は正常、未完了・不明0。planning約28秒、worker約68秒、CI待機約75秒、review中央値約123秒・最長約191秒。quota待機は約3時間23分であり、worker実行時間とは分けて読む。
+
+### 再開前に解決すること
+
+1. GitHubの状態更新時に通信切断が発生し、run記録を作る前に処理が止まった。復旧時の `run comment author mismatch` はこの実行では作者不一致ではなく、runコメント不在に対する表示だった。メッセージだけを根拠に認証変更しない。
+2. 手動でblockedからreadyへ戻した直後、GitHubのblockedラベル検索が「実ラベルはready」のIssueを返し、ready検索にはまだ現れない反映遅延を実測した。daemonの復旧走査が再びblockedにしたため、worker不在を確認してdaemonを一時停止し、検索と直接取得のラベル一致を待って再起動すると実働へ進んだ。検索結果と現状態が不一致のIssueを復旧対象にしない対策が必要である。実働workerがある場合にこの手順を無条件で適用しない。
+3. network無効のreviewerで `npm ci` を再実行し、依存コマンドが見つからず検証不能になった。Watcherが導入済みの依存をreviewerが再導入する契約と、OpenSSL設定・OCR/xcrunの権限を再確認する。
+4. reviewer promptにはheadと検証要求があるが、実CIの成功項目・完了時刻・fingerprintを含む証拠が渡されていない。`gh`禁止のreviewerが同headのCIを照合できる、非秘密・固定形式の証拠を渡す必要がある。
+5. 対象ガイドの既存バージョン表はpackage.jsonと不一致だった。今回の許可範囲外のため変更しなかったが、恒久文書が最新という判定は成立しなかった。実在する文書修正とreview契約の修正後に、改めて承認されたE2Eで `human:approval` と各通知を確認する。
+
+### 阻害要因の修正検証
+
+同日の隔離検証で、導入済み依存を再利用するreview契約、同headの固定CI証拠、検索結果の状態照合、run記録不在の表示を修正した。Reviewerと同じnetwork無効・root/共有tmp denyのsandboxでNode、Git、OCR delegate preview、check-code (19ファイル395テスト) が成功した。OpenSSLの単一設定ファイル読取りと固定CommandLineTools/Git設定で動作し、共有cacheの書込み権限は追加していない。依存そのものは更新せず、開発ガイドをpackage.jsonの範囲とlockfileの実版に照合した。変異テストは不具合を戻す6件をすべて検知し、無害なコメント変更1件は通過した。既存npm ciのhigh 11件・deprecated警告は依存差分なしの既知事項として保持する。
+
+この検証はIssue #269の再実行ではない。developへのマージと恒久runtimeへの反映は承認待ちで、既存PRの `human:approval`、Slack目視、手動週次予約の確認は引き続き未完了。末尾空行削除は固定検証・commit hookの対象外で、原因は特定できていない。
+
+### 2026-10-12の再確認
+
+人の承認後、修正 [PR #271](https://github.com/kazumadev619-dev/FishingConditionsApp/pull/271) をdevelopへマージし、恒久runtimeを統合commit `2d80ede` へfast-forwardして再起動した。既存PR #270へdevelopを取り込み、末尾空行をdevelopと一致させた。再review時点のdiffは承認済み見出し1行だけで、headは `d551311992a2d7f77c64b0ca646dffb55ecc238e`。実装済みのためworkerを重複起動せず、既存Issueをreviewキューへ戻した。
+
+[CI run 38207089528](https://github.com/kazumadev619-dev/FishingConditionsApp/actions/runs/38207089528) は同headで5項目すべて成功した。Solは受領CI証拠のfingerprint `b4fa46c18c36d3c0831252552e9d3cbae2288932d666981ea7211714e1196fa0` を再計算して照合し、`approved` / `documentationCurrent=true` を返した。WatcherがIssue #269を `human:approval` へ自動遷移した。今回のAstra昇格はない。
+
+実Reviewerではlint・format・型検査・391テストが成功した一方、FIFO作成4テスト、buildのport bind、OCR previewのxcrun一時cacheにsandbox制約が残った。Solはこれらを確認不能事項として報告し、同headの実CI成功と内容検証に基づいて承認した。隔離probeと独立pr-verifierでのcheck-code395件成功を、実Reviewerで全件成功した証拠へ読み替えない。
+
+新headのSlack配送記録はreview開始 `f0a11c81133f` と承認待ち `645401e3fb76` が各1件sent。pending 0、health healthy、worker/reviewer 0、観測の未完了・不明0。直近reportのapprovalsは1件となった。この再確認時点ではSlack目視と手動週次予約の検証が残っていた。後続の最終確認で両項目を完了した。
+
+### 2026-10-12の最終確認
+
+人がSlackチャンネルのreview開始・承認待ち通知を目視確認した。[Issue #269の確認記録](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/269#issuecomment-6118336843) と合わせ、Watcherによる `human:approval` 到達と通知配送・目視を確認済みとする。
+
+人の明示承認後、15:00 JSTに恒久runtimeで `factory:report -- --send` 相当のCLIエントリポイントを1回実行した。対象は2026-10-05週（10月5日00:00〜12日00:00 JST）。送信済みID `46bd66dd9b4fb62831ed89e0cac131bd8478ccd2bf3df6a74e2c83ef12b7edfb` を保持し、出力は `週次通知: 予約済みIDを保持`。既存outbox recordは実行前後でバイト単位に一致し、status `sent`、sentAt `2026-10-12T01:18:36.131Z`（10:18 JST）、attempts 0が不変だった。同週の新規予約・再送は発生していない。sent記録・観測ログは削除していない。
+
+これによりPhase 3-05の手動E2E・Slack目視・同週手動予約の重複抑止検証は完了した。PR #270は外部操作でdevelopへマージ済み（統合commit `927e8f1`、14:27 JST）と読み取り確認した。Issue #269はOPEN / `human:approval`、検証worktreeは保持している。この最終検証ではmerge・cleanup・main昇格・deployを行っていない。恒久runtimeは承認済み `2d80ede` のままで、以降のdevelop差分は見出しと検証記録のみのため、この検証にruntime更新は不要である。Issue #260 / #265 / #267はmain昇格まで閉じない。

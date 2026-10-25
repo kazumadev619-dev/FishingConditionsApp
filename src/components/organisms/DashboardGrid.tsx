@@ -17,6 +17,7 @@ import {
 } from '@/constants/animations';
 import { DASHBOARD_LABELS } from '@/constants/labels';
 import { useDashboardFavorite } from '@/hooks/useDashboardFavorite';
+import { formatDateTime } from '@/lib/utils/dashboardUtils';
 import type { DashboardData } from '@/types/dashboard';
 
 interface DashboardGridProps {
@@ -59,7 +60,7 @@ export function DashboardGrid({ data, location }: DashboardGridProps) {
           />
         </div>
         <p className="text-sm text-muted-foreground">
-          {DASHBOARD_LABELS.LAST_UPDATED} {data.fishingScore.calculatedAt.toLocaleString('ja-JP')}
+          {DASHBOARD_LABELS.LAST_UPDATED} {formatDateTime(data.fishingScore.calculatedAt)}
         </p>
       </motion.div>
 

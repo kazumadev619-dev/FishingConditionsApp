@@ -8,6 +8,9 @@ import { promisify } from 'node:util';
 
 export const LABEL = 'com.kazuma-lab.fishing-conditions-ai-factory';
 
+import { saveSlackWebhook, slackHealth } from './slack.mjs';
+import { readFactoryEvents, aggregateFactoryReport, inspectFactoryProcesses } from './report.mjs';
+
 const execFileAsync = promisify(execFile);
 const repoRoot = fileURLToPath(new URL('../..', import.meta.url));
 
@@ -28,12 +31,9 @@ export function renderPlist({ nodePath, watcherPath, workingDirectory, path }) {
   if (![nodePath, watcherPath, workingDirectory].every(isAbsolute) || !path) {
     throw new Error('launchd paths must be absolute');
   }
-  const [node, watcher, cwd, executablePath] = [
-    nodePath,
-    watcherPath,
-    workingDirectory,
-    path,
-  ].map(escapeXml);
+  const [node, watcher, cwd, executablePath] = [nodePath, watcherPath, workingDirectory, path].map(
+    escapeXml,
+  );
   return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -56,6 +56,13 @@ function defaults() {
     workingDirectory: repoRoot,
     path: process.env.PATH,
     plistPath,
+    stateRoot: join(
+      homedir(),
+      'Library',
+      'Application Support',
+      'FishingConditionsApp',
+      'ai-factory',
+    ),
     uid: process.getuid(),
   };
 }
@@ -69,6 +76,7 @@ async function bootout(uid, commandAdapter) {
 export async function install(options = {}) {
   const values = { ...defaults(), ...options };
   const commandAdapter = options.command ?? command;
+  await saveSlackWebhook(options.slackWebhookUrl, { stateRoot: values.stateRoot });
   const temporaryPath = `${values.plistPath}.tmp-${process.pid}`;
   await mkdir(dirname(values.plistPath), { recursive: true });
   await writeFile(
@@ -86,7 +94,6 @@ export async function install(options = {}) {
     await bootout(values.uid, commandAdapter);
     await rename(temporaryPath, values.plistPath);
     await commandAdapter('launchctl', ['bootstrap', `gui/${values.uid}`, values.plistPath]);
-    await commandAdapter('launchctl', ['kickstart', '-k', `gui/${values.uid}/${LABEL}`]);
   } catch (error) {
     await unlink(temporaryPath).catch((cleanupError) => {
       if (cleanupError?.code !== 'ENOENT') {
@@ -109,7 +116,77 @@ export async function uninstall(options = {}) {
 
 export async function status(options = {}) {
   const values = { ...defaults(), ...options };
-  return (options.command ?? command)('launchctl', ['print', `gui/${values.uid}/${LABEL}`]);
+  const adapter = options.command ?? command;
+  let launchd;
+  try {
+    const result = await adapter('launchctl', ['print', `gui/${values.uid}/${LABEL}`]);
+    launchd =
+      result.stdout.match(/(?:^|\n)\s*state = (running|waiting|exited)\b/)?.[1] ??
+      (result.stdout === 'daemon running' ? 'running' : 'unknown');
+  } catch {
+    launchd = 'unavailable';
+  }
+  let queues = {
+    health: 'unavailable',
+    runningIssues: null,
+    reviewQueue: null,
+    workerProcesses: 'unknown',
+    reviewerProcess: 'unknown',
+  };
+  try {
+    const result = await adapter('gh', [
+      'issue',
+      'list',
+      '--state',
+      'open',
+      '--limit',
+      '1000',
+      '--json',
+      'number,labels',
+    ]);
+    const issues = JSON.parse(result.stdout);
+    if (
+      !Array.isArray(issues) ||
+      issues.length >= 1000 ||
+      issues.some(
+        (issue) =>
+          !Number.isSafeInteger(issue.number) ||
+          issue.number < 1 ||
+          !Array.isArray(issue.labels) ||
+          issue.labels.some((label) => typeof label.name !== 'string'),
+      )
+    )
+      throw new Error('invalid queue');
+    queues = {
+      ...queues,
+      health: 'available',
+      runningIssues: issues.filter((issue) =>
+        issue.labels.some(
+          (label) => label.name === 'agent:running' || label.name === 'agent:recovery',
+        ),
+      ).length,
+      reviewQueue: issues.filter((issue) =>
+        issue.labels.some((label) => label.name === 'agent:review'),
+      ).length,
+    };
+    queues = {
+      ...queues,
+      ...(await inspectFactoryProcesses(issues, { stateRoot: values.stateRoot, command: adapter })),
+    };
+  } catch {
+    queues.health = 'unavailable';
+  }
+  const slack = await slackHealth({ stateRoot: values.stateRoot });
+  const events = await readFactoryEvents({ stateRoot: values.stateRoot });
+  const now = options.now ?? new Date();
+  const report = aggregateFactoryReport(events.events, {
+    from: new Date(now.getTime() - 7 * 86400000).toISOString(),
+    to: now.toISOString(),
+    incomplete: events.incomplete,
+  });
+  return {
+    stdout: `LaunchAgent: ${launchd === 'running' ? 'daemon running' : launchd}\nQueues: ${JSON.stringify(queues)}\nQuota: ${events.incomplete ? 'unknown' : (report.waitDurations.quota ?? 0) + 'ms observed / live unknown'}\nSlack: ${slack.health} ${JSON.stringify(slack)}\nObservations: ${report.incomplete ? 'incomplete' : 'available'} / unfinished ${report.unfinished}\n`,
+  };
 }
 
 async function main() {
@@ -117,7 +194,7 @@ async function main() {
   if (action === 'print') {
     process.stdout.write(renderPlist(defaults()));
   } else if (action === 'install') {
-    process.stdout.write(`${await install()}\n`);
+    process.stdout.write(`${await install({ slackWebhookUrl: process.env.SLACK_WEBHOOK_URL })}\n`);
   } else if (action === 'uninstall') {
     await uninstall();
   } else if (action === 'status') {

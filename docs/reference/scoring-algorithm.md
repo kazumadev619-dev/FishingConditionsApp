@@ -8,6 +8,16 @@
 総合スコア (0-100) = 潮汐スコア (40) + 天気スコア (35) + 時間帯スコア (25)
 ```
 
+### 基準時刻
+
+潮汐タイミングと時間帯のスコアは、どの時刻で計算するかで変わる（#301）。
+
+| 呼び出し元 | 基準時刻 |
+|---|---|
+| 画面（`/`、`/dashboard`） | 現在時刻 |
+| `/api/scores`（`date` 省略、または今日の日付） | 現在時刻。キャッシュキーは JST の30分単位の枠（`slot:HH:mm`）で切る |
+| `/api/scores`（今日以外の日付） | その日の代表値として JST 9:00。キーは日付だけ |
+
 ---
 
 ## 🌊 潮汐スコア (0-40点)
@@ -34,10 +44,11 @@ calculateTideScore(tide: TideData, currentTime: Date): number {
 
 ### 潮汐タイミング評価
 
+時刻と日付はすべて日本時間（`Asia/Tokyo`）で扱う。潮汐データ（tide736）の日付と `HH:mm` は JST なので、実行環境のタイムゾーン（本番のコンテナは UTC）で `getHours()` や `toISOString()` を使うと、時刻がずれたり JST の 0〜9 時に前日の潮汐を引いたりする（#296）。`src/lib/utils/dateUtils.ts` の `getJapanDateTimeParts` / `formatDateInJapan` を使う。
+
 ```typescript
 private calculateTideTimingScore(tide: TideData, currentTime: Date): number {
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
+  const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
   const currentTotalMinutes = currentHour * 60 + currentMinutes;
   let maxScore = 0;
 
@@ -162,13 +173,15 @@ private calculatePressureScore(pressure: number): number {
 
 ```typescript
 calculateTimeScore(weatherData: FormattedWeatherData, currentTime: Date): number {
-  const currentHour = currentTime.getHours();
-  const currentMinutes = currentTime.getMinutes();
+  // 時・分は潮汐と同じく日本時間で取る（getHours() は実行環境のタイムゾーンになる）
+  const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
   const currentTotalMinutes = currentHour * 60 + currentMinutes;
 
   // 日の出・日の入り時刻を分単位で取得
-  const sunriseTotalMinutes = weatherData.sunrise.getHours() * 60 + weatherData.sunrise.getMinutes();
-  const sunsetTotalMinutes = weatherData.sunset.getHours() * 60 + weatherData.sunset.getMinutes();
+  const sunrise = getJapanDateTimeParts(weatherData.sunrise);
+  const sunset = getJapanDateTimeParts(weatherData.sunset);
+  const sunriseTotalMinutes = sunrise.hours * 60 + sunrise.minutes;
+  const sunsetTotalMinutes = sunset.hours * 60 + sunset.minutes;
 
   // 日の出・日の入りからの最短時間を計算（分単位）
   const diffFromSunrise = Math.abs(currentTotalMinutes - sunriseTotalMinutes);
