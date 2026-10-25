@@ -4,7 +4,7 @@
 
 ### 必要な環境
 
-- **Node.js**: 24.x (CI/Docker)
+- **Node.js**: 26.x (CI/Docker)
 - **TypeScript**: 6.0.3 (type-check: 7.0.2)
 
 ### 技術スタック詳細バージョン

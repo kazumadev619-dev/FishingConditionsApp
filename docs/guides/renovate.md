@@ -11,7 +11,7 @@
 | ワークフローで固定しているツール（kustomize / sops / yq / kubeconform / actionlint） | `customManagers`。`*_VERSION:` の直前の `# renovate:` コメントで取得元を指定する |
 | `docker/Dockerfile` のベースイメージ、`docker/docker-compose.yml` のイメージ | dockerfile / docker-compose manager |
 
-`ci.yml` の `node-version: [24.x]`（matrix）は対象外。Node 26（#241）を承認すると上がるのは Dockerfile だけなので、CI の matrix は同じ PR で手で揃える。
+`ci.yml` の `node-version: [26.x]`（matrix）は対象外。Renovate が Dockerfile のベースイメージを上げても CI の matrix は動かないので、Node のメジャーを上げるときは同じ PR で手で揃える。
 
 `k8s/` のイメージは自前の GHCR イメージだけで、タグは CI が差し込む（`newTag: latest` はプレースホルダ）ので Renovate の対象外になる。
 
