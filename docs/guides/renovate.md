@@ -11,7 +11,7 @@
 | ワークフローで固定しているツール（kustomize / sops / yq / kubeconform / actionlint） | `customManagers`。`*_VERSION:` の直前の `# renovate:` コメントで取得元を指定する |
 | `docker/Dockerfile` のベースイメージ、`docker/docker-compose.yml` のイメージ | dockerfile / docker-compose manager |
 
-`ci.yml` の `node-version: [24.x]`（matrix）は対象外。Node 26（#241）を承認すると上がるのは Dockerfile だけなので、CI の matrix は同じ PR で手で揃える。
+`ci.yml` の `node-version: [26.x]`（matrix）は対象外。Renovate が Dockerfile のベースイメージを上げても CI の matrix は動かないので、Node のメジャーを上げるときは同じ PR で手で揃える。
 
 `k8s/` のイメージは自前の GHCR イメージだけで、タグは CI が差し込む（`newTag: latest` はプレースホルダ）ので Renovate の対象外になる。
 
@@ -28,8 +28,9 @@ FOO_VERSION: v1.2.3
 
 - 週1回（月曜の4時前、Asia/Tokyo）。公開から3日経っていない版は出さない
 - パッチとマイナーは `all non-major dependencies` の1本にまとまる
-- メジャーとパッケージの置き換えは、**Dependency Dashboard の issue でチェックを入れたものだけ** PR になる。Node 26（#241）や TypeScript 7 のように保留しているものは、チェックを入れなければ PR は作られない
+- メジャーとパッケージの置き換えは、**Dependency Dashboard の issue でチェックを入れたものだけ** PR になる。TypeScript 7 のように保留しているものは、チェックを入れなければ PR は作られない
 - 脆弱性の修正は OSV のデータで検知し、スケジュールを待たずに PR になる（リポジトリの Dependabot alerts は無効のため）
+- Dockerfile の Node は `node:26.12.1-alpine` のように版まで固定している。Node のセキュリティリリースは、月曜の実行と3日の待ちを経て Renovate の PR になる（OSV の即時 PR が Node 本体のベースイメージに効くかは確かめていない）。急ぐときは Dockerfile の4か所を手で上げる
 - 同時に開く PR は5本まで。ベースは `develop`
 - コミットと PR タイトルは `⬆️ package: Update ...` の形になる（commitlint の規則に合わせてある）
 

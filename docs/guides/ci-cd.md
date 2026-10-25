@@ -37,7 +37,7 @@ PR作成/push → GitHub Actions CI起動
 
 **実行環境:**
 - OS: `ubuntu-26.04`（`ubuntu-latest` にはしない。Docker Images ジョブは `ubuntu-26.04-arm`）
-- Node.js: `24.x` (最新LTS)
+- Node.js: `26.x`
 - タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分
 
 #### ジョブ1: Code Quality Check
