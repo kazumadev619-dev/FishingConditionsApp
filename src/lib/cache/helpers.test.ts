@@ -45,6 +45,18 @@ describe('revive の型による強制', () => {
     expectTypeOf(call).toBeFunction();
   });
 
+  it('undefined を返す fetcher はキャッシュできない（JSON にならず毎回ミスする）', () => {
+    const fetchUndefined = async () => undefined;
+    const calls = [
+      // @ts-expect-error undefined は Cacheable ではない
+      () => withCache('test:key', 60, fetchUndefined),
+      // @ts-expect-error undefined は Cacheable ではない
+      () => fetchWithOptionalCache('test:key', 60, false, fetchUndefined),
+    ];
+
+    expectTypeOf(calls).toBeArray();
+  });
+
   it('JSON 往復で型が変わらない値は revive を省ける', () => {
     const call = () =>
       fetchWithOptionalCache('test:key', 60, false, async () => ({ name: 'a', tags: ['b'] }));

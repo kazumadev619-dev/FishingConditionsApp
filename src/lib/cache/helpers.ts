@@ -1,8 +1,8 @@
 import { logger } from '../logger';
 import { cache } from './client';
-import type { Jsonified } from './types';
+import type { Cacheable, Jsonified } from './types';
 
-export type { Jsonified } from './types';
+export type { Cacheable, Jsonified } from './types';
 
 type CacheReviver<T> = (cached: Jsonified<T>) => T;
 type ReviverArgument<T> =
@@ -64,7 +64,7 @@ export function reviveDate(value: unknown, field: string): Date {
  * 書き間違いは型エラーになる（以前は「キャッシュヒットしたときだけ
  * `getHours is not a function`」という実行時エラーになっていた）。
  */
-export async function withCache<T>(
+export async function withCache<T extends Cacheable>(
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<T>,
@@ -93,7 +93,7 @@ export async function withCache<T>(
 /**
  * skipCache 時はキャッシュを一切使わず、通常時はキャッシュ経由で取得する。
  */
-export async function fetchWithOptionalCache<T>(
+export async function fetchWithOptionalCache<T extends Cacheable>(
   cacheKey: string,
   ttl: number,
   skipCache: boolean,

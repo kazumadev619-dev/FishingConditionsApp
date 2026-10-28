@@ -1,4 +1,4 @@
-import { generateCacheKey, withCache } from '../cache';
+import { type Cacheable, generateCacheKey, withCache } from '../cache';
 import { logger } from '../logger';
 import { createApiError, parseErrorResponse } from './errorHandler';
 import { getBackoffDelay, isRetryable } from './retryStrategy';
@@ -36,7 +36,7 @@ class ApiClient {
     return this.isConfigured;
   }
 
-  private async request<T>(
+  private async request<T extends Cacheable>(
     endpoint: string,
     options: RequestOptions = {},
     attempt: number = 0,
@@ -182,11 +182,11 @@ class ApiClient {
     }
   }
 
-  public get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+  public get<T extends Cacheable>(endpoint: string, options?: RequestOptions): Promise<T> {
     return this.request<T>(endpoint, { ...options, method: 'GET' });
   }
 
-  public post<T>(
+  public post<T extends Cacheable>(
     endpoint: string,
     data: Record<string, unknown> | unknown[],
     options?: RequestOptions,

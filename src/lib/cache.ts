@@ -3,6 +3,7 @@
 export { cache } from './cache/client';
 export { CACHE_PREFIX, CACHE_TTL } from './cache/config';
 export {
+  type Cacheable,
   type CacheResponse,
   fetchWithOptionalCache,
   generateCacheKey,
