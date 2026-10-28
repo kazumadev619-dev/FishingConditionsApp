@@ -153,25 +153,75 @@ Secret を扱えず、暗号文のまま Secret を上書きして全 Pod を起
 `kustomization.yaml` の `configMapGenerator` に `disableNameSuffixHash` を
 **付けないこと。** 付けると固定名に戻り、この仕組みが死ぬ。
 
+#### `config.env` は dotenv ではない
+
+`configMapGenerator` の `envs:` は、各行を最初の `=` で切って左右を**ほぼそのまま**
+キーと値にする。dotenv や シェルの感覚で書くと、値が静かに変わる。
+kustomize v5.8.1（CI の固定版）と v5.8.3 で実測した結果:
+
+| `config.env` の行 | ConfigMap の値 | 備考 |
+|---|---|---|
+| `A=b` | `b` | これだけを使う |
+| `A="b"` / `A='b'` | `"b"` / `'b'`（引用符込み） | クォートを剥がさない |
+| `A=b # comment` | `b # comment` | インラインコメントにならない |
+| `A=  b` / `A=b  ` | `  b` / `b  ` | 値の前後の空白を残す |
+| `A =b` | キーが `A `（空白込み） | アプリからは `A` が見えない |
+| `export A=b` | キーが `export A` | 同上 |
+| `A=b=c` | `b=c` | 最初の `=` でだけ切る。URL のクエリは安全 |
+| `A=a\nb` | `a\nb`（2文字の `\` と `n`） | エスケープを展開しない |
+| `A` / `A=` | `""` | `=` の無い行がビルドホストの環境変数を引くことは無い |
+| 同じキーを2回 | ビルドが落ちる（`illegally repeats the key`） | 安全側 |
+| `# comment`（行頭。前に空白があってもよい） | 無視 | コメントはこの形だけ |
+
+CRLF の `\r` とキーの前の空白は剥がされる。
+
+**CI で拾えるのは `AUTH_URL` だけ。** `ci.yml` のガードは `AUTH_URL` が `https://` で
+始まることを見ており、クォートや空白が混ざると YAML 側でクォートが付いて一致しなく
+なるので落ちる。ほかのキーは、壊れた値でもガードを素通りする（`NODE_ENV="production"` と
+`REDIS_URL="redis://..."` で実測）。壊れたときの挙動は次のとおり。
+
+| キー | 壊れたときの挙動 | 気づけるか |
+|---|---|---|
+| `NODE_ENV` | `src/lib/logger.ts` が `=== 'production'` で判定するので、本番でも開発用の `pino-pretty`（devDependencies）を読みに行く | 起動時に落ちるはず（イメージでは未実測） |
+| `LOG_LEVEL` | pino が未知のレベルで例外を投げる（`"info"` で実測） | 起動時に落ちる |
+| `AUTH_URL` / `NEXTAUTH_URL` | Cookie の `__Host-` と `Secure` が外れ、メール検証リンクが壊れる（#134） | `AUTH_URL` は CI ガードと deploy の `callbackUrl` 照合が止める |
+| `REDIS_URL` | 接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
+
+Deployment 側で `envFrom` に `prefix:` を付けたり、`env:` で同じ名前を上書きしたり
+しても、`config.env` が正しいままアプリから見える値が変わる（#168 のコメント）。
+
 #### 古い ConfigMap は残る
 
-`kubectl apply` は削除を行わないため、変更のたびに古い名前の ConfigMap が
-クラスタに残る。**これは消さないこと。** デプロイ失敗時の
-`kubectl rollout undo` は以前の Pod テンプレートに戻すが、そのテンプレートが
-参照する ConfigMap を消していると復旧できなくなる。
+`kubectl apply` は削除を行わないため、`config.env` を変えるたびに古い名前の
+ConfigMap がクラスタに残る。CI の `ci-deployer` Role は ConfigMap の `delete` を
+持たない（`fishing-infra` の RBAC）ので、消すのは人の手作業になる。
 
-一覧は次で確認できる。
+**消してよいのは、どの ReplicaSet からも参照されていないものだけ。** `kubectl rollout undo`
+は残っている ReplicaSet の Pod テンプレートに戻すので、そのテンプレートが参照する
+ConfigMap が消えていると、戻した Pod が `CreateContainerConfigError` で起動しない。
+
+ReplicaSet はデプロイのたびに1つ増え（イメージタグが run ごとに変わる）、
+`deployment.yaml` の `revisionHistoryLimit: 10` を超えた古いものから k8s が消す。
+つまり「直近 11 デプロイ（現行 + 履歴 10）のどれかが使っている ConfigMap」は消さない。
 
 ```bash
-kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app
+# 1. 消してはいけないもの（ReplicaSet が参照している ConfigMap）
+kubectl -n fishing get rs -l app.kubernetes.io/name=fishing-app,app.kubernetes.io/component=web \
+  -o jsonpath='{range .items[*]}{.spec.template.spec.containers[*].envFrom[*].configMapRef.name}{"\n"}{end}' \
+  | sort -u > /tmp/cm-keep.txt
+
+# 2. 生成された ConfigMap 全部
+kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort -u > /tmp/cm-all.txt
+
+# 3. 2 にあって 1 に無いものが削除候補。目で確かめてから1つずつ消す
+comm -13 /tmp/cm-keep.txt /tmp/cm-all.txt
+# kubectl -n fishing delete configmap <名前>
 ```
 
-現行の Deployment が参照しているものは次で分かる。
-
-```bash
-kubectl -n fishing get deploy fishing-app \
-  -o jsonpath='{.spec.template.spec.containers[0].envFrom[0].configMapRef.name}'
-```
+1 が空なら何かがおかしい（現行の Deployment の ReplicaSet は必ず参照している）ので、
+その場合は何も消さない。消したあとは、次のデプロイの非ブロッキングスモーク
+（Summary の「ConfigMap（#133）」）で、参照先がすべて「ある」になっていることを確かめる。
 
 ### db-seed（初回のみ手動）
 
