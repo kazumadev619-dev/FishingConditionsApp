@@ -182,7 +182,7 @@ CRLF の `\r` とキーの前の空白は剥がされる。
 
 | キー | 壊れたときの挙動 | 気づけるか |
 |---|---|---|
-| `NODE_ENV` | `src/lib/logger.ts` が `=== 'production'` で判定するので、本番でも開発用の `pino-pretty`（devDependencies）を読みに行く | 起動時に落ちるはず（イメージでは未実測） |
+| `NODE_ENV` | 実害は無い。web Pod は standalone の `server.js` で起動し、その冒頭で `process.env.NODE_ENV = 'production'` に上書きされる（ConfigMap を読む Job は無い） | ガードは無い |
 | `LOG_LEVEL` | pino が未知のレベルで例外を投げる（`"info"` で実測） | 起動時に落ちる |
 | `AUTH_URL` / `NEXTAUTH_URL` | Cookie の `__Host-` と `Secure` が外れ、メール検証リンクが壊れる（#134） | `AUTH_URL` は CI ガードと deploy の `callbackUrl` 照合が止める |
 | `REDIS_URL` | 接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
@@ -204,23 +204,29 @@ ReplicaSet はデプロイのたびに1つ増え（イメージタグが run ご
 `deployment.yaml` の `revisionHistoryLimit: 10` を超えた古いものから k8s が消す。
 つまり「直近 11 デプロイ（現行 + 履歴 10）のどれかが使っている ConfigMap」は消さない。
 
+**デプロイ中は流さない。** ロールアウト途中の ReplicaSet を取りこぼす。
+
 ```bash
-# 1. 消してはいけないもの（ReplicaSet が参照している ConfigMap）
+# 1. 消してはいけないもの（ReplicaSet が参照している ConfigMap。参照1件ごとに1行）
 kubectl -n fishing get rs -l app.kubernetes.io/name=fishing-app,app.kubernetes.io/component=web \
-  -o jsonpath='{range .items[*]}{.spec.template.spec.containers[*].envFrom[*].configMapRef.name}{"\n"}{end}' \
+  -o jsonpath='{range .items[*].spec.template.spec.containers[*].envFrom[*].configMapRef}{.name}{"\n"}{end}' \
   | sort -u > /tmp/cm-keep.txt
+# 空なら止める（Forbidden、context の取り違えなど）。空のまま進むと全部が削除候補になる
+#   （exit にしないのは、手で貼ったときに端末ごと閉じるため。手順 3 も同じ条件で止める）
+test -s /tmp/cm-keep.txt || echo "STOP: 参照中の ConfigMap が1つも取れない。ここで止める"
 
 # 2. 生成された ConfigMap 全部
 kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app \
   -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort -u > /tmp/cm-all.txt
 
 # 3. 2 にあって 1 に無いものが削除候補。目で確かめてから1つずつ消す
-comm -13 /tmp/cm-keep.txt /tmp/cm-all.txt
+test -s /tmp/cm-keep.txt && comm -13 /tmp/cm-keep.txt /tmp/cm-all.txt
 # kubectl -n fishing delete configmap <名前>
 ```
 
-1 が空なら何かがおかしい（現行の Deployment の ReplicaSet は必ず参照している）ので、
-その場合は何も消さない。消したあとは、次のデプロイの非ブロッキングスモーク
+手順 1 が拾うのは `containers[].envFrom[].configMapRef` だけ。`initContainers`、
+`env[].valueFrom.configMapKeyRef`、`volumes[].configMap` の参照は拾えないので、参照の形を
+増やしたらこの手順も直す。消したあとは、次のデプロイの非ブロッキングスモーク
 （Summary の「ConfigMap（#133）」）で、参照先がすべて「ある」になっていることを確かめる。
 
 ### db-seed（初回のみ手動）
