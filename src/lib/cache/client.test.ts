@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 const redisMock = vi.hoisted(() => {
   // cache はモジュール読み込み時に生成されるので、import より前に REDIS_URL を置く
   vi.stubEnv('REDIS_URL', 'redis://localhost:6379');
-  return { status: 'ready', get: vi.fn(), on: vi.fn() };
+  return { status: 'ready', get: vi.fn(), set: vi.fn(), on: vi.fn() };
 });
 const loggerMock = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
 
@@ -13,6 +13,7 @@ vi.mock('ioredis', () => ({
       return redisMock.status;
     }
     get = redisMock.get;
+    set = redisMock.set;
     on = redisMock.on;
   },
 }));
@@ -70,5 +71,24 @@ describe('CacheClient.get', () => {
 
     await expect(cache.get('test:key')).resolves.toEqual({ hit: false });
     expect(redisMock.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('CacheClient.set', () => {
+  it('JSON にならない undefined は書かずに false を返す', async () => {
+    await expect(cache.set('test:key', undefined, 60)).resolves.toBe(false);
+
+    expect(redisMock.set).not.toHaveBeenCalled();
+    expect(loggerMock.warn).toHaveBeenCalledWith(
+      { key: 'test:key' },
+      'Skipped caching a value that JSON cannot represent',
+    );
+  });
+
+  it('null は JSON にして TTL 付きで書く', async () => {
+    redisMock.set.mockResolvedValue('OK');
+
+    await expect(cache.set('test:key', null, 60)).resolves.toBe(true);
+    expect(redisMock.set).toHaveBeenCalledWith('test:key', 'null', 'EX', 60);
   });
 });

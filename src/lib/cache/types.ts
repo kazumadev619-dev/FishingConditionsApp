@@ -1,4 +1,12 @@
 /**
+ * キャッシュに置ける値の型（`undefined` を除いた全部）。
+ *
+ * `JSON.stringify(undefined)` は文字列を返さず、Redis には何も保存できない。
+ * fetcher が `undefined` を返すと毎回キャッシュミスして上流を叩き続けるので、型で弾く。
+ */
+export type Cacheable = NonNullable<unknown> | null;
+
+/**
  * JSON に保存して読み戻した値の型。
  *
  * - Date は ISO 文字列になる

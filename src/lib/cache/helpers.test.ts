@@ -5,8 +5,10 @@ const cacheMock = vi.hoisted(() => ({
   set: vi.fn(),
 }));
 
+const loggerMock = vi.hoisted(() => ({ error: vi.fn() }));
+
 vi.mock('./client', () => ({ cache: cacheMock }));
-vi.mock('../logger', () => ({ logger: { error: vi.fn() } }));
+vi.mock('../logger', () => ({ logger: loggerMock }));
 
 import { fetchWithOptionalCache, withCache } from './helpers';
 
@@ -43,6 +45,18 @@ describe('revive の型による強制', () => {
       });
 
     expectTypeOf(call).toBeFunction();
+  });
+
+  it('undefined を返す fetcher はキャッシュできない（JSON にならず毎回ミスする）', () => {
+    const fetchUndefined = async () => undefined;
+    const calls = [
+      // @ts-expect-error undefined は Cacheable ではない
+      () => withCache('test:key', 60, fetchUndefined),
+      // @ts-expect-error undefined は Cacheable ではない
+      () => fetchWithOptionalCache('test:key', 60, false, fetchUndefined),
+    ];
+
+    expectTypeOf(calls).toBeArray();
   });
 
   it('JSON 往復で型が変わらない値は revive を省ける', () => {
@@ -116,6 +130,25 @@ describe('fetchWithOptionalCache', () => {
     });
 
     expect(cacheMock.set).toHaveBeenCalledWith('test:key', data, 60);
+  });
+
+  it('キャッシュへの書き込みが失敗しても取得した値を返し、失敗を記録する', async () => {
+    cacheMock.get.mockResolvedValue({ hit: false });
+    const error = new Error('redis write failed');
+    cacheMock.set.mockRejectedValue(error);
+    const data = { value: 'fresh' };
+
+    await expect(
+      fetchWithOptionalCache('test:key', 60, false, vi.fn().mockResolvedValue(data)),
+    ).resolves.toMatchObject({ data, fromCache: false });
+
+    // 書き込みは待たずに返すので、catch が走るのを待つ
+    await vi.waitFor(() =>
+      expect(loggerMock.error).toHaveBeenCalledWith(
+        { key: 'test:key', error },
+        'Failed to cache data',
+      ),
+    );
   });
 
   it('fetcher の例外をそのまま伝播する', async () => {

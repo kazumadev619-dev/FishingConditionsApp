@@ -125,6 +125,17 @@ describe('キャッシュを使うサービス', () => {
     expect(apiMock.openWeatherMapClient.get).not.toHaveBeenCalled();
   });
 
+  it('予報のキャッシュヒットは値をそのまま返す（Date フィールドが無いので復元しない）', async () => {
+    const cached = { list: [] };
+    cacheMock.get.mockResolvedValue({ hit: true, value: cached });
+
+    const result = await getForecast(35, 139);
+
+    expect(result.fromCache).toBe(true);
+    expect(result.data).toEqual(cached);
+    expect(apiMock.openWeatherMapClient.get).not.toHaveBeenCalled();
+  });
+
   it('潮汐のキャッシュヒットで Date フィールドを復元する', async () => {
     cacheMock.get.mockResolvedValue({
       hit: true,
