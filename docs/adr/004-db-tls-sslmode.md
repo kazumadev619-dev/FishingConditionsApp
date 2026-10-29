@@ -7,13 +7,13 @@
 
 Secret（`k8s/secret.enc.yaml`）に入れる Neon の接続文字列は、すべて `sslmode=require` とする。
 
-Prisma CLI で使う `DATABASE_URL_DIRECT` には、`db-migrate` Job のマニフェスト（`k8s/job-db-migrate.yaml`）が `sslaccept=strict` を足してから渡す（#209）。Secret の値には足さない。
+Prisma CLI で使う `DATABASE_URL_DIRECT` には、`db-migrate` Job のマニフェスト（`k8s/job-db-migrate.yaml`）が `sslmode=require&sslaccept=strict` を足してから渡す（#209）。Secret の値には足さない。
 
 | キー | ロール | 使うもの | ドライバ |
 |------|--------|---------|---------|
 | `DATABASE_URL` | `fishing_app_rw`（pooled） | アプリ本体 | `pg`（`@prisma/adapter-pg`） |
 | `DATABASE_URL_RW_DIRECT` | `fishing_app_rw`（direct） | `db-seed` Job | `pg` |
-| `DATABASE_URL_DIRECT` | `neondb_owner`（direct） | `db-migrate` Job（`sslaccept=strict` を足して渡す） | Prisma CLI（schema engine） |
+| `DATABASE_URL_DIRECT` | `neondb_owner`（direct） | `db-migrate` Job（`sslmode=require&sslaccept=strict` を足して渡す） | Prisma CLI（schema engine） |
 
 ## 理由
 
@@ -48,14 +48,16 @@ Prisma CLI で使う `DATABASE_URL_DIRECT` には、`db-migrate` Job のマニ�
 - **`pg` を 9 系（pg-connection-string 3 系）に上げるとき。** `require` が libpq と同じ「暗号化するが検証しない」意味に変わる。pg-connection-string 2.14.0 はこの変更を `SECURITY WARNING` として予告している。上げる前に、`pg` が読む接続文字列を `sslmode=verify-full` に変えること
 - Prisma CLI が `sslmode=verify-full` を検証として扱うようになったとき
 
-## #209 での改訂: migrate の経路に `sslaccept=strict` を足す（2026-10-28）
+## #209 での改訂: migrate の経路に `sslmode=require&sslaccept=strict` を足す（2026-10-28）
 
-`k8s/job-db-migrate.yaml` の `command` を `sh -c` にし、Secret から受けた `DATABASE_URL_DIRECT` に `sslaccept=strict` を足してから `prisma migrate deploy` を `exec` する。区切り文字は値に `?` があれば `&`、無ければ `?` を選ぶ。
+`k8s/job-db-migrate.yaml` の `command` を `sh -c` にし、Secret から受けた `DATABASE_URL_DIRECT` に `sslmode=require&sslaccept=strict` を足してから `prisma migrate deploy` を `exec` する。区切り文字は値に `?` があれば `&`、無ければ `?` を選ぶ。同じキーは後勝ちなので、Secret の値に `sslmode` や `sslaccept` が既にあっても、足した方が効く。
+
+`sslaccept=strict` は TLS を使ったときの検証を強めるだけで、TLS を使うこと自体は強制しない。TLS 無しのサーバに対しては、`sslmode` が無い・`prefer`・`disable` の値だと平文のまま接続できてしまう（実測）。TLS を落とす中間者を通さないよう、`sslmode=require` もマニフェストの側で足す。
 
 Secret ではなくマニフェストで足す理由:
 
 - 変更がレビューで見える。Secret は暗号化されていて差分を読めない
-- Secret を差し替えても外れない。ローテーションで値を貼り直したときに付け忘れる余地が無い
+- Secret を差し替えても外れない。ローテーションで値を貼り直したときに `sslmode` も `sslaccept` も付け忘れる余地が無い
 
 区切り文字を固定で `&` にしてはいけない。`?` の無い値に `&sslaccept=strict` を足すと DB 名が `neondb&sslaccept=strict` になり、`migrate deploy` はその名前の DB を**作って**検証なしで成功する（実測）。Kubernetes の `$(VAR)` 展開だけで足す案はこれで捨てた。
 
@@ -70,12 +72,14 @@ Secret ではなくマニフェストで足す理由:
 | 信頼していない CA の署名 | 拒否（`P1011 ... certificate verify failed`） |
 | 信頼済み CA の署名でホスト名も一致 | 接続できる |
 
+TLS 無しのサーバ（`show ssl` が `off`）には、Secret の値が `?sslmode=disable`・`?` 無し・`?sslmode=prefer` のどれでも `P1011 ... server does not support TLS` で拒否される。`sslaccept=strict` だけを足していたときは、この3つは平文のまま接続できた。
+
 Prisma CLI はイメージのシステム CA（`/etc/ssl/certs/ca-certificates.crt`、Alpine の `ca-certificates-bundle`）で検証する。`SSL_CERT_FILE` を差し替えると信頼する CA が変わることで確かめた。
 
-Neon の証明書（`*.<region>.aws.neon.tech`、Let's Encrypt。ISRG Root X1 に繋がる）は、このシステム CA で strict の検証を通る。存在しない endpoint とダミーの資格情報で Neon の公開プロキシに繋ぎ、TLS を通ってから認証で落ちること（`P1000`）を確かめた。CA を差し替えると同じ接続が `P1011` になる。本番の DB にはこの検証では繋いでいない。
+Neon の証明書（`*.<region>.aws.neon.tech`、Let's Encrypt。ISRG Root X1 に繋がる）は、このシステム CA で strict の検証を通る。存在しない endpoint とダミーの資格情報で Neon の公開プロキシに繋ぎ、TLS を通ってから認証で落ちること（`P1000`）を確かめた（手元のコンテナには IPv6 の経路が無いため、`--add-host` で IPv4 に固定して測った。固定しないと、検証の成否によらず `P1001` になる）。CA を差し替えると同じ接続が `P1011` になる。本番の DB にはこの検証では繋いでいない。
 
 使い捨ての k3s（v1.34.1）で develop と #209 の `db-migrate` Job を流した。自己署名のサーバに対して、develop の Job はマイグレーションを適用して完了し、#209 の Job は `P1011` で失敗した。Secret の値が `?` を含まない場合も、自己署名なら `P1011` で失敗し、正しい証明書なら元の DB に対して完了する（余計な DB は作られない）。
 
 ### 見直すタイミング
 
-- Neon の証明書の発行元が、イメージのシステム CA に無い CA に変わったとき。migrate が `P1011` で落ち、ロールアウトの前でデプロイが止まる（旧 Pod は残る）
+- Neon の証明書の発行元が、イメージのシステム CA に無い CA に変わったとき。migrate が `P1011` で落ち（Pod から IPv6 に出られない環境では `P1001: Can't reach database server` に見える。直前の db-check が通っていれば、到達性ではなく証明書を疑う）、ロールアウトの前でデプロイが止まる（旧 Pod は残る）
