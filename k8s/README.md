@@ -165,7 +165,7 @@ kustomize v5.8.1（CI の固定版）と v5.8.3 で実測した結果:
 | `A="b"` / `A='b'` | `"b"` / `'b'`（引用符込み） | クォートを剥がさない |
 | `A=b # comment` | `b # comment` | インラインコメントにならない |
 | `A=  b` / `A=b  ` | `  b` / `b  ` | 値の前後の空白を残す |
-| `A =b` | キーが `A `（空白込み） | アプリからは `A` が見えない |
+| `A =b` | キーが `A `（空白込み） | ConfigMap のキーとして不正なので apply が拒否され、デプロイが落ちる（Rollback で戻る）。既存の6キーなら CI のキーの確認でも落ちる |
 | `export A=b` | キーが `export A` | 同上 |
 | `A=b=c` | `b=c` | 最初の `=` でだけ切る。URL のクエリは安全 |
 | `A=a\nb` | `a\nb`（2文字の `\` と `n`） | エスケープを展開しない |
@@ -175,7 +175,7 @@ kustomize v5.8.1（CI の固定版）と v5.8.3 で実測した結果:
 
 CRLF の `\r` とキーの前の空白は剥がされる。
 
-**CI で拾えるのは `AUTH_URL` だけ。** `ci.yml` のガードは `AUTH_URL` が `https://` で
+**CI で値の破損を拾えるのは `AUTH_URL` だけ。** `ci.yml` のガードは `AUTH_URL` が `https://` で
 始まることを見ており、クォートや空白が混ざると YAML 側でクォートが付いて一致しなく
 なるので落ちる。ほかのキーは、壊れた値でもガードを素通りする（`NODE_ENV="production"` と
 `REDIS_URL="redis://..."` で実測）。壊れたときの挙動は次のとおり。
@@ -183,9 +183,10 @@ CRLF の `\r` とキーの前の空白は剥がされる。
 | キー | 壊れたときの挙動 | 気づけるか |
 |---|---|---|
 | `NODE_ENV` | 実害は無い。web Pod は standalone の `server.js` で起動し、その冒頭で `process.env.NODE_ENV = 'production'` に上書きされる（ConfigMap を読む Job は無い） | ガードは無い |
-| `LOG_LEVEL` | pino が未知のレベルで例外を投げる（`"info"` で実測） | 起動時に落ちる |
-| `AUTH_URL` / `NEXTAUTH_URL` | Cookie の `__Host-` と `Secure` が外れ、メール検証リンクが壊れる（#134） | `AUTH_URL` は CI ガードと deploy の `callbackUrl` 照合が止める |
-| `REDIS_URL` | 接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
+| `LOG_LEVEL` | Pod は起動して `/healthz` も通るが、logger を読むルート（`/login`、`/readyz`、`/api/*`）が 500 | deploy のブロッキングなスモーク（`/login`）で止まり、Rollback される |
+| `AUTH_URL` | クォートやコメントが入ると `/login` と `/api/auth/*` が 500（`Invalid URL`）。消える / `http://` になると Cookie の `__Host-` と `Secure` が静かに外れる（#134） | CI ガードと deploy の `callbackUrl` 照合 |
+| `NEXTAUTH_URL` | メール検証リンクだけが壊れる（`signInCallback.ts` と `actions.ts` が文字列連結している。Auth.js は `AUTH_URL` を優先するので認証には効かない） | **ガードは無い** |
+| `REDIS_URL` | クォートの場合、接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
 
 Deployment 側で `envFrom` に `prefix:` を付けたり、`env:` で同じ名前を上書きしたり
 しても、`config.env` が正しいままアプリから見える値が変わる（#168 のコメント）。
@@ -204,10 +205,16 @@ ReplicaSet はデプロイのたびに1つ増え（イメージタグが run ご
 `deployment.yaml` の `revisionHistoryLimit: 10` を超えた古いものから k8s が消す。
 つまり「直近 11 デプロイ（現行 + 履歴 10）のどれかが使っている ConfigMap」は消さない。
 
-**デプロイ中は流さない。** ロールアウト途中の ReplicaSet を取りこぼす。
+**デプロイ中は流さない。** 手順の途中でデプロイが入ると、新しい ConfigMap が参照の
+一覧より後にでき、削除候補に混ざる。下の順番（ConfigMap の一覧を先、参照を後）は
+この競合を塞ぐためのもので、入れ替えないこと。
 
 ```bash
-# 1. 消してはいけないもの（ReplicaSet が参照している ConfigMap。参照1件ごとに1行）
+# 1. 生成された ConfigMap 全部（先に取る。後からできた ConfigMap はここに入らない）
+kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort -u > /tmp/cm-all.txt
+
+# 2. 消してはいけないもの（ReplicaSet が参照している ConfigMap。参照1件ごとに1行）
 kubectl -n fishing get rs -l app.kubernetes.io/name=fishing-app,app.kubernetes.io/component=web \
   -o jsonpath='{range .items[*].spec.template.spec.containers[*].envFrom[*].configMapRef}{.name}{"\n"}{end}' \
   | sort -u > /tmp/cm-keep.txt
@@ -215,16 +222,12 @@ kubectl -n fishing get rs -l app.kubernetes.io/name=fishing-app,app.kubernetes.i
 #   （exit にしないのは、手で貼ったときに端末ごと閉じるため。手順 3 も同じ条件で止める）
 test -s /tmp/cm-keep.txt || echo "STOP: 参照中の ConfigMap が1つも取れない。ここで止める"
 
-# 2. 生成された ConfigMap 全部
-kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort -u > /tmp/cm-all.txt
-
-# 3. 2 にあって 1 に無いものが削除候補。目で確かめてから1つずつ消す
+# 3. 1 にあって 2 に無いものが削除候補。目で確かめてから1つずつ消す
 test -s /tmp/cm-keep.txt && comm -13 /tmp/cm-keep.txt /tmp/cm-all.txt
 # kubectl -n fishing delete configmap <名前>
 ```
 
-手順 1 が拾うのは `containers[].envFrom[].configMapRef` だけ。`initContainers`、
+手順 2 が拾うのは `containers[].envFrom[].configMapRef` だけ。`initContainers`、
 `env[].valueFrom.configMapKeyRef`、`volumes[].configMap` の参照は拾えないので、参照の形を
 増やしたらこの手順も直す。消したあとは、次のデプロイの非ブロッキングスモーク
 （Summary の「ConfigMap（#133）」）で、参照先がすべて「ある」になっていることを確かめる。
