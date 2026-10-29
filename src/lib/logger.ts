@@ -3,7 +3,7 @@ import pino from 'pino';
 const isProduction = process.env.NODE_ENV === 'production';
 const logLevel = process.env.LOG_LEVEL || (isProduction ? 'info' : 'debug');
 
-export const logger = pino({
+export const loggerOptions: pino.LoggerOptions = {
   level: logLevel,
 
   // 本番環境: JSON形式のみ（pretty OFF）
@@ -18,6 +18,13 @@ export const logger = pino({
         },
       }
     : undefined, // 本番環境では transport を設定しない = 純粋なJSON出力
+
+  // pino が既定で Error を展開するのは `err` キーだけ。呼び出し元の多くは
+  // `{ error }` で渡しているので、こちらも展開しないと `"error":{}` になり
+  // 失敗の理由がログに残らない（#294）
+  serializers: {
+    error: pino.stdSerializers.err,
+  },
 
   // センシティブ情報のマスキング
   redact: {
@@ -38,7 +45,9 @@ export const logger = pino({
   base: {
     env: process.env.NODE_ENV,
   },
-});
+};
+
+export const logger = pino(loggerOptions);
 
 /**
  * メールアドレスのマスキング用ヘルパー
