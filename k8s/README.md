@@ -153,25 +153,84 @@ Secret を扱えず、暗号文のまま Secret を上書きして全 Pod を起
 `kustomization.yaml` の `configMapGenerator` に `disableNameSuffixHash` を
 **付けないこと。** 付けると固定名に戻り、この仕組みが死ぬ。
 
+#### `config.env` は dotenv ではない
+
+`configMapGenerator` の `envs:` は、各行を最初の `=` で切って左右を**ほぼそのまま**
+キーと値にする。dotenv や シェルの感覚で書くと、値が静かに変わる。
+kustomize v5.8.1（CI の固定版）と v5.8.3 で実測した結果:
+
+| `config.env` の行 | ConfigMap の値 | 備考 |
+|---|---|---|
+| `A=b` | `b` | これだけを使う |
+| `A="b"` / `A='b'` | `"b"` / `'b'`（引用符込み） | クォートを剥がさない |
+| `A=b # comment` | `b # comment` | インラインコメントにならない |
+| `A=  b` / `A=b  ` | `  b` / `b  ` | 値の前後の空白を残す |
+| `A =b` | キーが `A `（空白込み） | ConfigMap のキーとして不正なので apply が拒否され、デプロイが落ちる（Rollback で戻る）。既存の6キーなら CI のキーの確認でも落ちる |
+| `export A=b` | キーが `export A` | 同上 |
+| `A=b=c` | `b=c` | 最初の `=` でだけ切る。URL のクエリは安全 |
+| `A=a\nb` | `a\nb`（2文字の `\` と `n`） | エスケープを展開しない |
+| `A` / `A=` | `""` | `=` の無い行がビルドホストの環境変数を引くことは無い |
+| 同じキーを2回 | ビルドが落ちる（`illegally repeats the key`） | 安全側 |
+| `# comment`（行頭。前に空白があってもよい） | 無視 | コメントはこの形だけ |
+
+CRLF の `\r` とキーの前の空白は剥がされる。
+
+**CI で値の破損を拾えるのは `AUTH_URL` だけ。** `ci.yml` のガードは `AUTH_URL` が `https://` で
+始まることを見ており、クォートや空白が混ざると YAML 側でクォートが付いて一致しなく
+なるので落ちる。ほかのキーは、壊れた値でもガードを素通りする（`NODE_ENV="production"` と
+`REDIS_URL="redis://..."` で実測）。壊れたときの挙動は次のとおり。
+
+| キー | 壊れたときの挙動 | 気づけるか |
+|---|---|---|
+| `NODE_ENV` | 実害は無い。web Pod は standalone の `server.js` で起動し、その冒頭で `process.env.NODE_ENV = 'production'` に上書きされる（ConfigMap を読む Job は無い） | ガードは無い |
+| `LOG_LEVEL` | Pod は起動して `/healthz` も通るが、logger を読むルート（`/login`、`/readyz`、`/api/*`）が 500 | deploy のブロッキングなスモーク（`/login`）で止まり、Rollback される |
+| `AUTH_URL` | クォートやコメントが入ると `/login` と `/api/auth/*` が 500（`Invalid URL`）。消える / `http://` になると Cookie の `__Host-` と `Secure` が静かに外れる（#134） | CI ガードと deploy の `callbackUrl` 照合 |
+| `NEXTAUTH_URL` | メール検証リンクだけが壊れる（`signInCallback.ts` と `actions.ts` が文字列連結している。Auth.js は `AUTH_URL` を優先するので認証には効かない） | **ガードは無い** |
+| `REDIS_URL` | クォートの場合、接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
+
+Deployment 側で `envFrom` に `prefix:` を付けたり、`env:` で同じ名前を上書きしたり
+しても、`config.env` が正しいままアプリから見える値が変わる（#168 のコメント）。
+
 #### 古い ConfigMap は残る
 
-`kubectl apply` は削除を行わないため、変更のたびに古い名前の ConfigMap が
-クラスタに残る。**これは消さないこと。** デプロイ失敗時の
-`kubectl rollout undo` は以前の Pod テンプレートに戻すが、そのテンプレートが
-参照する ConfigMap を消していると復旧できなくなる。
+`kubectl apply` は削除を行わないため、`config.env` を変えるたびに古い名前の
+ConfigMap がクラスタに残る。CI の `ci-deployer` Role は ConfigMap の `delete` を
+持たない（`fishing-infra` の RBAC）ので、消すのは人の手作業になる。
 
-一覧は次で確認できる。
+**消してよいのは、どの ReplicaSet からも参照されていないものだけ。** `kubectl rollout undo`
+は残っている ReplicaSet の Pod テンプレートに戻すので、そのテンプレートが参照する
+ConfigMap が消えていると、戻した Pod が `CreateContainerConfigError` で起動しない。
+
+ReplicaSet はデプロイのたびに1つ増え（イメージタグが run ごとに変わる）、
+`deployment.yaml` の `revisionHistoryLimit: 10` を超えた古いものから k8s が消す。
+つまり「直近 11 デプロイ（現行 + 履歴 10）のどれかが使っている ConfigMap」は消さない。
+
+**デプロイ中は流さない。** 手順の途中でデプロイが入ると、新しい ConfigMap が参照の
+一覧より後にでき、削除候補に混ざる。下の順番（ConfigMap の一覧を先、参照を後）は
+この競合を塞ぐためのもので、入れ替えないこと。
 
 ```bash
-kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app
+# 1. 生成された ConfigMap 全部（先に取る。後からできた ConfigMap はここに入らない）
+kubectl -n fishing get configmap -l app.kubernetes.io/name=fishing-app \
+  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' | sort -u > /tmp/cm-all.txt
+
+# 2. 消してはいけないもの（ReplicaSet が参照している ConfigMap。参照1件ごとに1行）
+kubectl -n fishing get rs -l app.kubernetes.io/name=fishing-app,app.kubernetes.io/component=web \
+  -o jsonpath='{range .items[*].spec.template.spec.containers[*].envFrom[*].configMapRef}{.name}{"\n"}{end}' \
+  | sort -u > /tmp/cm-keep.txt
+# 空なら止める（Forbidden、context の取り違えなど）。空のまま進むと全部が削除候補になる
+#   （exit にしないのは、手で貼ったときに端末ごと閉じるため。手順 3 も同じ条件で止める）
+test -s /tmp/cm-keep.txt || echo "STOP: 参照中の ConfigMap が1つも取れない。ここで止める"
+
+# 3. 1 にあって 2 に無いものが削除候補。目で確かめてから1つずつ消す
+test -s /tmp/cm-keep.txt && comm -13 /tmp/cm-keep.txt /tmp/cm-all.txt
+# kubectl -n fishing delete configmap <名前>
 ```
 
-現行の Deployment が参照しているものは次で分かる。
-
-```bash
-kubectl -n fishing get deploy fishing-app \
-  -o jsonpath='{.spec.template.spec.containers[0].envFrom[0].configMapRef.name}'
-```
+手順 2 が拾うのは `containers[].envFrom[].configMapRef` だけ。`initContainers`、
+`env[].valueFrom.configMapKeyRef`、`volumes[].configMap` の参照は拾えないので、参照の形を
+増やしたらこの手順も直す。消したあとは、次のデプロイの非ブロッキングスモーク
+（Summary の「ConfigMap（#133）」）で、参照先がすべて「ある」になっていることを確かめる。
 
 ### db-seed（初回のみ手動）
 

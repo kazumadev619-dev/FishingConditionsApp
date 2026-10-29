@@ -35,7 +35,22 @@ spec:
           image: ghcr.io/kazumadev619-dev/fishing-app-migrator
           # npx は $HOME/.npm に書こうとし、見つからなければネットワーク取得を
           # 試みる。マイグレーションでそのリスクを取る理由が無いので直接叩く
-          command: ["node_modules/.bin/prisma", "migrate", "deploy"]
+          #
+          # Prisma CLI は sslmode=require でも verify-full でもサーバ証明書を
+          # 検証せず、検証させるのは sslaccept=strict だけ（ADR-004 / #209）。
+          # strict は TLS を使ったときの検証を強めるだけで、TLS そのものは強制
+          # しないので sslmode=require も足す。どちらも Secret の値に頼らず
+          # ここで必ず足す（同じキーは後勝ちなので、Secret の値と両立する）。
+          # 区切り文字を値に合わせて選ぶのは、
+          # ? の無い値に & で足すと DB 名が「neondb&sslaccept=strict」になり、
+          # migrate deploy がその名前の DB を作って検証なしで成功してしまうから。
+          command:
+            - sh
+            - -c
+            - |
+              case "$DATABASE_URL_DIRECT" in *\?*) sep='&' ;; *) sep='?' ;; esac
+              export DATABASE_URL_DIRECT="${DATABASE_URL_DIRECT}${sep}sslmode=require&sslaccept=strict"
+              exec node_modules/.bin/prisma migrate deploy
           # envFrom は付けない。prisma.config.ts が読むのは DATABASE_URL_DIRECT
           # だけで、余計な変数を渡すと ConfigMap の変更が Job の再作成理由に
           # なってしまう（Job の spec.template は immutable）。

@@ -90,6 +90,12 @@ class CacheClient {
     }
     try {
       const serialized = JSON.stringify(value);
+      // undefined や関数は JSON にならない。そのまま渡すと Redis に空文字列が入り、
+      // 読み出すたびに parse に失敗してミス扱いになるので、書かずに知らせる
+      if (serialized === undefined) {
+        logger.warn({ key }, 'Skipped caching a value that JSON cannot represent');
+        return false;
+      }
       const result = await this.client.set(key, serialized, 'EX', ttlSeconds);
       return result === 'OK';
     } catch (error) {
