@@ -37,7 +37,7 @@ jobs:
     steps:
       # 1. リポジトリのチェックアウト
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2. Node.js環境のセットアップ
       - name: Setup Node.js ${{ matrix.node-version }}
@@ -101,7 +101,7 @@ jobs:
     steps:
       # 1. リポジトリのチェックアウト
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 2. Node.js環境のセットアップ
       - name: Setup Node.js ${{ matrix.node-version }}
@@ -138,7 +138,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # バージョンは固定する。master / latest 参照だと上流の更新だけで
       # CI が赤にも緑にも変わり、失敗の原因を差分から追えなくなる。
@@ -324,7 +324,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build migrator image
         run: docker build --file docker/Dockerfile --target migrator .

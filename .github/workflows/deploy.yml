@@ -53,7 +53,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       # 実行ごとに一意にする。sha だけだと同じコミットの再実行でマニフェストが
       # 変わらず、apply が unchanged になって Pod が入れ替わらない。NEXT_PUBLIC_*
@@ -121,7 +121,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install tools
         run: |
