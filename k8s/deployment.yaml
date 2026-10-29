@@ -13,6 +13,10 @@ spec:
   # rollout status の --timeout=300s より短くして、
   # timeout ではなく ProgressDeadlineExceeded という明示的な失敗にする
   progressDeadlineSeconds: 240
+  # 既定値の 10 を明示する。ここで残す ReplicaSet（デプロイごとに1つ増える）が
+  # `rollout undo` の戻り先と、消してはいけない古い ConfigMap の範囲を決める
+  # （#167、判定手順は k8s/README.md）。下げると手で戻せる範囲が狭まる。
+  revisionHistoryLimit: 10
   strategy:
     type: RollingUpdate
     rollingUpdate:
