@@ -2,6 +2,7 @@ import { findLocationByCoordinates } from '@/lib/locationIdentity';
 import { logger } from '@/lib/logger';
 import { findNearestPort } from '@/lib/portMappingService';
 import prisma from '@/lib/prisma';
+import { isUserRateLimited } from '@/lib/rateLimit';
 
 const DEFAULT_PLACE = {
   name: '東京湾（芝浦）',
@@ -181,6 +182,12 @@ async function resolveFromSearchParams(searchParams: DashboardSearchParams): Pro
         lng > 180
       ) {
         logger.warn({ lat: searchParams.lat, lng: searchParams.lng }, 'Invalid coordinates');
+        return DEFAULT_LOCATION;
+      }
+
+      // 座標はいくらでも変えられて上流のキャッシュに当たらないので、回数を制限する
+      if (await isUserRateLimited('dashboard-coordinates')) {
+        logger.warn({ lat, lng }, 'Coordinate lookup rate limit exceeded');
         return DEFAULT_LOCATION;
       }
 

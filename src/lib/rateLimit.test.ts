@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '@/auth';
 import { cache } from '@/lib/cache';
-import { isRateLimited, withUserRateLimit } from './rateLimit';
+import { isRateLimited, isUserRateLimited, withUserRateLimit } from './rateLimit';
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }));
 vi.mock('@/lib/cache', () => ({ cache: { increment: vi.fn() } }));
@@ -30,8 +30,34 @@ describe('isRateLimited', () => {
   });
 });
 
+const asUser = (id: string) => vi.mocked(auth).mockResolvedValue({ user: { id } } as never);
+
+describe('isUserRateLimited', () => {
+  it('ユーザーと経路ごとに数える', async () => {
+    asUser('user-1');
+    vi.mocked(cache.increment).mockResolvedValue(61);
+
+    await expect(isUserRateLimited('dashboard')).resolves.toBe(true);
+    expect(cache.increment).toHaveBeenCalledWith('ratelimit:dashboard:user-1', 60);
+  });
+
+  it('id が空なら数えられないので通さない', async () => {
+    asUser('');
+
+    await expect(isUserRateLimited('dashboard')).resolves.toBe(true);
+    expect(cache.increment).not.toHaveBeenCalled();
+  });
+});
+
 describe('withUserRateLimit', () => {
-  const asUser = (id: string) => vi.mocked(auth).mockResolvedValue({ user: { id } } as never);
+  it('id が空なら 401 を返し、ハンドラを呼ばない', async () => {
+    asUser('');
+
+    const response = await withUserRateLimit('weather', handler);
+
+    expect(response.status).toBe(401);
+    expect(handler).not.toHaveBeenCalled();
+  });
 
   it('上限を超えたら 429 と Retry-After を返し、ハンドラを呼ばない', async () => {
     asUser('user-1');

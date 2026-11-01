@@ -19,7 +19,6 @@ import { parseAndValidateCoordinates } from '@/lib/validators';
  * - lat: 緯度（必須）
  * - lon: 経度（必須）
  * - type: 'current' | 'forecast'（デフォルト: 'current'）
- * - lang: 言語コード（デフォルト: 'ja'）
  * - units: 'standard' | 'metric' | 'imperial'（デフォルト: 'metric'）
  */
 export async function GET(request: NextRequest) {
@@ -46,7 +45,6 @@ async function handleGet(request: NextRequest) {
 
   // オプションパラメータの取得
   const type = searchParams.get('type') || 'current';
-  const lang = searchParams.get('lang') || 'ja';
   const units = (searchParams.get('units') as 'standard' | 'metric' | 'imperial') || 'metric';
 
   // typeパラメータのバリデーション
@@ -68,7 +66,7 @@ async function handleGet(request: NextRequest) {
   }
 
   try {
-    const options = { lang, units };
+    const options = { units };
 
     if (type === 'forecast') {
       const result = await getForecast(lat, lon, options);
