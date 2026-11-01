@@ -12,6 +12,7 @@ import prisma from '@/lib/prisma';
  *
  * 判定に含めるもの:
  * - **DB**: 含める。このエンドポイントの主目的が DB 到達性の確認のため。
+ *   成功は DB_CHECK_INTERVAL_MS の間覚えるので、`databaseCheckedAt` が実際に確かめた時刻。
  * - **Redis**: 含めない。キャッシュが落ちても `isAvailable()` が false を
  *   返して呼び出し側が素通しするだけで、アプリは（遅くなるが）動く。
  *   状態は body に出して観測できるようにするに留める。
@@ -27,7 +28,21 @@ export const dynamic = 'force-dynamic';
  */
 const DB_CHECK_TIMEOUT_MS = 3000;
 
+/**
+ * このエンドポイントは未認証で届く。回数に関係なく compute を起こす頻度を抑えるため、
+ * 成功をこの間だけ覚える。Neon の autosuspend は5分なので、起きている時間は最大で 5/30。
+ * 失敗は覚えない（復旧がすぐ見えるように）。新しい Pod の最初の1回は必ず DB を見るので、
+ * デプロイのスモークには影響しない。
+ */
+const DB_CHECK_INTERVAL_MS = 30 * 60 * 1000;
+
+let lastReachableAt: number | undefined;
+
 async function isDatabaseReachable(): Promise<boolean> {
+  if (lastReachableAt !== undefined && Date.now() - lastReachableAt < DB_CHECK_INTERVAL_MS) {
+    return true;
+  }
+
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   try {
@@ -40,6 +55,7 @@ async function isDatabaseReachable(): Promise<boolean> {
         );
       }),
     ]);
+    lastReachableAt = Date.now();
     return true;
   } catch (error) {
     logger.warn({ err: error }, 'Readiness check failed: database is not reachable');
@@ -58,6 +74,7 @@ export async function GET() {
       status: databaseReady ? 'ready' : 'not_ready',
       checks: {
         database: databaseReady ? 'ok' : 'error',
+        databaseCheckedAt: lastReachableAt ? new Date(lastReachableAt).toISOString() : null,
         // Ready 判定には影響しない（degraded でもトラフィックは受ける）
         cache: cacheAvailable ? 'ok' : 'degraded',
       },
