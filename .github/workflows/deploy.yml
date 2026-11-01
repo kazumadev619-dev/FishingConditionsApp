@@ -116,6 +116,9 @@ jobs:
     runs-on: ubuntu-26.04
     timeout-minutes: 20
     needs: build
+    # 本番の鍵は main からしか読めない Environment に置く。別のブランチで書いた
+    # ワークフローからは見えない。Environment の設定はリポジトリの外にある
+    environment: production
     permissions:
       contents: read
 
