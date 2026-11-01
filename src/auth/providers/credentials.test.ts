@@ -1,18 +1,17 @@
 import bcrypt from 'bcrypt';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { sendVerificationEmail } from '@/lib/email';
-import { createVerificationToken, hasActiveVerificationToken } from '@/lib/token';
+import { issueVerificationEmail } from '@/lib/email';
+import { hasActiveVerificationToken } from '@/lib/token';
 import { getUser } from '../utils/userRepository';
 import { credentialsProvider, EmailNotVerifiedError } from './credentials';
 
 vi.mock('bcrypt', () => ({ default: { compare: vi.fn() } }));
-vi.mock('@/lib/email', () => ({ sendVerificationEmail: vi.fn() }));
+vi.mock('@/lib/email', () => ({ issueVerificationEmail: vi.fn() }));
 vi.mock('@/lib/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn() },
   maskEmail: (email: string) => email,
 }));
 vi.mock('@/lib/token', () => ({
-  createVerificationToken: vi.fn(async () => 'token'),
   hasActiveVerificationToken: vi.fn(),
 }));
 vi.mock('../utils/userRepository', () => ({ getUser: vi.fn() }));
@@ -41,7 +40,7 @@ describe('credentials の authorize', () => {
     givenUser(new Date(), true);
 
     await expect(authorize(credentials)).resolves.toMatchObject({ email: credentials.email });
-    expect(sendVerificationEmail).not.toHaveBeenCalled();
+    expect(issueVerificationEmail).not.toHaveBeenCalled();
   });
 
   it('未確認なら正しいパスワードでも拒否し、確認メールを送り直す', async () => {
@@ -49,8 +48,7 @@ describe('credentials の authorize', () => {
     vi.mocked(hasActiveVerificationToken).mockResolvedValue(false);
 
     await expect(authorize(credentials)).rejects.toBeInstanceOf(EmailNotVerifiedError);
-    expect(createVerificationToken).toHaveBeenCalledWith(credentials.email);
-    expect(sendVerificationEmail).toHaveBeenCalledOnce();
+    expect(issueVerificationEmail).toHaveBeenCalledWith(credentials.email);
   });
 
   it('有効なトークンが残っている間は確認メールを送らない', async () => {
@@ -58,7 +56,15 @@ describe('credentials の authorize', () => {
     vi.mocked(hasActiveVerificationToken).mockResolvedValue(true);
 
     await expect(authorize(credentials)).rejects.toBeInstanceOf(EmailNotVerifiedError);
-    expect(sendVerificationEmail).not.toHaveBeenCalled();
+    expect(issueVerificationEmail).not.toHaveBeenCalled();
+  });
+
+  it('確認メールを送れなくても、未確認として拒否する', async () => {
+    givenUser(null, true);
+    vi.mocked(hasActiveVerificationToken).mockResolvedValue(false);
+    vi.mocked(issueVerificationEmail).mockRejectedValueOnce(new Error('resend down'));
+
+    await expect(authorize(credentials)).rejects.toBeInstanceOf(EmailNotVerifiedError);
   });
 
   it('未確認でもパスワードが違えば、確認状態を明かさずメールも送らない', async () => {

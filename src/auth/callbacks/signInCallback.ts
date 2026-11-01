@@ -19,87 +19,74 @@ export async function signInCallback({
   if (account?.provider === 'google' && user.email) {
     const email = user.email.toLowerCase().trim();
 
-    if (profile?.email_verified !== true) {
+    // OIDC では真偽値だが、文字列で届く実装もある。どちらも受け付ける
+    if (String(profile?.email_verified) !== 'true') {
       logger.warn({ email: maskEmail(email) }, 'Google sign-in rejected: email is not verified');
       return false;
     }
 
     try {
       const existingUser = await prisma.users.findUnique({ where: { email } });
+      const existingIdentity = await prisma.identities.findUnique({
+        where: {
+          provider_provider_id: {
+            provider: 'google',
+            provider_id: account.providerAccountId,
+          },
+        },
+      });
 
-      if (existingUser) {
-        const existingIdentity = await prisma.identities.findUnique({
-          where: {
-            provider_provider_id: {
-              provider: 'google',
-              provider_id: account.providerAccountId,
-            },
+      if (existingIdentity) {
+        return existingIdentity.user_id === existingUser?.id;
+      }
+
+      // メールの一致だけでは連携しない。Google が保証できないアドレスがあるうえ、
+      // 登録者がメールの持ち主とは限らない
+      if (existingUser?.email_verified_at) {
+        logger.warn(
+          { email: maskEmail(email) },
+          'Google sign-in rejected: email belongs to a verified account',
+        );
+        return false;
+      }
+
+      const userId = randomUUID();
+
+      await prisma.$transaction(async (tx) => {
+        // 未確認の行は持ち主のものと限らないので引き継がない。id を変えることで、
+        // 確認前に発行されたセッションからも切り離す
+        if (existingUser) {
+          await tx.users.delete({ where: { id: existingUser.id } });
+        }
+
+        await tx.users.create({
+          data: {
+            id: userId,
+            email,
+            password_hash: null,
+            name: user.name || 'Googleユーザー',
+            avatar_url: user.image,
+            is_sso_user: true,
+            email_verified_at: new Date(),
           },
         });
 
-        if (!existingIdentity) {
-          // Google が確認したメールなので、持ち主の証明はここで済んでいる。
-          // 確認前に登録されたパスワードは持ち主のものと限らないので引き継がない
-          const verifiedNow = existingUser.email_verified_at
-            ? {}
-            : { email_verified_at: new Date(), password_hash: null };
-
-          await prisma.$transaction(async (tx) => {
-            await tx.identities.create({
-              data: {
-                provider: 'google',
-                provider_id: account.providerAccountId,
-                user_id: existingUser.id,
-                identity_data: {
-                  email: user.email,
-                  name: user.name,
-                  picture: user.image,
-                },
-                last_sign_in_at: new Date(),
-              },
-            });
-
-            await tx.users.update({
-              where: { id: existingUser.id },
-              data: { is_sso_user: true, ...verifiedNow },
-            });
-          });
-        }
-
-        return true;
-      } else {
-        const userId = randomUUID();
-
-        await prisma.$transaction(async (tx) => {
-          await tx.users.create({
-            data: {
-              id: userId,
-              email,
-              password_hash: null,
-              name: user.name || 'Googleユーザー',
-              avatar_url: user.image,
-              is_sso_user: true,
-              email_verified_at: new Date(),
+        await tx.identities.create({
+          data: {
+            provider: 'google',
+            provider_id: account.providerAccountId,
+            user_id: userId,
+            identity_data: {
+              email: user.email,
+              name: user.name,
+              picture: user.image,
             },
-          });
-
-          await tx.identities.create({
-            data: {
-              provider: 'google',
-              provider_id: account.providerAccountId,
-              user_id: userId,
-              identity_data: {
-                email: user.email,
-                name: user.name,
-                picture: user.image,
-              },
-              last_sign_in_at: new Date(),
-            },
-          });
+            last_sign_in_at: new Date(),
+          },
         });
+      });
 
-        return true;
-      }
+      return true;
     } catch (error) {
       logger.error({ email: maskEmail(email), error }, 'Google sign-in error');
       return false;

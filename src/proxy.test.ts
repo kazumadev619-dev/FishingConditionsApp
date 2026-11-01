@@ -203,6 +203,13 @@ const ROUTES: RouteExpectation[] = [
     why: '新規登録ページ',
   },
   {
+    pattern: '/auth/verify-email',
+    sample: '/auth/verify-email',
+    anonymous: 'allowed',
+    authenticated: 'allowed',
+    why: 'メール検証リンクの着地ページ。別のセッションが残っていても確認を終えられる',
+  },
+  {
     pattern: '/auth/verification-success',
     sample: '/auth/verification-success',
     anonymous: 'allowed',
@@ -287,7 +294,7 @@ describe('認証 allowlist', () => {
     expect(open.sort()).toEqual(['/api/auth/[...nextauth]', '/api/auth/verify-email']);
   });
 
-  it('未認証で開けるページは4つだけ', () => {
+  it('未認証で開けるページは5つだけ', () => {
     const open = ROUTES.filter(
       (r) => !r.pattern.startsWith('/api/') && !isProbe(r.pattern) && reachesHandler(r.anonymous),
     ).map((r) => r.pattern);
@@ -295,6 +302,7 @@ describe('認証 allowlist', () => {
     expect(open.sort()).toEqual([
       '/auth/verification-error',
       '/auth/verification-success',
+      '/auth/verify-email',
       '/login',
       '/register',
     ]);

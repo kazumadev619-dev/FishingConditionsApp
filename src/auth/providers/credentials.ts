@@ -2,9 +2,9 @@ import bcrypt from 'bcrypt';
 import { CredentialsSignin } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
-import { sendVerificationEmail } from '@/lib/email';
+import { issueVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
-import { createVerificationToken, hasActiveVerificationToken } from '@/lib/token';
+import { hasActiveVerificationToken } from '@/lib/token';
 import { getUser } from '../utils/userRepository';
 
 export class EmailNotVerifiedError extends CredentialsSignin {
@@ -17,9 +17,7 @@ async function resendVerificationEmail(email: string): Promise<void> {
     if (await hasActiveVerificationToken(email)) {
       return;
     }
-    const token = await createVerificationToken(email);
-    const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`;
-    await sendVerificationEmail(email, verificationUrl);
+    await issueVerificationEmail(email);
   } catch (error) {
     logger.error({ email: maskEmail(email), error }, 'Failed to resend verification email');
   }

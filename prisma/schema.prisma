@@ -47,7 +47,7 @@ model identities {
   @@index([user_id])
 }
 
-/// メール検証トークン（アカウント連携時の検証用）
+/// メール検証トークン
 model verification_tokens {
   id         String   @id @default(uuid()) @db.Uuid
   email      String   @db.VarChar(255)

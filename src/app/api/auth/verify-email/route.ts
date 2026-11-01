@@ -5,27 +5,28 @@ import { deleteVerificationToken, verifyToken } from '@/lib/token';
 
 /**
  * メール検証エンドポイント
- * GET /api/auth/verify-email?token=xxx
+ * POST /api/auth/verify-email（/auth/verify-email のボタンから）
+ *
+ * GET を置かない。メールのスキャナがリンクを開くだけで確認済みになるのを防ぐ
  */
-export async function GET(request: NextRequest) {
-  try {
-    // URLパラメータからトークンを取得
-    const searchParams = request.nextUrl.searchParams;
-    const token = searchParams.get('token');
+export async function POST(request: NextRequest) {
+  // 303 にしないと、遷移先にも POST が飛ぶ。request.url はトンネルの外の URL と
+  // 一致しないので、Location は相対パスにする
+  const redirectTo = (path: string) =>
+    new NextResponse(null, { status: 303, headers: { Location: path } });
 
-    if (!token) {
-      return NextResponse.redirect(
-        new URL('/auth/verification-error?error=missing_token', request.url),
-      );
+  try {
+    const token = (await request.formData()).get('token');
+
+    if (typeof token !== 'string' || !token) {
+      return redirectTo('/auth/verification-error?error=missing_token');
     }
 
     // トークンを検証
     const email = await verifyToken(token);
 
     if (!email) {
-      return NextResponse.redirect(
-        new URL('/auth/verification-error?error=invalid_token', request.url),
-      );
+      return redirectTo('/auth/verification-error?error=invalid_token');
     }
 
     // ユーザーを取得
@@ -36,9 +37,7 @@ export async function GET(request: NextRequest) {
     if (!user) {
       // トークンを削除
       await deleteVerificationToken(token);
-      return NextResponse.redirect(
-        new URL('/auth/verification-error?error=user_not_found', request.url),
-      );
+      return redirectTo('/auth/verification-error?error=user_not_found');
     }
 
     // メール検証完了: email_verified_atを更新
@@ -53,11 +52,9 @@ export async function GET(request: NextRequest) {
     await deleteVerificationToken(token);
 
     // 検証成功ページにリダイレクト
-    return NextResponse.redirect(new URL('/auth/verification-success', request.url));
+    return redirectTo('/auth/verification-success');
   } catch (error) {
     logger.error({ err: error }, 'Email verification error');
-    return NextResponse.redirect(
-      new URL('/auth/verification-error?error=server_error', request.url),
-    );
+    return redirectTo('/auth/verification-error?error=server_error');
   }
 }

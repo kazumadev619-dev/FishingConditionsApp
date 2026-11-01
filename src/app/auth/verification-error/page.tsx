@@ -10,12 +10,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 const ERROR_MESSAGES: Record<string, { title: string; description: string }> = {
   missing_token: {
     title: 'トークンが見つかりません',
-    description: 'メールの確認リンクが無効です。もう一度登録を試してください。',
+    description: 'メールの確認リンクが無効です。ログインすると確認メールを送り直します。',
   },
   invalid_token: {
     title: '無効なトークンまたは期限切れ',
     description:
-      'このリンクは無効または期限切れです。トークンの有効期限は1時間です。もう一度登録してください。',
+      'このリンクは無効または期限切れです。トークンの有効期限は1時間です。ログインすると確認メールを送り直します。',
   },
   user_not_found: {
     title: 'ユーザーが見つかりません',

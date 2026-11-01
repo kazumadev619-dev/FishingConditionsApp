@@ -2,6 +2,7 @@ import { render } from '@react-email/components';
 import { Resend } from 'resend';
 import VerificationEmail from '@/emails/verification-email';
 import { logger } from './logger';
+import { createVerificationToken, deleteVerificationToken } from './token';
 
 // Resendクライアントを遅延初期化（ビルド時エラーを回避）
 let resendClient: Resend | null = null;
@@ -52,4 +53,20 @@ export async function sendVerificationEmail(
     logger.error({ error }, 'Error sending verification email');
     return false;
   }
+}
+
+/**
+ * 確認トークンを作ってメールを送る。
+ * 送れなかったらトークンを消す。残すと有効なトークンがある扱いになり、再送が止まる
+ * @returns 送信成功時はtrue、失敗時はfalse
+ */
+export async function issueVerificationEmail(email: string): Promise<boolean> {
+  const token = await createVerificationToken(email);
+  const verificationUrl = `${process.env.NEXTAUTH_URL}/auth/verify-email?token=${token}`;
+  const sent = await sendVerificationEmail(email, verificationUrl);
+
+  if (!sent) {
+    await deleteVerificationToken(token);
+  }
+  return sent;
 }

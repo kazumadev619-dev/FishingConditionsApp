@@ -8,11 +8,10 @@ import { z } from 'zod';
 import { signIn } from '@/auth';
 import { EmailNotVerifiedError } from '@/auth/providers/credentials';
 import { Prisma } from '@/generated/prisma/client';
-import { sendVerificationEmail } from '@/lib/email';
+import { issueVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { CONSTRAINTS, isViolationOf } from '@/lib/prismaConstraints';
-import { createVerificationToken } from '@/lib/token';
 
 const SignupFormSchema = z.object({
   name: z.string().min(2, { message: '名前は2文字以上で入力してください。' }),
@@ -65,9 +64,7 @@ export async function signup(_prevState: string | undefined, formData: FormData)
 
     // メール検証トークンを生成して送信
     try {
-      const token = await createVerificationToken(normalizedEmail);
-      const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`;
-      const emailSent = await sendVerificationEmail(normalizedEmail, verificationUrl);
+      const emailSent = await issueVerificationEmail(normalizedEmail);
 
       if (!emailSent) {
         logger.error({ email: maskEmail(normalizedEmail) }, 'Failed to send verification email');

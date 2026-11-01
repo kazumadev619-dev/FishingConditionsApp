@@ -2,7 +2,8 @@
 
 import { AlertCircle } from 'lucide-react';
 import Link from 'next/link';
-import { useActionState, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { Suspense, useActionState, useState } from 'react';
 import { useFormStatus } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -90,6 +91,10 @@ export default function LoginPage() {
                 Googleでログイン
               </Button>
 
+              <Suspense>
+                <GoogleRedirectError />
+              </Suspense>
+
               {googleError && (
                 <div
                   className="flex items-center space-x-2 text-sm text-red-500"
@@ -110,6 +115,30 @@ export default function LoginPage() {
           </CardContent>
         </Card>
       </form>
+    </div>
+  );
+}
+
+/** Google から戻ったときの拒否は /login?error=... で届く */
+function GoogleRedirectError() {
+  const error = useSearchParams().get('error');
+
+  if (!error) {
+    return null;
+  }
+
+  return (
+    <div
+      className="flex items-center space-x-2 text-sm text-red-500"
+      aria-live="polite"
+      aria-atomic="true"
+    >
+      <AlertCircle className="h-4 w-4" />
+      <p>
+        {error === 'AccessDenied'
+          ? 'Googleでログインできませんでした。このメールアドレスを登録済みの場合は、登録時の方法でログインしてください。'
+          : 'ログインに失敗しました。時間をおいて再度お試しください。'}
+      </p>
     </div>
   );
 }

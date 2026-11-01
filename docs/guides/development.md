@@ -158,6 +158,11 @@ REDIS_URL=redis://localhost:6379
 # 認証
 AUTH_URL=http://localhost:3000
 AUTH_SECRET=...                      # npx auth secret で生成
+NEXTAUTH_URL=http://localhost:3000   # 確認メールのリンクの先頭に付く
+
+# メール（確認メールが届かないと、パスワード登録のアカウントでログインできない）
+RESEND_API_KEY=...
+EMAIL_FROM=...                       # 省略時は noreply@fishing-conditions.app
 
 # Google OAuth (オプション)
 AUTH_GOOGLE_ID=...                   # Google Cloud ConsoleのClient ID
