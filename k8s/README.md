@@ -72,8 +72,9 @@ startup / liveness / readiness の3つとも、依存ゼロの `/healthz` を叩
 天気・潮汐・スコアは外部 API から取れる。お気に入りと港マスタの API は 500 を返す。
 
 **`/readyz` は人が叩く診断用として残している。** DB と Redis の到達性を返す。
-未認証で届くので、DB の確認に成功したら30分はその結果を返す。実際に確かめた時刻は
-`checks.databaseCheckedAt` に出る。
+未認証で届くので、DB の確認に成功したら30分はその結果を返す。その間に DB が落ちても
+`ok` のままなので、障害の調査では `checks.databaseCheckedAt`（`ok` の根拠になった確認の
+時刻。失敗したときは `null`）を見ること。
 監視や probe など、定期ポーリングは向けないこと。CI の
 `Ensure probes only hit /healthz` が、probe が `/healthz` 以外を向いたら落とす。
 

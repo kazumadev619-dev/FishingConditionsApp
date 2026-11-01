@@ -12,7 +12,8 @@ import prisma from '@/lib/prisma';
  *
  * 判定に含めるもの:
  * - **DB**: 含める。このエンドポイントの主目的が DB 到達性の確認のため。
- *   成功は DB_CHECK_INTERVAL_MS の間覚えるので、`databaseCheckedAt` が実際に確かめた時刻。
+ *   成功は DB_CHECK_INTERVAL_MS の間覚える。`databaseCheckedAt` は `ok` の根拠になった確認の
+ *   時刻で、今の状態はそれより古いことがある。失敗したときは null。
  * - **Redis**: 含めない。キャッシュが落ちても `isAvailable()` が false を
  *   返して呼び出し側が素通しするだけで、アプリは（遅くなるが）動く。
  *   状態は body に出して観測できるようにするに留める。
@@ -74,7 +75,8 @@ export async function GET() {
       status: databaseReady ? 'ready' : 'not_ready',
       checks: {
         database: databaseReady ? 'ok' : 'error',
-        databaseCheckedAt: lastReachableAt ? new Date(lastReachableAt).toISOString() : null,
+        databaseCheckedAt:
+          databaseReady && lastReachableAt ? new Date(lastReachableAt).toISOString() : null,
         // Ready 判定には影響しない（degraded でもトラフィックは受ける）
         cache: cacheAvailable ? 'ok' : 'degraded',
       },

@@ -22,13 +22,16 @@ describe('GET /readyz', () => {
   it('成功は30分のあいだ覚え、DB を叩かない', async () => {
     vi.mocked(prisma.$queryRaw).mockResolvedValue([] as never);
     const GET = await loadGet();
+    const checkedAt = new Date().toISOString();
 
     expect((await GET()).status).toBe(200);
     vi.advanceTimersByTime(THIRTY_MINUTES_MS - 1);
     const response = await GET();
 
     expect(response.status).toBe(200);
-    expect((await response.json()).checks.database).toBe('ok');
+    const { checks } = await response.json();
+    expect(checks.database).toBe('ok');
+    expect(checks.databaseCheckedAt).toBe(checkedAt);
     expect(prisma.$queryRaw).toHaveBeenCalledOnce();
   });
 
@@ -41,6 +44,19 @@ describe('GET /readyz', () => {
     await GET();
 
     expect(prisma.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+
+  it('期限が切れて確認に失敗したら、古い成功時刻を返さない', async () => {
+    vi.mocked(prisma.$queryRaw).mockResolvedValueOnce([] as never);
+    vi.mocked(prisma.$queryRaw).mockRejectedValueOnce(new Error('down') as never);
+    const GET = await loadGet();
+
+    await GET();
+    vi.advanceTimersByTime(THIRTY_MINUTES_MS);
+    const failed = await GET();
+
+    expect(failed.status).toBe(503);
+    expect((await failed.json()).checks.databaseCheckedAt).toBeNull();
   });
 
   it('失敗は覚えず、次のリクエストで回復が見える', async () => {
