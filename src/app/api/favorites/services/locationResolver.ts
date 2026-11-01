@@ -7,7 +7,12 @@ import type { FavoriteRequest } from '@/types/favorites';
 const CoordinatesSchema = z.object({
   lat: z.number().min(-90).max(90),
   lng: z.number().min(-180).max(180),
-  name: z.string().trim().min(1).max(200),
+  name: z
+    .string()
+    .trim()
+    .min(1)
+    .max(200)
+    .refine((value) => !value.includes('\0')), // PostgreSQL の text に NUL は入らず 500 になる
 });
 
 type LocationResult =
@@ -25,8 +30,9 @@ type LocationResult =
  * 勝った行を引き直す。prisma の upsert は update が空だと SELECT → INSERT に
  * 展開されて同じ競合で P2002 を投げるので使わない。
  *
- * 港の経路では港のデータを正とし、既に行があれば名前と port_id を港に揃える。
+ * 港の経路では港のデータを正とし、港に結びついていない行の名前と port_id を港に揃える。
  * locations は全員で共有するので、座標の経路で先に作られた名前を残さない。
+ * 丸めると同じ座標になる港があるので、別の港に結びついた行は書き換えない。
  */
 async function findOrCreateLocation(
   latitude: number,
@@ -49,7 +55,7 @@ async function findOrCreateLocation(
 
   if (portId) {
     await prisma.locations.updateMany({
-      where: coordinates,
+      where: { ...coordinates, port_id: null },
       data: { name, port_id: portId },
     });
   }

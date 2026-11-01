@@ -57,7 +57,7 @@ describe('resolveLocationId（座標から locations を作る）', () => {
     });
   });
 
-  it('港の経路では、既にある行の名前と port_id を港に揃える', async () => {
+  it('港の経路では、港に結びついていない行の名前と port_id を港に揃える', async () => {
     prismaMock.ports.findUnique.mockResolvedValue({
       id: 'port-1',
       name: '築地',
@@ -70,7 +70,7 @@ describe('resolveLocationId（座標から locations を作る）', () => {
     await resolveLocationId({ portId: 'port-1' });
 
     expect(prismaMock.locations.updateMany).toHaveBeenCalledWith({
-      where: { latitude: 35.6667, longitude: 139.767 },
+      where: { latitude: 35.6667, longitude: 139.767, port_id: null },
       data: { name: '築地', port_id: 'port-1' },
     });
   });
@@ -101,6 +101,7 @@ describe('resolveLocationId（座標から locations を作る）', () => {
     ['長すぎる名前', { lat: 35, lng: 139, name: 'あ'.repeat(201) }],
     ['文字列でない名前', { lat: 35, lng: 139, name: 123 }],
     ['名前なし', { lat: 35, lng: 139 }],
+    ['NUL を含む名前', { lat: 35, lng: 139, name: 'a\0b' }],
     ['範囲外の緯度', { lat: 91, lng: 139, name: '地点' }],
     ['範囲外の経度', { lat: 35, lng: -181, name: '地点' }],
     ['文字列の座標', { lat: '35', lng: 139, name: '地点' }],
