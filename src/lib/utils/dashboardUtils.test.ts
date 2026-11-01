@@ -17,7 +17,7 @@ describe('表示の時刻は実行環境のタイムゾーンに依存しない'
       process.env.TZ = tz;
       expect(formatTime(date)).toBe('05:48');
       expect(formatDateTime(date)).toBe('2026/10/17 5:48:27');
-      expect(formatTideEvent('2:05', 123)).toEqual({ time: '02:05', height: '1.2m' });
+      expect(formatTideEvent('2:05', 123)).toEqual({ time: '02:05', height: '1.2 m' });
     });
   }
 });

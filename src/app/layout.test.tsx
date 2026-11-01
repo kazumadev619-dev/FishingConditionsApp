@@ -10,6 +10,11 @@ import { describe, expect, it, vi } from 'vitest';
 
 const { connection } = vi.hoisted(() => ({ connection: vi.fn(async () => {}) }));
 vi.mock('next/server', () => ({ connection }));
+// next/font はビルド時に SWC が変換するので、vitest では実体が無い
+vi.mock('next/font/google', () => {
+  const font = () => ({ variable: '' });
+  return { BIZ_UDPGothic: font, IBM_Plex_Mono: font, Shippori_Mincho_B1: font };
+});
 
 import RootLayout from './layout';
 

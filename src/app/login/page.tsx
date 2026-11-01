@@ -18,11 +18,11 @@ export default function LoginPage() {
   const handleGoogleSignIn = () => signInWithGoogle(setGoogleError);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
+    <div className="flex items-center justify-center min-h-screen bg-background">
       <form action={dispatch}>
         <Card className="mx-auto max-w-sm">
           <CardHeader>
-            <CardTitle className="text-2xl">ログイン</CardTitle>
+            <CardTitle className="text-title">ログイン</CardTitle>
             <CardDescription>
               メールアドレスとパスワードを入力してログインしてください
             </CardDescription>
@@ -44,7 +44,7 @@ export default function LoginPage() {
               </div>
               {errorMessage && (
                 <div
-                  className="flex items-center space-x-2 text-sm text-red-500"
+                  className="flex items-center space-x-2 text-sm text-destructive"
                   aria-live="polite"
                   aria-atomic="true"
                 >
@@ -59,7 +59,7 @@ export default function LoginPage() {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">または</span>
+                  <span className="bg-card px-2 text-muted-foreground">または</span>
                 </div>
               </div>
 
@@ -92,7 +92,7 @@ export default function LoginPage() {
 
               {googleError && (
                 <div
-                  className="flex items-center space-x-2 text-sm text-red-500"
+                  className="flex items-center space-x-2 text-sm text-destructive"
                   aria-live="polite"
                   aria-atomic="true"
                 >
