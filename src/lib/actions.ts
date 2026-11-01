@@ -6,6 +6,7 @@ import { redirect } from 'next/navigation';
 import { AuthError } from 'next-auth';
 import { z } from 'zod';
 import { signIn } from '@/auth';
+import { EmailNotVerifiedError } from '@/auth/providers/credentials';
 import { Prisma } from '@/generated/prisma/client';
 import { sendVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
@@ -147,6 +148,9 @@ export async function authenticate(_prevState: string | undefined, formData: For
     if (error instanceof AuthError) {
       switch (error.type) {
         case 'CredentialsSignin':
+          if (error instanceof EmailNotVerifiedError) {
+            return 'メールアドレスが確認できていません。確認メールのリンクを開いてください。';
+          }
           return 'メールアドレスまたはパスワードが正しくありません。';
         case 'CallbackRouteError':
           // Fallback for any callback-related errors

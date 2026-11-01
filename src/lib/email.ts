@@ -20,20 +20,18 @@ function getResendClient(): Resend {
  * メール検証リンクを送信
  * @param email - 送信先メールアドレス
  * @param verificationUrl - 検証用URL（トークン含む）
- * @param purpose - メール送信の用途（'signup': 通常登録, 'social-link': ソーシャル連携）
  * @returns 送信成功時はtrue、失敗時はfalse
  */
 export async function sendVerificationEmail(
   email: string,
   verificationUrl: string,
-  purpose: 'signup' | 'social-link' = 'signup',
 ): Promise<boolean> {
   try {
     // Resendクライアントを取得（遅延初期化）
     const resend = getResendClient();
 
     // React EmailテンプレートをHTMLにレンダリング
-    const emailHtml = await render(VerificationEmail({ verificationUrl, purpose }));
+    const emailHtml = await render(VerificationEmail({ verificationUrl }));
 
     // メール送信
     const { data, error } = await resend.emails.send({

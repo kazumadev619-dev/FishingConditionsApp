@@ -242,7 +242,7 @@ sequenceDiagram
     end
 ```
 
-### 既存ユーザーアカウント連携フロー（メール検証付き）
+### 既存ユーザーアカウント連携フロー（メール未検証の場合）
 
 ```mermaid
 sequenceDiagram
@@ -253,8 +253,6 @@ sequenceDiagram
     participant Callback as /api/auth/callback/google
     participant AuthTS as /src/auth/index.ts signIn()
     participant DB as Prisma + PostgreSQL
-    participant Token as Token Generator
-    participant Email as Resend
     participant Session as セッション管理
 
     Note over User: user@example.com で<br/>Credentials登録済み<br/>(email_verified_at=NULL)
@@ -278,44 +276,13 @@ sequenceDiagram
     AuthTS->>DB: identities.findUnique(<br/>provider_id, provider)
     DB-->>AuthTS: null (未連携)
 
-    AuthTS->>AuthTS: email_verified_at確認
+    AuthTS->>AuthTS: profile.email_verified が true か確認
 
-    alt メール未検証
-        Note over AuthTS,Email: メール検証フロー開始
-        AuthTS->>Token: 検証トークン生成(1時間有効)
-        Token-->>AuthTS: token
-        AuthTS->>DB: verification_tokens保存
-        DB-->>AuthTS: 成功
-
-        AuthTS->>Email: 検証メール送信<br/>(purpose: 'social-link')
-        Email-->>User: メール送信
-
-        AuthTS-->>Callback: false (AccessDenied)
-        Callback-->>UI: エラー
-        UI-->>User: "メール確認が必要です"
-
-        User->>User: メール確認
-        User->>User: 検証リンククリック
-        User->>UI: /api/auth/verify-email?token=xxx
-        UI->>DB: トークン検証・email_verified_at更新
-        DB-->>UI: 成功
-        UI->>UI: /auth/verification-successへ
-        UI-->>User: "検証完了。再度Googleログインしてください"
-
-        User->>UI: "Googleでログイン"再試行
-        UI->>NextAuth: signIn('google', {callbackUrl})
-        NextAuth->>Google: OAuth認証リクエスト
-        Google->>Callback: リダイレクト
-        Callback->>AuthTS: signIn({ user, account })
-        AuthTS->>DB: findUnique(email)
-        DB-->>AuthTS: existingUser<br/>(email_verified_at あり)
-    end
-
-    Note over AuthTS,DB: メール検証済み → アカウント連携
+    Note over AuthTS,DB: Google が確認したメールなのでアカウント連携
     AuthTS->>DB: identities.create({<br/>provider='google',<br/>user_id,<br/>provider_id,<br/>identity_data})
     DB-->>AuthTS: 成功
 
-    AuthTS->>DB: users.update(<br/>is_sso_user=true)
+    AuthTS->>DB: users.update(<br/>is_sso_user=true,<br/>email_verified_at=now,<br/>password_hash=NULL)
     DB-->>AuthTS: 成功
 
     AuthTS-->>Callback: true
@@ -330,7 +297,7 @@ sequenceDiagram
     UI->>UI: /dashboardへ
     UI-->>User: ダッシュボード表示
 
-    Note over User,DB: 次回以降、Credentials/Google<br/>どちらでもログイン可能
+    Note over User,DB: 確認前のパスワードは捨てるので、<br/>次回以降は Google でログインする
 ```
 
 ---

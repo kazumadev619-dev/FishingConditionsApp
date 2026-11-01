@@ -74,6 +74,16 @@ export async function verifyToken(token: string): Promise<string | null> {
 }
 
 /**
+ * このメールアドレスに有効期限内のトークンがあるか
+ */
+export async function hasActiveVerificationToken(email: string): Promise<boolean> {
+  const count = await prisma.verification_tokens.count({
+    where: { email, expires_at: { gt: new Date() } },
+  });
+  return count > 0;
+}
+
+/**
  * 検証完了後、トークンを削除
  * @param token - 削除するトークン
  */

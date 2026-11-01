@@ -11,7 +11,7 @@
   - `Google` プロバイダー: GoogleアカウントでのOAuth認証
 - **データベース**: `PostgreSQL` を使用し、ユーザー情報は `users` テーブルに格納されます（Prisma ORM経由）。
 - **パスワードハッシュ化**: `bcrypt` を使用してパスワードを安全にハッシュ化し、保存・比較しています。
-- **メール検証**: Resend + React Email による検証メール送信（通常登録・Google連携時）
+- **メール検証**: Resend + React Email による検証メール送信（通常登録と、未確認のままログインしたとき）
 - **アカウント連携**: メールアドレスで既存アカウントと連携（メール検証必須）
 
 ## 主要ファイル
@@ -27,7 +27,7 @@
 
 - `src/lib/email.ts`: Resendを使用したメール送信ユーティリティ
 - `src/lib/token.ts`: トークン生成・検証・削除ロジック（有効期限1時間）
-- `src/emails/verification-email.tsx`: React Emailテンプレート（通常登録・Google連携用）
+- `src/emails/verification-email.tsx`: React Emailテンプレート
 - `src/app/api/auth/verify-email/route.ts`: トークン検証エンドポイント
 - `src/app/auth/verification-success/page.tsx`: 検証成功ページ
 - `src/app/auth/verification-error/page.tsx`: 検証失敗ページ
@@ -55,8 +55,9 @@
 2.  `authenticate` サーバーアクションが呼び出され、内部で `next-auth` の `signIn` 関数を `credentials` プロバイダーで実行します。
 3.  `src/auth.ts` の `authorize` 関数が実行されます。
     1.  提供されたメールアドレスでユーザーをデータベースから検索します。
-    2.  ユーザーが存在し、パスワードが `bcrypt.compare` によって一致した場合、ユーザーオブジェクトを返します。
-    3.  一致しない場合はエラーがスローされます。
+    2.  ユーザーが存在し、パスワードが `bcrypt.compare` によって一致し、メールが確認済みの場合、ユーザーオブジェクトを返します。
+    3.  パスワードが一致してもメールが未確認なら拒否します。有効なトークンが無ければ確認メールを送り直します（1時間に1通まで）。
+    4.  パスワードが一致しない場合はエラーがスローされます。
 4.  認証が成功すると、セッションが作成され、ユーザーはダッシュボード (`/dashboard`) にリダイレクトされます。
 
 ### 3. アクセス制御
@@ -86,12 +87,11 @@
 2. `signIn('google', { callbackUrl: '/dashboard' })` が呼び出され、Google OAuth画面へリダイレクトされます。
 3. ユーザーがGoogleアカウントで認証します。
 4. `/api/auth/callback/google` へリダイレクトされ、`src/auth/index.ts` の `signIn` コールバックが実行されます。
+   Google のプロフィールの `email_verified` が `true` でなければ、ここで拒否します。
 5. **既存ユーザーの場合（メール未検証）**:
    - メールアドレスで既存ユーザーを検索
-   - `email_verified_at` が NULL の場合、サインイン拒否（AccessDenied）
-   - 検証トークンを生成し、Resendでメールを送信（`purpose: 'social-link'`）
-   - ユーザーはメール内のリンクをクリックして検証を完了
-   - 検証完了後、再度Google認証を試みると成功
+   - `identities` に追加し、`email_verified_at` を設定する（Google の確認をメールの確認として扱う）
+   - 確認前に登録された `password_hash` は `NULL` にする。持ち主のパスワードと限らないため
 6. **既存ユーザーの場合（メール検証済み）**:
    - `identities` テーブルに新規レコード追加（アカウント連携）
    - `users.is_sso_user` を `true` に更新
@@ -116,7 +116,7 @@
 
 ### セキュリティ強化
 
-- ✅ **メール所有確認必須**: 通常登録・Google連携時の両方でメール検証を実施
+- ✅ **メール所有確認必須**: 通常登録はメール検証、Google連携は Google の `email_verified` で確認
 - ✅ **トークン有効期限**: 検証トークンは1時間で失効
 - ✅ **使用済みトークン削除**: 検証完了後、トークンを自動削除
 - ✅ **アカウント乗っ取り防止**: メール所有確認なしのアカウント連携を防止
