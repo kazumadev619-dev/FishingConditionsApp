@@ -9,6 +9,7 @@ import { logApiError } from '@/lib/apiErrorUtils';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
+import { withUserRateLimit } from '@/lib/rateLimit';
 import { withServerTiming } from '@/lib/serverTiming';
 import { parseAndValidateCoordinates } from '@/lib/validators';
 
@@ -20,10 +21,9 @@ import { parseAndValidateCoordinates } from '@/lib/validators';
  * - type: 'current' | 'forecast'（デフォルト: 'current'）
  * - lang: 言語コード（デフォルト: 'ja'）
  * - units: 'standard' | 'metric' | 'imperial'（デフォルト: 'metric'）
- * - skipCache: キャッシュをスキップするか（デフォルト: false）
  */
 export async function GET(request: NextRequest) {
-  return withServerTiming('weather', () => handleGet(request));
+  return withServerTiming('weather', () => withUserRateLimit('weather', () => handleGet(request)));
 }
 
 async function handleGet(request: NextRequest) {
@@ -48,7 +48,6 @@ async function handleGet(request: NextRequest) {
   const type = searchParams.get('type') || 'current';
   const lang = searchParams.get('lang') || 'ja';
   const units = (searchParams.get('units') as 'standard' | 'metric' | 'imperial') || 'metric';
-  const skipCache = searchParams.get('skipCache') === 'true';
 
   // typeパラメータのバリデーション
   if (type !== 'current' && type !== 'forecast') {
@@ -69,7 +68,7 @@ async function handleGet(request: NextRequest) {
   }
 
   try {
-    const options = { lang, units, skipCache };
+    const options = { lang, units };
 
     if (type === 'forecast') {
       const result = await getForecast(lat, lon, options);

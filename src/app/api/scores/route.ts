@@ -14,6 +14,7 @@ import {
 } from '@/lib/cache';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
+import { withUserRateLimit } from '@/lib/rateLimit';
 import { calculateFishingScore } from '@/lib/scoringService';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
@@ -83,7 +84,7 @@ function reviveScoringDates(data: Jsonified<ScoringResponse>): ScoringResponse {
 export async function GET(
   request: NextRequest,
 ): Promise<NextResponse<ScoringResponse | { error: string }>> {
-  return withServerTiming('scores', () => handleGet(request));
+  return withServerTiming('scores', () => withUserRateLimit('scores', () => handleGet(request)));
 }
 
 async function handleGet(

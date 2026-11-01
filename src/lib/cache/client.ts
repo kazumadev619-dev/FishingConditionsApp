@@ -105,6 +105,33 @@ class CacheClient {
   }
 
   /**
+   * カウンタを1増やして、増やした後の値を返す。使えないときは null
+   * @param key カウンタのキー
+   * @param ttlSeconds 最初に増やした時点から数える TTL（秒）
+   */
+  public async increment(key: string, ttlSeconds: number): Promise<number | null> {
+    if (!this.isAvailable() || !this.client) {
+      return null;
+    }
+    try {
+      // INCR の後に EXPIRE を分けて送ると、間で切れたとき TTL の無いキーが残り続ける
+      const results = await this.client
+        .multi()
+        .set(key, 0, 'EX', ttlSeconds, 'NX')
+        .incr(key)
+        .exec();
+      const [error, count] = results?.[1] ?? [new Error('Empty transaction result')];
+      if (error) {
+        throw error;
+      }
+      return count as number;
+    } catch (err) {
+      logger.error({ key, err }, 'Failed to increment counter');
+      return null;
+    }
+  }
+
+  /**
    * キャッシュからデータを削除
    * @param key キャッシュキー
    */
