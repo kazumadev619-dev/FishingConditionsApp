@@ -51,7 +51,6 @@ flowchart TD
     style Dashboard fill:#90EE90
     style ShowError fill:#FFB6C1
     style CreateSession fill:#87CEEB
-    style LinkAccount fill:#FFD700
 ```
 
 ---
@@ -107,7 +106,7 @@ sequenceDiagram
 
             Action-->>UI: 登録成功
             UI->>UI: /loginへリダイレクト
-            UI-->>User: ログインページ表示<br/>※メール確認を促すメッセージ
+            UI-->>User: ログインページ表示
 
             User->>User: メール確認
             User->>User: 検証リンククリック
@@ -165,7 +164,13 @@ sequenceDiagram
                 NextAuth-->>Action: CredentialsSignin Error
                 Action-->>UI: エラーメッセージ
                 UI-->>User: エラー表示
-            else パスワード一致
+            else パスワード一致・メール未確認
+                AuthTS->>DB: 有効なトークンが無ければ発行し、確認メールを送り直す
+                AuthTS-->>NextAuth: EmailNotVerifiedError
+                NextAuth-->>Action: CredentialsSignin Error
+                Action-->>UI: 確認を促すメッセージ
+                UI-->>User: エラー表示
+            else パスワード一致・メール確認済み
                 AuthTS-->>NextAuth: userオブジェクト
                 NextAuth->>AuthTS: jwt({ token, user })
                 AuthTS->>AuthTS: token.id = user.id

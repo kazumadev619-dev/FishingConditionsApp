@@ -40,6 +40,22 @@ describe('POST /api/auth/verify-email', () => {
     expect(deleteVerificationToken).toHaveBeenCalledWith('token-1');
   });
 
+  it('ユーザーが居なければトークンを消して、失敗として返す', async () => {
+    vi.mocked(verifyToken).mockResolvedValue('gone@example.com');
+    vi.mocked(prisma.users.findUnique).mockResolvedValue(null);
+
+    const response = await post('token-1');
+
+    expect(response.headers.get('location')).toContain('error=user_not_found');
+    expect(deleteVerificationToken).toHaveBeenCalledWith('token-1');
+  });
+
+  it('例外は失敗として返す', async () => {
+    vi.mocked(verifyToken).mockRejectedValue(new Error('db down'));
+
+    expect((await post('token-1')).headers.get('location')).toContain('error=server_error');
+  });
+
   it('トークンが無いか無効なら確認済みにしない', async () => {
     vi.mocked(verifyToken).mockResolvedValue(null);
 

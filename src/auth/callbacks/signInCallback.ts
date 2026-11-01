@@ -55,8 +55,14 @@ export async function signInCallback({
       await prisma.$transaction(async (tx) => {
         // 未確認の行は持ち主のものと限らないので引き継がない。id を変えることで、
         // 確認前に発行されたセッションからも切り離す
+        // 読んだ後に確認が済んだ行は消さない
         if (existingUser) {
-          await tx.users.delete({ where: { id: existingUser.id } });
+          const { count } = await tx.users.deleteMany({
+            where: { id: existingUser.id, email_verified_at: null },
+          });
+          if (count === 0) {
+            throw new Error('User was verified during Google sign-in');
+          }
         }
 
         await tx.users.create({
