@@ -2,12 +2,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // vi.mock はファイル先頭に巻き上げられるため、モック本体も vi.hoisted で作る
 const prismaMock = vi.hoisted(() => ({
-  locations: { createMany: vi.fn(), findUniqueOrThrow: vi.fn() },
+  locations: { createMany: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
   ports: { findUnique: vi.fn() },
 }));
 
 vi.mock('@/lib/prisma', () => ({ default: prismaMock }));
 
+import type { FavoriteRequest } from '@/types/favorites';
 import { resolveLocationId } from './locationResolver';
 
 beforeEach(() => {
@@ -54,5 +55,60 @@ describe('resolveLocationId（座標から locations を作る）', () => {
       data: expect.objectContaining({ name: '築地', port_id: 'port-1' }),
       skipDuplicates: true,
     });
+  });
+
+  it('港の経路では、既にある行の名前と port_id を港に揃える', async () => {
+    prismaMock.ports.findUnique.mockResolvedValue({
+      id: 'port-1',
+      name: '築地',
+      latitude: 35.66671,
+      longitude: 139.76701,
+    });
+    prismaMock.locations.createMany.mockResolvedValue({ count: 0 });
+    prismaMock.locations.findUniqueOrThrow.mockResolvedValue({ id: 'existing' });
+
+    await resolveLocationId({ portId: 'port-1' });
+
+    expect(prismaMock.locations.updateMany).toHaveBeenCalledWith({
+      where: { latitude: 35.6667, longitude: 139.767 },
+      data: { name: '築地', port_id: 'port-1' },
+    });
+  });
+
+  it('座標の経路では、既にある行を書き換えない', async () => {
+    prismaMock.locations.createMany.mockResolvedValue({ count: 0 });
+    prismaMock.locations.findUniqueOrThrow.mockResolvedValue({ id: 'existing' });
+
+    await resolveLocationId({ coordinates: { lat: 35, lng: 139, name: '別の名前' } });
+
+    expect(prismaMock.locations.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('前後の空白を除いた名前で保存する', async () => {
+    prismaMock.locations.createMany.mockResolvedValue({ count: 1 });
+    prismaMock.locations.findUniqueOrThrow.mockResolvedValue({ id: 'loc-1' });
+
+    await resolveLocationId({ coordinates: { lat: 35, lng: 139, name: '  地点  ' } });
+
+    expect(prismaMock.locations.createMany).toHaveBeenCalledWith({
+      data: expect.objectContaining({ name: '地点' }),
+      skipDuplicates: true,
+    });
+  });
+
+  it.each([
+    ['空の名前', { lat: 35, lng: 139, name: '   ' }],
+    ['長すぎる名前', { lat: 35, lng: 139, name: 'あ'.repeat(201) }],
+    ['文字列でない名前', { lat: 35, lng: 139, name: 123 }],
+    ['名前なし', { lat: 35, lng: 139 }],
+    ['範囲外の緯度', { lat: 91, lng: 139, name: '地点' }],
+    ['範囲外の経度', { lat: 35, lng: -181, name: '地点' }],
+    ['文字列の座標', { lat: '35', lng: 139, name: '地点' }],
+  ])('%s は 400 で、行を作らない', async (_label, coordinates) => {
+    const result = await resolveLocationId({ coordinates } as FavoriteRequest);
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.response.status).toBe(400);
+    expect(prismaMock.locations.createMany).not.toHaveBeenCalled();
   });
 });

@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
+import { z } from 'zod';
 import { toLocationCoordinates } from '@/lib/locationIdentity';
 import prisma from '@/lib/prisma';
 import type { FavoriteRequest } from '@/types/favorites';
+
+const CoordinatesSchema = z.object({
+  lat: z.number().min(-90).max(90),
+  lng: z.number().min(-180).max(180),
+  name: z.string().trim().min(1).max(200),
+});
 
 type LocationResult =
   | { success: true; locationId: string }
@@ -17,6 +24,9 @@ type LocationResult =
  * (latitude, longitude) の unique に対して INSERT ... ON CONFLICT DO NOTHING し、
  * 勝った行を引き直す。prisma の upsert は update が空だと SELECT → INSERT に
  * 展開されて同じ競合で P2002 を投げるので使わない。
+ *
+ * 港の経路では港のデータを正とし、既に行があれば名前と port_id を港に揃える。
+ * locations は全員で共有するので、座標の経路で先に作られた名前を残さない。
  */
 async function findOrCreateLocation(
   latitude: number,
@@ -36,6 +46,13 @@ async function findOrCreateLocation(
     },
     skipDuplicates: true,
   });
+
+  if (portId) {
+    await prisma.locations.updateMany({
+      where: coordinates,
+      data: { name, port_id: portId },
+    });
+  }
 
   const location = await prisma.locations.findUniqueOrThrow({
     where: { latitude_longitude: coordinates },
@@ -86,21 +103,16 @@ export async function resolveLocationId(body: FavoriteRequest): Promise<Location
   }
 
   if (coordinates) {
-    const { lat, lng, name } = coordinates;
+    const parsed = CoordinatesSchema.safeParse(coordinates);
 
-    if (
-      typeof lat !== 'number' ||
-      typeof lng !== 'number' ||
-      lat < -90 ||
-      lat > 90 ||
-      lng < -180 ||
-      lng > 180
-    ) {
+    if (!parsed.success) {
       return {
         success: false,
         response: NextResponse.json({ error: 'Invalid coordinates' }, { status: 400 }),
       };
     }
+
+    const { lat, lng, name } = parsed.data;
 
     return {
       success: true,
