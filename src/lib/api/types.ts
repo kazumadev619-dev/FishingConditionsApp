@@ -29,5 +29,6 @@ export interface RequestOptions extends Omit<RequestInit, 'cache'> {
   };
 }
 
-export const RETRYABLE_STATUS_CODES = [408, 429, 500, 502, 503, 504];
+// 429 は入れない。絞られている上流を叩き直すと呼び出しが増えるだけ
+export const RETRYABLE_STATUS_CODES = [408, 500, 502, 503, 504];
 export const NON_RETRYABLE_STATUS_CODES = [400, 401, 403, 404];

@@ -24,7 +24,7 @@ export function createApiError(statusCode: number, message: string): ApiError {
 
   if (statusCode === 429) {
     type = ApiErrorType.RATE_LIMITED;
-    retryable = true;
+    retryable = false;
   } else if (RETRYABLE_STATUS_CODES.includes(statusCode)) {
     type = ApiErrorType.SERVER_ERROR;
     retryable = true;
