@@ -1,7 +1,7 @@
-import { inspect } from 'node:util';
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiError } from '@/lib/api/errorHandler';
+import { ApiError, ApiErrorType } from '@/lib/apiClient';
 import { searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
@@ -50,12 +50,32 @@ const request = (url: string, init?: ConstructorParameters<typeof NextRequest>[1
 const scoresUrl =
   '/api/scores?lat=35.6&lon=139.7&prefectureCode=13&portCode=2&date=2026-11-01&skipCache=true';
 
+/** pino が Error を展開するキーだけを見る。ほかのキーで渡すと `{}` になり理由が残らない（#294） */
+const loggedErrors = () =>
+  vi.mocked(logger.error).mock.calls.flatMap(([meta]) => {
+    const { error, err } = meta as { error?: unknown; err?: unknown };
+    return [error, err];
+  });
+
+const expectNotInHeaders = (response: Response) =>
+  expect([...response.headers.values()].join('\n')).not.toContain(SECRET);
+
 afterEach(() => vi.clearAllMocks());
 
 describe('失敗の応答に例外の message を入れない（#313）', () => {
   it.each([
-    ['ports', () => vi.mocked(prisma.ports.findMany), () => ports(request('/api/ports'))],
-    ['favorites GET', () => vi.mocked(prisma.user_favorites.findMany), () => getFavorites()],
+    [
+      'ports',
+      () => vi.mocked(prisma.ports.findMany),
+      () => ports(request('/api/ports')),
+      { error: '港情報の取得に失敗しました' },
+    ],
+    [
+      'favorites GET',
+      () => vi.mocked(prisma.user_favorites.findMany),
+      () => getFavorites(),
+      { error: 'Failed to fetch favorites' },
+    ],
     [
       'favorites POST',
       () => vi.mocked(prisma.user_favorites.create),
@@ -66,62 +86,117 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
             body: JSON.stringify({ locationId: userId }),
           }),
         ),
+      { error: 'Failed to add favorite' },
     ],
     [
       'favorites DELETE',
       () => vi.mocked(prisma.user_favorites.deleteMany),
       () => deleteFavorite(request(`/api/favorites?locationId=${userId}`, { method: 'DELETE' })),
+      { error: 'Failed to delete favorite' },
     ],
-    ['scores', () => vi.mocked(getCurrentWeather), () => scores(request(scoresUrl))],
+    [
+      'scores',
+      () => vi.mocked(getCurrentWeather),
+      () => scores(request(scoresUrl)),
+      { error: 'Failed to calculate fishing score' },
+    ],
     [
       'locations/search',
       () => vi.mocked(searchLocations),
       () => locationSearch(request('/api/locations/search?q=tokyo')),
+      { error: 'Failed to search locations', status: 500 },
     ],
     [
       'conditions/tide',
       () => vi.mocked(getTideData),
       () => tide(request('/api/conditions/tide?prefectureCode=13&portCode=2')),
+      { error: 'Failed to fetch tide data', status: 500 },
     ],
-  ] as const)('%s の 500 は固定の文言を返し、詳細はログに残す', async (_name, dependency, call) => {
-    dependency().mockRejectedValue(new Error(SECRET) as never);
+  ] as const)(
+    '%s の 500 は固定の文言を返し、詳細はログに残す',
+    async (_name, dependency, call, body) => {
+      const thrown = new Error(SECRET);
+      dependency().mockRejectedValue(thrown as never);
 
-    const response = await call();
-    const body = await response.text();
+      const response = await call();
 
-    expect(response.status).toBe(500);
-    expect(JSON.parse(body).error).toEqual(expect.any(String));
-    expect(body).not.toContain(SECRET);
-    expect(inspect(vi.mocked(logger.error).mock.calls)).toContain(SECRET);
-  });
+      expect(response.status).toBe(500);
+      await expect(response.json()).resolves.toEqual(body);
+      expectNotInHeaders(response);
+      expect(loggedErrors()).toContain(thrown);
+    },
+  );
 
   describe('weather', () => {
     const url = '/api/weather?lat=35.6&lon=139.7';
 
     it.each([
-      [503, 502],
-      [401, 401],
-    ])('上流の %i の本文は返さず、%i の応答の詳細はログに残す', async (upstream, status) => {
-      vi.mocked(getCurrentWeather).mockRejectedValue(createApiError(upstream, SECRET));
+      [
+        'SERVER_ERROR',
+        createApiError(503, SECRET),
+        502,
+        'サーバーで問題が発生しました。サポートに連絡してください。',
+        true,
+      ],
+      [
+        'CLIENT_ERROR',
+        createApiError(401, SECRET),
+        401,
+        'リクエストが無効です。入力内容を確認してください。',
+        false,
+      ],
+      [
+        'RATE_LIMITED',
+        createApiError(429, SECRET),
+        429,
+        'API の使用制限に達しました。数分後にお試しください。',
+        false,
+      ],
+      [
+        'TIMEOUT',
+        new ApiError(SECRET, ApiErrorType.TIMEOUT, undefined, true),
+        502,
+        '通信がタイムアウトしました。インターネット接続を確認して、もう一度お試しください。',
+        true,
+      ],
+      [
+        'NETWORK_ERROR',
+        new ApiError(SECRET, ApiErrorType.NETWORK_ERROR, undefined, true),
+        502,
+        'ネットワーク接続を確認してください。',
+        true,
+      ],
+    ])(
+      '%s は種別の固定文言を返し、上流の本文はログに残す',
+      async (code, thrown, status, error, retryable) => {
+        vi.mocked(getCurrentWeather).mockRejectedValue(thrown);
 
-      const response = await weather(request(url));
-      const body = await response.text();
+        const response = await weather(request(url));
 
-      expect(response.status).toBe(status);
-      expect(JSON.parse(body)).toMatchObject({ success: false, error: expect.any(String) });
-      expect(body).not.toContain(SECRET);
-      expect(inspect(vi.mocked(logger.error).mock.calls)).toContain(SECRET);
-    });
+        expect(response.status).toBe(status);
+        await expect(response.json()).resolves.toEqual({ success: false, error, code, retryable });
+        expectNotInHeaders(response);
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.objectContaining({ message: SECRET }),
+          'API request failed',
+        );
+      },
+    );
 
     it('自前の ApiError でない例外も 500 の固定文言で返す', async () => {
-      vi.mocked(getCurrentWeather).mockRejectedValue(new Error(SECRET));
+      const thrown = new Error(SECRET);
+      vi.mocked(getCurrentWeather).mockRejectedValue(thrown);
 
       const response = await weather(request(url));
-      const body = await response.text();
 
       expect(response.status).toBe(500);
-      expect(body).not.toContain(SECRET);
-      expect(inspect(vi.mocked(logger.error).mock.calls)).toContain(SECRET);
+      await expect(response.json()).resolves.toEqual({
+        success: false,
+        error: '天気データの取得中にエラーが発生しました',
+        code: 'INTERNAL_ERROR',
+      });
+      expectNotInHeaders(response);
+      expect(loggedErrors()).toContain(thrown);
     });
   });
 });
