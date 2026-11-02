@@ -2,11 +2,14 @@ import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
+import { withUserRateLimit } from '@/lib/rateLimit';
 import { withServerTiming } from '@/lib/serverTiming';
 import { isValidQuery, LIMIT_REGEX } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
-  return withServerTiming('locations-search', () => handleGet(request));
+  return withServerTiming('locations-search', () =>
+    withUserRateLimit('locations-search', () => handleGet(request)),
+  );
 }
 
 async function handleGet(request: NextRequest) {
@@ -21,7 +24,6 @@ async function handleGet(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const query = searchParams.get('q');
     const limitParam = searchParams.get('limit') || '10';
-    const skipCache = searchParams.get('skipCache') === 'true';
 
     if (!query) {
       return createErrorResponse('Missing required parameter: q', 400);
@@ -48,7 +50,7 @@ async function handleGet(request: NextRequest) {
       return createErrorResponse('Limit must be at least 1', 400);
     }
 
-    const response = await searchLocations(query, { skipCache, limit });
+    const response = await searchLocations(query, { limit });
 
     return NextResponse.json(
       {

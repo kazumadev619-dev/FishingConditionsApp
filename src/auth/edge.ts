@@ -19,6 +19,8 @@ import { baseAuthConfig } from './config';
  * Google Maps Places）を第三者に消費されるうえ、Redis に第三者由来の
  * エントリが溜まる。
  */
+const VERIFY_EMAIL_PATH = '/auth/verify-email';
+
 const PUBLIC_PATHS = new Set([
   '/login',
   '/register',
@@ -26,6 +28,7 @@ const PUBLIC_PATHS = new Set([
   // `/auth/` の前方一致にはしない。前方一致にすると、あとから
   // `src/app/auth/` にページを足した人が意図せず公開してしまい、
   // 「既定 deny なので書き忘れが穴にならない」という上の方針が崩れる。
+  VERIFY_EMAIL_PATH,
   '/auth/verification-success',
   '/auth/verification-error',
 ]);
@@ -63,7 +66,12 @@ export const authorized: AuthorizedCallback = ({ auth, request: { nextUrl } }) =
   const { pathname } = nextUrl;
 
   // ログイン済み & 認証ページ / ルート → ダッシュボードへ
-  if (isLoggedIn && (PUBLIC_PATHS.has(pathname) || pathname === '/')) {
+  // メール確認だけは、別のセッションが残っていても終えられるように飛ばさない
+  if (
+    isLoggedIn &&
+    pathname !== VERIFY_EMAIL_PATH &&
+    (PUBLIC_PATHS.has(pathname) || pathname === '/')
+  ) {
     return Response.redirect(new URL('/dashboard', nextUrl));
   }
 

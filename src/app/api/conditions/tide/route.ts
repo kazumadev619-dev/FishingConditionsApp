@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
+import { withUserRateLimit } from '@/lib/rateLimit';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import {
@@ -11,7 +12,7 @@ import {
 } from '@/lib/validators';
 
 export async function GET(request: NextRequest) {
-  return withServerTiming('tide', () => handleGet(request));
+  return withServerTiming('tide', () => withUserRateLimit('tide', () => handleGet(request)));
 }
 
 async function handleGet(request: NextRequest) {
@@ -21,7 +22,6 @@ async function handleGet(request: NextRequest) {
     const portCode = searchParams.get('portCode');
     const date = searchParams.get('date') || getTodayDateString();
     const range = (searchParams.get('range') as 'day' | 'week' | 'month') || 'week';
-    const skipCache = searchParams.get('skipCache') === 'true';
 
     if (!prefectureCode) {
       return createErrorResponse('Missing required parameter: prefectureCode', 400);
@@ -47,10 +47,7 @@ async function handleGet(request: NextRequest) {
       return createErrorResponse('Invalid range. Must be one of: day, week, month', 400);
     }
 
-    const response = await getTideData(prefectureCode, portCode, date, {
-      skipCache,
-      range,
-    });
+    const response = await getTideData(prefectureCode, portCode, date, { range });
 
     return NextResponse.json(
       {

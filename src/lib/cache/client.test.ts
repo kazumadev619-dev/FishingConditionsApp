@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest';
 const redisMock = vi.hoisted(() => {
   // cache はモジュール読み込み時に生成されるので、import より前に REDIS_URL を置く
   vi.stubEnv('REDIS_URL', 'redis://localhost:6379');
-  return { status: 'ready', get: vi.fn(), set: vi.fn(), on: vi.fn() };
+  return { status: 'ready', get: vi.fn(), set: vi.fn(), on: vi.fn(), multi: vi.fn() };
 });
 const loggerMock = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
 
@@ -15,6 +15,7 @@ vi.mock('ioredis', () => ({
     get = redisMock.get;
     set = redisMock.set;
     on = redisMock.on;
+    multi = redisMock.multi;
   },
 }));
 vi.mock('../logger', () => ({ logger: loggerMock }));
@@ -90,5 +91,42 @@ describe('CacheClient.set', () => {
 
     await expect(cache.set('test:key', null, 60)).resolves.toBe(true);
     expect(redisMock.set).toHaveBeenCalledWith('test:key', 'null', 'EX', 60);
+  });
+});
+
+describe('CacheClient.increment', () => {
+  const givenTransaction = (results: unknown) => {
+    const transaction = { set: vi.fn(), incr: vi.fn(), exec: vi.fn(async () => results) };
+    transaction.set.mockReturnValue(transaction);
+    transaction.incr.mockReturnValue(transaction);
+    redisMock.multi.mockReturnValue(transaction);
+    return transaction;
+  };
+
+  it('TTL を付けてから増やし、増やした後の値を返す', async () => {
+    const transaction = givenTransaction([
+      [null, 'OK'],
+      [null, 3],
+    ]);
+
+    await expect(cache.increment('k', 60)).resolves.toBe(3);
+    expect(transaction.set).toHaveBeenCalledWith('k', 0, 'EX', 60, 'NX');
+  });
+
+  it('Redis のエラーは null にしてログに残す', async () => {
+    givenTransaction([
+      [null, 'OK'],
+      [new Error('boom'), null],
+    ]);
+
+    await expect(cache.increment('k', 60)).resolves.toBeNull();
+    expect(loggerMock.error).toHaveBeenCalled();
+  });
+
+  it('接続できないときは null を返す', async () => {
+    redisMock.status = 'end';
+
+    await expect(cache.increment('k', 60)).resolves.toBeNull();
+    expect(redisMock.multi).not.toHaveBeenCalled();
   });
 });

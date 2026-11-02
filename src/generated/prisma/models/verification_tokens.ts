@@ -14,7 +14,7 @@ import type * as Prisma from "../internal/prismaNamespace"
 
 /**
  * Model verification_tokens
- * メール検証トークン（アカウント連携時の検証用）
+ * メール検証トークン
  */
 export type verification_tokensModel = runtime.Types.Result.DefaultSelection<Prisma.$verification_tokensPayload>
 

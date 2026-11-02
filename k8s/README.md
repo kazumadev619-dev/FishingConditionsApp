@@ -188,7 +188,7 @@ CRLF の `\r` とキーの前の空白は剥がされる。
 | `NODE_ENV` | 実害は無い。web Pod は standalone の `server.js` で起動し、その冒頭で `process.env.NODE_ENV = 'production'` に上書きされる（ConfigMap を読む Job は無い） | ガードは無い |
 | `LOG_LEVEL` | Pod は起動して `/healthz` も通るが、logger を読むルート（`/login`、`/readyz`、`/api/*`）が 500 | deploy のブロッキングなスモーク（`/login`）で止まり、Rollback される |
 | `AUTH_URL` | クォートやコメントが入ると `/login` と `/api/auth/*` が 500（`Invalid URL`）。消える / `http://` になると Cookie の `__Host-` と `Secure` が静かに外れる（#134） | CI ガードと deploy の `callbackUrl` 照合 |
-| `NEXTAUTH_URL` | メール検証リンクだけが壊れる（`signInCallback.ts` と `actions.ts` が文字列連結している。Auth.js は `AUTH_URL` を優先するので認証には効かない） | **ガードは無い** |
+| `NEXTAUTH_URL` | メール検証リンクが壊れ、未確認の利用者がログインできなくなる（`src/lib/email.ts` が文字列連結している。Auth.js は `AUTH_URL` を優先するので認証には効かない） | **ガードは無い** |
 | `REDIS_URL` | クォートの場合、接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
 
 Deployment 側で `envFrom` に `prefix:` を付けたり、`env:` で同じ名前を上書きしたり

@@ -8,11 +8,13 @@ const prismaMock = vi.hoisted(() => ({
 
 vi.mock('@/lib/prisma', () => ({ default: prismaMock }));
 vi.mock('@/lib/portMappingService', () => ({ findNearestPort: vi.fn() }));
+vi.mock('@/lib/rateLimit', () => ({ isUserRateLimited: vi.fn(async () => false) }));
 vi.mock('@/lib/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
 import { findNearestPort } from '@/lib/portMappingService';
+import { isUserRateLimited } from '@/lib/rateLimit';
 import { DEFAULT_LOCATION, resolveLocation } from './resolveLocation';
 
 const TSUKIJI_PORT = {
@@ -80,6 +82,21 @@ describe('resolveLocation（?lat=&lng=）', () => {
     const location = await resolveLocation({ lat: '35.6667', lng: '139.767', name: '築地' });
 
     expect(location.id).toBe('loc-1');
+  });
+
+  it('上限を超えたら最寄り港を探さず、デフォルト地点に落とす', async () => {
+    vi.mocked(isUserRateLimited).mockResolvedValueOnce(true);
+
+    const location = await resolveLocation({ lat: '35.6667', lng: '139.767' });
+
+    expect(location).toEqual(DEFAULT_LOCATION);
+    expect(findNearestPort).not.toHaveBeenCalled();
+  });
+
+  it('不正な座標は回数に数えない', async () => {
+    await resolveLocation({ lat: '999', lng: '139.767' });
+
+    expect(isUserRateLimited).not.toHaveBeenCalled();
   });
 
   it('範囲外の座標はデフォルト地点を返す', async () => {
