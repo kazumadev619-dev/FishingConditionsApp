@@ -73,8 +73,7 @@ async function handleGet(request: NextRequest) {
       },
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ err: error }, 'Location search API error');
-    return NextResponse.json({ error: errorMessage, status: 500 }, { status: 500 });
+    return createErrorResponse('Failed to search locations', 500);
   }
 }

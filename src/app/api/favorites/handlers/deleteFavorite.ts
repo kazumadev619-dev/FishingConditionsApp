@@ -34,10 +34,6 @@ export async function DELETE(
     return NextResponse.json({ success: true });
   } catch (error) {
     logger.error({ error }, 'Failed to delete favorite');
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: `Failed to delete favorite: ${errorMessage}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to delete favorite' }, { status: 500 });
   }
 }

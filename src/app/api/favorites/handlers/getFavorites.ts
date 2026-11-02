@@ -38,10 +38,6 @@ export async function GET(): Promise<NextResponse<FavoritesResponse | { error: s
     });
   } catch (error) {
     logger.error({ error }, 'Failed to fetch favorites');
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json(
-      { error: `Failed to fetch favorites: ${errorMessage}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to fetch favorites' }, { status: 500 });
   }
 }

@@ -40,12 +40,6 @@ export async function GET(request: Request) {
     });
   } catch (error) {
     logger.error({ error }, '港マスタ取得エラー');
-    return NextResponse.json(
-      {
-        error: '港情報の取得に失敗しました',
-        details: error instanceof Error ? error.message : '不明なエラー',
-      },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: '港情報の取得に失敗しました' }, { status: 500 });
   }
 }
