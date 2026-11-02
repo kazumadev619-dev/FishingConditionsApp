@@ -38,7 +38,7 @@ python3 $D lockdiff "$(git merge-base origin/develop HEAD)"   # この PR で変
 | `npm audit fix --force` を勧められる | **`--dry-run` で何が変わるかを見る。** 2026-09 時点では CLI 側（`prisma` `@prisma/config` `@prisma/engines` など）を 6.19.3 に下げ、`@prisma/client` と `@prisma/adapter-pg` は 7 のまま残す内容だった。メジャーを戻すうえに CLI とクライアントの版が食い違う。当てない場合は、残した理由を PR と issue に書く |
 | advisory の深刻度が critical | 実際の露出を調べてから急ぐか決める（該当 OS か、該当機能を使っているか、経路が開いているか）。#158 の next の RCE は、Windows 限定のものと、使っていない画像最適化経由のものだった |
 | Latest 列が今より古い／prerelease | dist-tag の `latest` が別の系統に付いている（`next-auth` は 4.x、`@types/node` は 22.x）か、rc に付いている（`prisma`）。`npm view <pkg> dist-tags --json` で確かめる |
-| install script を持つパッケージが増えた | script を読んでから `npm install-scripts approve <pkg> --no-allow-scripts-pin` か `deny` で `package.json` の `allowScripts` に足す。npm 12 は未承認の script を止める。警告だけで `npm ci` は成功する（#222）。版を pin しないのは、版を上げる PR が `allowScripts` を直さず、承認が外れるため |
+| install script を持つパッケージが増えた | script を読んでから `npm install-scripts approve <pkg> --no-allow-scripts-pin` か `deny` で `package.json` の `allowScripts` に足す（npm 11.20 以降のコマンド。`npx npm@11.20.0 ...` でもよい）。npm 12 は未承認の script を止める。警告だけで `npm ci` は成功する（#222）。版を pin しないのは、版を上げる PR が `allowScripts` を直さず、承認が外れるため |
 | 推移的な 0.x の minor 更新が出る | `lockdiff` は一覧に出すだけ（親の指定範囲に従っている）。直接の依存の 0.x の minor 更新は要確認になる |
 | issue に書かれた目標の版 | **issue は古くなる。** #110 の目標 `next 16.3.0` は、脆弱性の対象範囲（`<16.3.3`）に入っていた。advisory の範囲と突き合わせる |
 
