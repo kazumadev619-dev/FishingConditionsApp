@@ -12,35 +12,21 @@ import {
 
 interface VerificationEmailProps {
   verificationUrl: string;
-  purpose: 'signup' | 'social-link';
 }
 
-export const VerificationEmail = ({ verificationUrl, purpose }: VerificationEmailProps) => (
+export const VerificationEmail = ({ verificationUrl }: VerificationEmailProps) => (
   <Html>
     <Head />
     <Preview>メールアドレスの確認</Preview>
     <Body style={main}>
       <Container style={container}>
         <Heading style={h1}>メールアドレスの確認</Heading>
-        {purpose === 'signup' && (
-          <>
-            <Text style={text}>Fishing Conditions Appへようこそ！</Text>
-            <Text style={text}>
-              ご登録ありがとうございます。
-              サービスを安全にご利用いただくため、メールアドレスの確認をお願いします。
-              下のボタンをクリックして、メールアドレスを確認してください。
-            </Text>
-          </>
-        )}
-        {purpose === 'social-link' && (
-          <>
-            <Text style={text}>Fishing Conditions Appへようこそ！</Text>
-            <Text style={text}>
-              既存のアカウントにGoogleアカウントを連携するため、メールアドレスの確認が必要です。
-              下のボタンをクリックして、メールアドレスを確認してください。
-            </Text>
-          </>
-        )}
+        <Text style={text}>Fishing Conditions Appへようこそ！</Text>
+        <Text style={text}>
+          ご登録ありがとうございます。
+          サービスを安全にご利用いただくため、メールアドレスの確認をお願いします。
+          下のボタンをクリックして、メールアドレスを確認してください。
+        </Text>
         <Section style={buttonContainer}>
           <Button style={button} href={verificationUrl}>
             メールアドレスを確認する

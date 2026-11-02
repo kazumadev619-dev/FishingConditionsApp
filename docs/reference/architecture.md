@@ -286,7 +286,7 @@ erDiagram
 - **用途**: メール検証トークン管理（セキュリティ強化）
 - **使い方**:
   - 通常登録時：ユーザー作成後、検証メールを送信しトークンを発行
-  - Google OAuth連携時：既存アカウントへの連携前にメール所有権確認
+  - パスワードでログインしたとき：未確認で有効なトークンが無ければ、発行して送り直す
   - トークン有効期限：1時間（`expires_at`）
   - 検証完了後：トークンを削除し`users.email_verified_at`を更新
 - **重要カラム**:
@@ -519,9 +519,8 @@ sequenceDiagram
 - **脅威**: `allowDangerousEmailAccountLinking: true`により、攻撃者が被害者のメールアドレスでGoogleアカウントを作成し、既存アカウントを乗っ取ることが可能だった
 - **対策**: メール検証トークンシステムの実装
   - 通常登録時：ユーザー作成後、検証メールを送信（`users.email_verified_at`はnull）
-  - Google OAuth連携時：既存アカウント連携前に`email_verified_at`をチェック
-  - 未検証の場合：検証メールを送信し、サインインを拒否（AccessDenied）
-  - 検証完了後：`users.email_verified_at`を更新し、アカウント連携を許可
+  - Google ログイン時：メールの一致だけでは連携しない。確認済みのアカウントと一致すれば拒否（AccessDenied）し、未確認の行は削除して作り直す
+  - 検証完了後：`users.email_verified_at`を更新する。リンクを開くだけでは確定せず、ボタンの POST で確定する
 - **トークン管理**:
   - 64文字のランダム文字列（`crypto.randomBytes(32)`）
   - 有効期限1時間

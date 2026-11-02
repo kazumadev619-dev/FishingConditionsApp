@@ -1,8 +1,27 @@
 import bcrypt from 'bcrypt';
+import { CredentialsSignin } from 'next-auth';
 import Credentials from 'next-auth/providers/credentials';
 import { z } from 'zod';
+import { issueVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
+import { hasActiveVerificationToken } from '@/lib/token';
 import { getUser } from '../utils/userRepository';
+
+export class EmailNotVerifiedError extends CredentialsSignin {
+  code = 'email_not_verified';
+}
+
+/** 有効なトークンがある間は送らない。ログインのたびに同じ宛先へメールが飛ばないように */
+async function resendVerificationEmail(email: string): Promise<void> {
+  try {
+    if (await hasActiveVerificationToken(email)) {
+      return;
+    }
+    await issueVerificationEmail(email);
+  } catch (error) {
+    logger.error({ email: maskEmail(email), error }, 'Failed to resend verification email');
+  }
+}
 
 export const credentialsProvider = Credentials({
   async authorize(credentials) {
@@ -28,6 +47,10 @@ export const credentialsProvider = Credentials({
     const passwordsMatch = await bcrypt.compare(password, user.password_hash);
 
     if (passwordsMatch) {
+      if (!user.email_verified_at) {
+        await resendVerificationEmail(user.email);
+        throw new EmailNotVerifiedError();
+      }
       return user;
     }
 

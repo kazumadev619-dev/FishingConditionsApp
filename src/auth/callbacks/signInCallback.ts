@@ -1,16 +1,16 @@
 import { randomUUID } from 'node:crypto';
-import type { Account, User } from 'next-auth';
-import { sendVerificationEmail } from '@/lib/email';
+import type { Account, Profile, User } from 'next-auth';
 import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
-import { createVerificationToken } from '@/lib/token';
 
 export async function signInCallback({
   user,
   account,
+  profile,
 }: {
   user: User;
   account?: Account | null;
+  profile?: Profile;
 }): Promise<boolean> {
   if (account?.provider === 'credentials') {
     return true;
@@ -19,89 +19,80 @@ export async function signInCallback({
   if (account?.provider === 'google' && user.email) {
     const email = user.email.toLowerCase().trim();
 
+    // OIDC では真偽値だが、文字列で届く実装もある。どちらも受け付ける
+    if (String(profile?.email_verified) !== 'true') {
+      logger.warn({ email: maskEmail(email) }, 'Google sign-in rejected: email is not verified');
+      return false;
+    }
+
     try {
       const existingUser = await prisma.users.findUnique({ where: { email } });
+      const existingIdentity = await prisma.identities.findUnique({
+        where: {
+          provider_provider_id: {
+            provider: 'google',
+            provider_id: account.providerAccountId,
+          },
+        },
+      });
 
-      if (existingUser) {
-        const existingIdentity = await prisma.identities.findUnique({
-          where: {
-            provider_provider_id: {
-              provider: 'google',
-              provider_id: account.providerAccountId,
-            },
+      if (existingIdentity) {
+        return existingIdentity.user_id === existingUser?.id;
+      }
+
+      // メールの一致だけでは連携しない。Google が保証できないアドレスがあるうえ、
+      // 登録者がメールの持ち主とは限らない
+      if (existingUser?.email_verified_at) {
+        logger.warn(
+          { email: maskEmail(email) },
+          'Google sign-in rejected: email belongs to a verified account',
+        );
+        return false;
+      }
+
+      const userId = randomUUID();
+
+      await prisma.$transaction(async (tx) => {
+        // 未確認の行は持ち主のものと限らないので引き継がない。id を変えることで、
+        // 確認前に発行されたセッションからも切り離す
+        // 読んだ後に確認が済んだ行は消さない
+        if (existingUser) {
+          const { count } = await tx.users.deleteMany({
+            where: { id: existingUser.id, email_verified_at: null },
+          });
+          if (count === 0) {
+            throw new Error('User was verified during Google sign-in');
+          }
+        }
+
+        await tx.users.create({
+          data: {
+            id: userId,
+            email,
+            password_hash: null,
+            name: user.name || 'Googleユーザー',
+            avatar_url: user.image,
+            is_sso_user: true,
+            email_verified_at: new Date(),
           },
         });
 
-        if (!existingIdentity) {
-          if (!existingUser.email_verified_at) {
-            try {
-              const token = await createVerificationToken(email);
-              const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`;
-              await sendVerificationEmail(email, verificationUrl, 'social-link');
-              logger.info(
-                { email: maskEmail(email) },
-                'Verification email sent for social account linking',
-              );
-            } catch (error) {
-              logger.error({ email: maskEmail(email), error }, 'Failed to send verification email');
-            }
-            return false;
-          }
-
-          await prisma.identities.create({
-            data: {
-              provider: 'google',
-              provider_id: account.providerAccountId,
-              user_id: existingUser.id,
-              identity_data: {
-                email: user.email,
-                name: user.name,
-                picture: user.image,
-              },
-              last_sign_in_at: new Date(),
+        await tx.identities.create({
+          data: {
+            provider: 'google',
+            provider_id: account.providerAccountId,
+            user_id: userId,
+            identity_data: {
+              email: user.email,
+              name: user.name,
+              picture: user.image,
             },
-          });
-
-          await prisma.users.update({
-            where: { id: existingUser.id },
-            data: { is_sso_user: true },
-          });
-        }
-
-        return true;
-      } else {
-        const userId = randomUUID();
-
-        await prisma.$transaction(async (tx) => {
-          await tx.users.create({
-            data: {
-              id: userId,
-              email,
-              password_hash: null,
-              name: user.name || 'Googleユーザー',
-              avatar_url: user.image,
-              is_sso_user: true,
-              email_verified_at: new Date(),
-            },
-          });
-
-          await tx.identities.create({
-            data: {
-              provider: 'google',
-              provider_id: account.providerAccountId,
-              user_id: userId,
-              identity_data: {
-                email: user.email,
-                name: user.name,
-                picture: user.image,
-              },
-              last_sign_in_at: new Date(),
-            },
-          });
+            last_sign_in_at: new Date(),
+          },
         });
+      });
 
-        return true;
-      }
+      return true;
     } catch (error) {
       logger.error({ email: maskEmail(email), error }, 'Google sign-in error');
       return false;

@@ -16,6 +16,7 @@ export const baseAuthConfig = {
   },
   pages: {
     signIn: '/login',
+    error: '/login',
   },
   providers: [
     // auth/index.tsでCredentials/Googleプロバイダーを追加

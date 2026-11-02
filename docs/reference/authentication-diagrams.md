@@ -27,12 +27,12 @@ flowchart TD
     GoogleRegister --> GoogleAuth
 
     GoogleAuth --> CheckExisting{既存ユーザー?}
-    CheckExisting -->|Yes| LinkAccount[アカウント連携<br/>identities追加]
-    CheckExisting -->|No| CreateOAuthUser[ユーザー作成<br/>auth_users + public_users<br/>+ identities]
+    CheckExisting -->|連携済み| AuthSuccess
+    CheckExisting -->|確認済みの別アカウント| ShowError
+    CheckExisting -->|未確認またはなし| CreateOAuthUser[ユーザー作成<br/>auth_users + public_users<br/>+ identities]
 
     CredAuth --> AuthSuccess{認証成功?}
     CreateCredUser --> LoginRedirect[/loginへリダイレクト/]
-    LinkAccount --> AuthSuccess
     CreateOAuthUser --> AuthSuccess
     LoginRedirect --> CredLogin
 
@@ -51,7 +51,6 @@ flowchart TD
     style Dashboard fill:#90EE90
     style ShowError fill:#FFB6C1
     style CreateSession fill:#87CEEB
-    style LinkAccount fill:#FFD700
 ```
 
 ---
@@ -102,17 +101,18 @@ sequenceDiagram
             Action->>DB: verification_tokens保存
             DB-->>Action: 成功
 
-            Action->>Email: 検証メール送信<br/>(purpose: 'signup')
+            Action->>Email: 検証メール送信
             Email-->>User: メール送信
 
             Action-->>UI: 登録成功
             UI->>UI: /loginへリダイレクト
-            UI-->>User: ログインページ表示<br/>※メール確認を促すメッセージ
+            UI-->>User: ログインページ表示
 
             User->>User: メール確認
             User->>User: 検証リンククリック
-            User->>UI: /api/auth/verify-email?token=xxx
-            UI->>DB: トークン検証・email_verified_at更新
+            User->>UI: /auth/verify-email?token=xxx
+            User->>UI: 確認ボタンを押す
+            UI->>DB: POST /api/auth/verify-email<br/>トークン検証・email_verified_at更新
             DB-->>UI: 成功
             UI->>UI: /auth/verification-successへ
             UI-->>User: 検証完了メッセージ
@@ -164,7 +164,13 @@ sequenceDiagram
                 NextAuth-->>Action: CredentialsSignin Error
                 Action-->>UI: エラーメッセージ
                 UI-->>User: エラー表示
-            else パスワード一致
+            else パスワード一致・メール未確認
+                AuthTS->>DB: 有効なトークンが無ければ発行し、確認メールを送り直す
+                AuthTS-->>NextAuth: EmailNotVerifiedError
+                NextAuth-->>Action: CredentialsSignin Error
+                Action-->>UI: 確認を促すメッセージ
+                UI-->>User: エラー表示
+            else パスワード一致・メール確認済み
                 AuthTS-->>NextAuth: userオブジェクト
                 NextAuth->>AuthTS: jwt({ token, user })
                 AuthTS->>AuthTS: token.id = user.id
@@ -242,98 +248,33 @@ sequenceDiagram
     end
 ```
 
-### 既存ユーザーアカウント連携フロー（メール検証付き）
+### 同じメールのアカウントがある場合の Google ログイン
 
 ```mermaid
 sequenceDiagram
-    actor User as ユーザー<br/>(Credentials登録済み)
-    participant UI as /login
-    participant NextAuth as NextAuth Client
-    participant Google as Google OAuth
+    actor User as ユーザー
     participant Callback as /api/auth/callback/google
-    participant AuthTS as /src/auth/index.ts signIn()
+    participant AuthTS as signInCallback
     participant DB as Prisma + PostgreSQL
-    participant Token as Token Generator
-    participant Email as Resend
-    participant Session as セッション管理
+    participant Login as /login
 
-    Note over User: user@example.com で<br/>Credentials登録済み<br/>(email_verified_at=NULL)
+    User->>Callback: Google で認証して戻る
+    Callback->>AuthTS: signIn({ user, account, profile })
+    AuthTS->>AuthTS: profile.email_verified が true か確認
+    AuthTS->>DB: users をメールで検索
+    AuthTS->>DB: identities を Google の sub で検索
 
-    User->>UI: "Googleでログイン"<br/>ボタンクリック
-    UI->>NextAuth: signIn('google', {callbackUrl})
-    NextAuth->>Google: OAuth認証リクエスト
-
-    Google-->>User: Google認証画面表示
-    User->>Google: 同じメールアドレスの<br/>Googleアカウントで認証
-    Google->>Callback: リダイレクト
-    Callback->>Google: トークン交換
-    Google-->>Callback: access_token, user info
-
-    Callback->>AuthTS: signIn({ user, account })
-    AuthTS->>AuthTS: provider === 'google'?
-    AuthTS->>DB: findUnique(email)
-    DB-->>AuthTS: existingUser<br/>(Credentials登録済み)
-
-    Note over AuthTS,DB: 既存ユーザー検出
-    AuthTS->>DB: identities.findUnique(<br/>provider_id, provider)
-    DB-->>AuthTS: null (未連携)
-
-    AuthTS->>AuthTS: email_verified_at確認
-
-    alt メール未検証
-        Note over AuthTS,Email: メール検証フロー開始
-        AuthTS->>Token: 検証トークン生成(1時間有効)
-        Token-->>AuthTS: token
-        AuthTS->>DB: verification_tokens保存
-        DB-->>AuthTS: 成功
-
-        AuthTS->>Email: 検証メール送信<br/>(purpose: 'social-link')
-        Email-->>User: メール送信
-
-        AuthTS-->>Callback: false (AccessDenied)
-        Callback-->>UI: エラー
-        UI-->>User: "メール確認が必要です"
-
-        User->>User: メール確認
-        User->>User: 検証リンククリック
-        User->>UI: /api/auth/verify-email?token=xxx
-        UI->>DB: トークン検証・email_verified_at更新
-        DB-->>UI: 成功
-        UI->>UI: /auth/verification-successへ
-        UI-->>User: "検証完了。再度Googleログインしてください"
-
-        User->>UI: "Googleでログイン"再試行
-        UI->>NextAuth: signIn('google', {callbackUrl})
-        NextAuth->>Google: OAuth認証リクエスト
-        Google->>Callback: リダイレクト
-        Callback->>AuthTS: signIn({ user, account })
-        AuthTS->>DB: findUnique(email)
-        DB-->>AuthTS: existingUser<br/>(email_verified_at あり)
+    alt sub が連携済み
+        AuthTS-->>Callback: true（ユーザーが一致するときだけ）
+    else メールが確認済みのアカウントと一致
+        AuthTS-->>Callback: false
+        Callback-->>Login: /login?error=AccessDenied
+        Login-->>User: 登録時の方法でのログインを案内
+    else メールが未確認のアカウントと一致
+        AuthTS->>DB: 未確認の行を削除し、別の id で users と identities を作成
+        AuthTS-->>Callback: true
     end
-
-    Note over AuthTS,DB: メール検証済み → アカウント連携
-    AuthTS->>DB: identities.create({<br/>provider='google',<br/>user_id,<br/>provider_id,<br/>identity_data})
-    DB-->>AuthTS: 成功
-
-    AuthTS->>DB: users.update(<br/>is_sso_user=true)
-    DB-->>AuthTS: 成功
-
-    AuthTS-->>Callback: true
-    Callback->>AuthTS: jwt({ token, user })
-    AuthTS->>AuthTS: token.id = existingUser.id
-    AuthTS-->>Callback: token
-
-    Callback->>Session: セッション作成
-    Session-->>Callback: 成功
-
-    Callback-->>UI: リダイレクト
-    UI->>UI: /dashboardへ
-    UI-->>User: ダッシュボード表示
-
-    Note over User,DB: 次回以降、Credentials/Google<br/>どちらでもログイン可能
 ```
-
----
 
 ## 🔄 アカウント連携状態遷移図
 
@@ -344,7 +285,6 @@ stateDiagram-v2
     Unregistered --> CredentialsOnly: メール/パスワード登録
     Unregistered --> GoogleOnly: Google登録
 
-    CredentialsOnly --> Linked: Googleログイン(同一メール)
     GoogleOnly --> Linked: メール/パスワード設定(将来機能)
 
     state CredentialsOnly {
@@ -373,6 +313,7 @@ stateDiagram-v2
         is_sso_user: true
         identities: Google
         ログイン方法: 両方可能
+        この状態になるのは、自動連携を止める前に連携した利用者だけ
     end note
 
     CredentialsOnly --> [*]: ログアウト
@@ -415,29 +356,24 @@ flowchart LR
     style Rollback fill:#FFB6C1
 ```
 
-### 既存ユーザーアカウント連携
+### 既存ユーザーの Google ログイン
 
 ```mermaid
 flowchart LR
-    Start([既存ユーザー検出]) --> Check1{identitiesレコード<br/>存在確認}
+    Start([Google から戻る]) --> Check1{identities に<br/>sub がある?}
 
-    Check1 -->|既に連携済み| Skip([処理スキップ])
-    Check1 -->|未連携| Step1[identities作成]
+    Check1 -->|ある| Match{メールのユーザーと一致?}
+    Match -->|一致| Session[セッション作成]
+    Match -->|不一致| Denied([/login?error=AccessDenied])
 
-    Step1 --> Step1Details{provider: 'google'<br/>provider_id: GoogleアカウントID<br/>user_id: 既存ユーザーID<br/>identity_data: JSON}
+    Check1 -->|ない| Check2{同じメールのアカウント}
+    Check2 -->|確認済み| Denied
+    Check2 -->|未確認| Replace[行を削除して作り直す]
+    Check2 -->|なし| Create[新規作成]
 
-    Step1Details --> Step2[auth_users更新]
-    Step2 --> Step2Details{is_sso_user: true}
-
-    Step2Details --> Success([アカウント連携完了])
-    Skip --> Success
-
-    Success --> SessionCreate[セッション作成]
-    SessionCreate --> Dashboard([/dashboardへ])
-
-    style Step1 fill:#FFE4B5
-    style Step2 fill:#FFE4B5
-    style Success fill:#90EE90
+    Replace --> Session
+    Create --> Session
+    Session --> Dashboard([/dashboardへ])
 ```
 
 ---
