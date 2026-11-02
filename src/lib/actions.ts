@@ -12,6 +12,11 @@ import { issueVerificationEmail } from '@/lib/email';
 import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { CONSTRAINTS, isViolationOf } from '@/lib/prismaConstraints';
+import { isSignupRateLimited } from '@/lib/rateLimit';
+
+// 確認メールのトークンは1時間で切れるが、未確認のままログインすると送り直す。
+// その経路が使える間は残す
+const UNVERIFIED_SIGNUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const SignupFormSchema = z.object({
   name: z.string().min(2, { message: '名前は2文字以上で入力してください。' }),
@@ -34,6 +39,31 @@ const SignupFormSchema = z.object({
     }),
 });
 
+/**
+ * 古い未確認の登録を片付ける。行は signup でしか増えないので、ここで総量を抑えられる。
+ * 失敗しても登録は止めない（次の signup でまた消せる）。
+ */
+async function purgeStaleSignups() {
+  const now = Date.now();
+
+  try {
+    await prisma.users.deleteMany({
+      where: {
+        email_verified_at: null,
+        password_hash: { not: null },
+        is_sso_user: false,
+        identities: { none: {} },
+        created_at: { lt: new Date(now - UNVERIFIED_SIGNUP_TTL_MS) },
+      },
+    });
+    await prisma.verification_tokens.deleteMany({
+      where: { expires_at: { lt: new Date(now) } },
+    });
+  } catch (err) {
+    logger.error({ err }, 'Failed to purge stale signups');
+  }
+}
+
 export async function signup(_prevState: string | undefined, formData: FormData) {
   const validatedFields = SignupFormSchema.safeParse(Object.fromEntries(formData.entries()));
 
@@ -46,6 +76,13 @@ export async function signup(_prevState: string | undefined, formData: FormData)
 
   // メールアドレスを小文字に正規化
   const normalizedEmail = email.toLowerCase().trim();
+
+  if (await isSignupRateLimited(normalizedEmail)) {
+    logger.warn({ email: maskEmail(normalizedEmail) }, 'Signup rate limit exceeded');
+    return '試行回数が上限に達しました。時間をおいて再度お試しください。';
+  }
+
+  await purgeStaleSignups();
 
   try {
     const password_hash = await bcrypt.hash(password, 10);
