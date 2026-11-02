@@ -50,6 +50,7 @@ services:
   #   docker compose --profile tools run --rm migrator                       # migrate deploy
   #   docker compose --profile tools run --rm migrator \
   #     node --import tsx/esm prisma/seed.ts                                 # seed
+  #   docker compose --profile tools run --rm --service-ports prisma-studio   # Studio
   migrator:
     container_name: fishing-migrator
     profiles: ['tools']
@@ -68,6 +69,39 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Prisma Studio（migrator イメージの CLI を使う）
+  #
+  # Studio は待ち受けアドレスを変えられず、コンテナの 127.0.0.1 にしか bind しない
+  # （Prisma 7.10.1 時点）。ポートを公開するだけでは届かないので、コンテナの
+  # ネットワーク側のアドレスで受けて Studio へ流す TCP 中継を同じコンテナで動かす。
+  #
+  # Studio は Origin が http://localhost:<--port> でない POST /bff を 403 にするため、
+  # ホスト側のポートと --port を同じ番号にする。DB を読み書きできる認証なしの
+  # 管理 UI なので、Redis と同じく 127.0.0.1 に限定する
+  prisma-studio:
+    extends: migrator
+    container_name: fishing-prisma-studio
+    ports:
+      - '127.0.0.1:${PRISMA_STUDIO_PORT:-5555}:${PRISMA_STUDIO_PORT:-5555}'
+    environment:
+      - PRISMA_STUDIO_PORT=${PRISMA_STUDIO_PORT:-5555}
+    # --browser none が無いと、xdg-open の無いコンテナでは起動直後に異常終了する
+    command:
+      - sh
+      - -c
+      - |
+        node -e '
+          const net = require("node:net");
+          const port = Number(process.env.PRISMA_STUDIO_PORT);
+          net.createServer((client) => {
+            const studio = net.connect(port, "127.0.0.1");
+            client.on("error", () => studio.destroy());
+            studio.on("error", () => client.destroy());
+            client.pipe(studio).pipe(client);
+          }).listen(port, process.argv[1]);
+        ' "$$(hostname -i)" &
+        exec node_modules/.bin/prisma studio --port "$$PRISMA_STUDIO_PORT" --browser none
 
   # PostgreSQL
   postgres:
