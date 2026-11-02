@@ -76,9 +76,10 @@ services:
   # （Prisma 7.10.1 時点）。ポートを公開するだけでは届かないので、コンテナの
   # ネットワーク側のアドレスで受けて Studio へ流す TCP 中継を同じコンテナで動かす。
   #
-  # Studio は Origin が http://localhost:<--port> でない POST /bff を 403 にするため、
-  # ホスト側のポートと --port を同じ番号にする。DB を読み書きできる認証なしの
-  # 管理 UI なので、Redis と同じく 127.0.0.1 に限定する
+  # Studio はブラウザの別オリジンからの POST /bff を 403 にする。許可するのは
+  # localhost と 127.0.0.1 の --port だけなので、ホスト側のポートと --port を同じ
+  # 番号にする。この検査は認証ではなく、DB を読み書きできる認証なしの管理 UI
+  # なので、Redis と同じく 127.0.0.1 に限定する
   prisma-studio:
     extends: migrator
     container_name: fishing-prisma-studio
