@@ -127,6 +127,13 @@ RUN node_modules/.bin/esbuild prisma/seed.ts scripts/update-port-coordinates.ts 
       --outdir=/tmp/import-check && \
     rm -rf /tmp/import-check
 
+# prune を経たあとのイメージに schema-engine があり、起動できることを確かめる（#222）。
+# バイナリは @prisma/engines の postinstall が入れ、npm がこの script を止めても
+# deps ステージの prisma generate が取りに行く。どちらでも入らなかったときや prune で
+# 消えたときは、db-migrate Job が実行時に Prisma の CDN から取りに行くことになる。
+# prisma --version は無ければダウンロードしてしまうので、この確認には使えない。
+RUN node_modules/@prisma/engines/schema-engine-* --version
+
 USER nextjs
 
 CMD ["node_modules/.bin/prisma", "migrate", "deploy"]
