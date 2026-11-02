@@ -18,6 +18,10 @@ import { isSignupRateLimited } from '@/lib/rateLimit';
 // その経路が使える間は残す
 const UNVERIFIED_SIGNUP_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
+// これより前は未確認でもパスワードでログインできた（確認の必須化が本番に入った時刻）。
+// 使われていた行かもしれないので、自動では消さない
+const UNVERIFIED_LOGIN_BLOCKED_AT = new Date('2026-11-02T06:30:00Z');
+
 const SignupFormSchema = z.object({
   name: z.string().min(2, { message: '名前は2文字以上で入力してください。' }),
   email: z.string().email({ message: '有効なメールアドレスを入力してください。' }),
@@ -53,7 +57,10 @@ async function purgeStaleSignups() {
         password_hash: { not: null },
         is_sso_user: false,
         identities: { none: {} },
-        created_at: { lt: new Date(now - UNVERIFIED_SIGNUP_TTL_MS) },
+        created_at: {
+          gte: UNVERIFIED_LOGIN_BLOCKED_AT,
+          lt: new Date(now - UNVERIFIED_SIGNUP_TTL_MS),
+        },
       },
     });
     await prisma.verification_tokens.deleteMany({

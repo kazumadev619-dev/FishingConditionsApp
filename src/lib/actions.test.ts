@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signIn } from '@/auth';
 import { EmailNotVerifiedError } from '@/auth/providers/credentials';
 import { issueVerificationEmail } from '@/lib/email';
-import { logger } from '@/lib/logger';
+import { logger, maskEmail } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { isSignupRateLimited } from '@/lib/rateLimit';
 import { authenticate, signup } from './actions';
@@ -76,6 +76,7 @@ describe('signup', () => {
 
   it('上限を超えたらハッシュも DB もメールも動かさず、再試行を案内する', async () => {
     vi.mocked(isSignupRateLimited).mockResolvedValue(true);
+    const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
 
     await expect(signup(undefined, signupForm())).resolves.toBe(
       '試行回数が上限に達しました。時間をおいて再度お試しください。',
@@ -87,6 +88,10 @@ describe('signup', () => {
     expect(prisma.users.deleteMany).not.toHaveBeenCalled();
     expect(prisma.verification_tokens.deleteMany).not.toHaveBeenCalled();
     expect(issueVerificationEmail).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledWith(
+      { email: maskEmail('owner@example.com') },
+      'Signup rate limit exceeded',
+    );
   });
 
   it('入力の誤りは回数に数えない', async () => {
@@ -95,8 +100,8 @@ describe('signup', () => {
     expect(isSignupRateLimited).not.toHaveBeenCalled();
   });
 
-  it('作成から7日を超えたパスワード登録の未確認の行と、期限切れのトークンを消す', async () => {
-    const now = new Date('2026-11-02T00:00:00Z');
+  it('確認の必須化より後に作られ、7日を超えたパスワード登録の未確認の行と、期限切れのトークンを消す', async () => {
+    const now = new Date('2026-12-02T00:00:00Z');
     vi.useFakeTimers({ now, toFake: ['Date'] });
 
     await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
@@ -107,7 +112,10 @@ describe('signup', () => {
         password_hash: { not: null },
         is_sso_user: false,
         identities: { none: {} },
-        created_at: { lt: new Date('2026-10-26T00:00:00Z') },
+        created_at: {
+          gte: new Date('2026-11-02T06:30:00Z'),
+          lt: new Date('2026-11-25T00:00:00Z'),
+        },
       },
     });
     expect(prisma.verification_tokens.deleteMany).toHaveBeenCalledExactlyOnceWith({
@@ -115,12 +123,18 @@ describe('signup', () => {
     });
   });
 
-  it('期限の過ぎた行を、同じアドレスの作成より先に消す', async () => {
-    await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
+  it('期限の過ぎた行を消し終えてから、同じアドレスの行を作る', async () => {
+    const { promise, resolve } = Promise.withResolvers<{ count: number }>();
+    vi.mocked(prisma.users.deleteMany).mockReturnValue(promise as never);
 
-    expect(vi.mocked(prisma.users.deleteMany).mock.invocationCallOrder[0]).toBeLessThan(
-      vi.mocked(prisma.users.create).mock.invocationCallOrder[0],
-    );
+    const result = signup(undefined, signupForm());
+    await vi.waitFor(() => expect(prisma.users.deleteMany).toHaveBeenCalled());
+    await new Promise((settle) => setTimeout(settle));
+    expect(prisma.users.create).not.toHaveBeenCalled();
+
+    resolve({ count: 0 });
+    await expect(result).rejects.toThrow('NEXT_REDIRECT');
+    expect(prisma.users.create).toHaveBeenCalledOnce();
   });
 
   it.each([

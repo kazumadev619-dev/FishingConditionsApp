@@ -36,8 +36,9 @@ export async function isUserRateLimited(routeName: string): Promise<boolean> {
 
 /**
  * 接続元を数える単位。IPv6 は1契約に /64 が割り当たるので、/64 をひとつに数える。
- * Cloudflare を通らない要求にはこのヘッダが無いので、まとめてひとつに数える。
- * X-Forwarded-For は使わない。トンネルの経路では cloudflared の Pod の IP になる。
+ * ヘッダが無い要求と IP として読めない値は、まとめてひとつに数える。
+ * X-Forwarded-For は使わない。途中のプロキシの設定で値が変わるうえ、その設定は
+ * このリポジトリに無い。
  *
  * ponytail: LAN から直接届く要求はヘッダを偽装できるので、この単位の制限は効かない
  * （k8s/README.md）。塞ぐならトンネルの外を Traefik で拒否する。
@@ -49,8 +50,11 @@ function clientNetwork(ip: string): string {
   if (!isIPv6(ip)) {
     return 'unknown';
   }
-  const groups = ip.split('::')[0].split(':');
-  const prefix = [0, 1, 2, 3].map((i) => parseInt(groups[i] || '0', 16).toString(16));
+  const [head, tail] = ip.split('::').map((part) => (part ? part.split(':') : []));
+  const groups = tail
+    ? [...head, ...Array(8 - head.length - tail.length).fill('0'), ...tail]
+    : head;
+  const prefix = groups.slice(0, 4).map((group) => parseInt(group, 16).toString(16));
   return `${prefix.join(':')}::/64`;
 }
 

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -116,7 +117,7 @@ describe('isSignupRateLimited', () => {
     fromIp('203.0.113.1');
 
     await expect(attempts(12, distinctAddress)).resolves.toBe(10);
-    expect(cache.increment).toHaveBeenCalledWith(expect.any(String), 3600);
+    expect(cache.increment).toHaveBeenCalledWith('ratelimit:signup:ip:203.0.113.1', 3600);
   });
 
   it('別の接続元は別に数える', async () => {
@@ -180,10 +181,20 @@ describe('isSignupRateLimited', () => {
     await expect(isSignupRateLimited('other@example.test')).resolves.toBe(true);
   });
 
-  it('Cloudflare を通らない要求は X-Forwarded-For を変えても同じ枠で数える', async () => {
+  it('/64 の中に :: があるアドレスも、省略された0を埋めて数える', async () => {
+    fromIp('2400:0:0:4:1:2:3:4');
+    await attempts(11, distinctAddress);
+    fromIp('2400::4:1:2:3:5');
+    await expect(isSignupRateLimited('same-network@example.test')).resolves.toBe(true);
+
+    fromIp('2400::5:1:2:3:4');
+    await expect(isSignupRateLimited('other-network@example.test')).resolves.toBe(false);
+  });
+
+  it('CF-Connecting-IP が無ければ、ほかのヘッダを変えても同じ枠で数える', async () => {
     let passed = 0;
     for (let i = 0; i < 12; i++) {
-      from({ 'x-forwarded-for': `198.51.100.${i + 1}` });
+      from({ 'x-forwarded-for': `198.51.100.${i + 1}`, 'x-real-ip': `198.51.100.${i + 1}` });
       if (!(await isSignupRateLimited(distinctAddress(i)))) passed++;
     }
 
@@ -207,14 +218,13 @@ describe('isSignupRateLimited', () => {
     await expect(attempts(3, () => 'victim@example.test')).resolves.toBe(3);
   });
 
-  it('アドレスをそのまま Redis のキーに書かない', async () => {
+  it('アドレスは SHA-256 のハッシュにして1時間数える', async () => {
     fromIp('203.0.113.1');
 
-    await isSignupRateLimited('owner@example.test');
+    await isSignupRateLimited('Owner+1@example.test');
 
-    const keys = vi.mocked(cache.increment).mock.calls.map(([key]) => key);
-    expect(keys).toHaveLength(2);
-    expect(keys.join()).not.toContain('owner');
+    const hash = createHash('sha256').update('owner@example.test').digest('hex');
+    expect(cache.increment).toHaveBeenCalledWith(`ratelimit:signup:address:${hash}`, 3600);
   });
 
   it('Redis が使えないときは制限しない', async () => {
