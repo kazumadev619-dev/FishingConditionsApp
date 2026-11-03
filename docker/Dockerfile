@@ -122,7 +122,8 @@ COPY --from=builder --chown=nextjs:nodejs /app/code.csv ./code.csv
 # パッケージも外部扱いにせず解決させる。--packages=external だと tsconfig の @/ や
 # prune で消えた dev 依存を素通りさせる。--format=esm は top-level await を通すため。
 # Job の command にスクリプトを足したら、この行にも足すこと。
-RUN node_modules/.bin/esbuild prisma/seed.ts scripts/update-port-coordinates.ts \
+# （港座標は prisma/data/port-coordinates.csv を seed が読む。外部 API は呼ばない。#345）
+RUN node_modules/.bin/esbuild prisma/seed.ts \
       --bundle --platform=node --format=esm --log-level=warning \
       --outdir=/tmp/import-check && \
     rm -rf /tmp/import-check

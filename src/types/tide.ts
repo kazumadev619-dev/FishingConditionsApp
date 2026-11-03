@@ -4,7 +4,8 @@
  * 注意: tide736.net API は数値フィールドを JSON number で返す。
  * 以前は latitude / longitude を string と宣言していたが実際は number で、
  * しかも値は度分形式（DD.MM）である。十進度として扱うと最大約44km ずれるため、
- * 取り込み時に必ず `dmToDegrees()` で変換すること（#71）。
+ * DB の ports 座標は十進度で、prisma/data/port-coordinates.csv が正（#345）。この値を
+ * 十進度として扱わないこと（#71）。
  */
 export interface PortInfo {
   prefecture_code: number; // 都道府県コード (例: 13)

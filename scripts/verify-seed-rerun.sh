@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# db-seed の1段目（prisma/seed.ts）を2回流しても、港の id・座標と
-# locations.port_id が保たれることを確かめる（#146）。
+# db-seed（prisma/seed.ts）を2回流しても、港の id と locations.port_id が保たれ、
+# 座標が CSV の値になることを確かめる（#146, #345）。
 #
 #   bash scripts/verify-seed-rerun.sh
 #
@@ -25,8 +25,8 @@ for _ in $(seq 1 30); do docker exec "$NAME" pg_isready -U postgres -d app -q &&
 DATABASE_URL_DIRECT=$URL npx --no-install prisma migrate deploy > /dev/null
 seed
 
-# 2段目（update-port-coordinates）が座標を埋めた状態・港に紐づいた地点・
-# CSV 側だけが新しい港名、の3つを作ってから流し直す
+# 座標が CSV と食い違う状態・港に紐づいた地点・CSV 側だけが新しい港名、の3つを
+# 作ってから流し直す
 q "UPDATE ports SET latitude = 45.5, longitude = 148.5, name = '旧名' WHERE $K"
 q "INSERT INTO locations (id, name, latitude, longitude, port_id) SELECT gen_random_uuid(), 'fav', 45.5, 148.5, id FROM ports WHERE $K"
 before=$(q "SELECT id FROM ports WHERE $K")
@@ -37,7 +37,7 @@ fail=0
 check() { if [ "$2" != "$3" ]; then echo "::error::$1: got '$2' want '$3'"; fail=1; else echo "ok  $1"; fi; }
 check "港の id が変わらない" "$(q "SELECT id FROM ports WHERE $K")" "$before"
 check "locations.port_id が保たれる" "$(q "SELECT coalesce(port_id::text, 'NULL') FROM locations WHERE name = 'fav'")" "$before"
-check "座標が保たれる" "$(q "SELECT latitude || ',' || longitude FROM ports WHERE $K")" "45.5,148.5"
+check "座標は CSV の値に戻る" "$(q "SELECT latitude || ',' || longitude FROM ports WHERE $K")" "50.81666666666667,156.5"
 check "港名は CSV に追従する" "$(q "SELECT name FROM ports WHERE $K")" "小泊"
 check "港の件数が CSV と一致する" "$(q 'SELECT count(*) FROM ports')" "736"
 exit $fail

@@ -41,6 +41,28 @@ function parsePortsCSV(csvContent: string): Array<{
 }
 
 /**
+ * 座標CSV（県コード,港コード,緯度,経度）を「県コード,港コード」→ 座標 の Map にする。
+ * 数値は SQL に直接埋め込むので、数値でない行は弾く。
+ */
+function parseCoordinatesCSV(csvContent: string): Map<string, { lat: number; lng: number }> {
+  const map = new Map<string, { lat: number; lng: number }>();
+  for (const line of csvContent
+    .split('\n')
+    .filter((l) => l.trim())
+    .slice(1)) {
+    const [pref, port, lat, lng] = line.split(',').map((v) => v.trim());
+    const la = Number(lat);
+    const lo = Number(lng);
+    // Number('') は 0 になるので、空欄は先に弾く
+    if (lat === '' || lng === '' || !Number.isFinite(la) || !Number.isFinite(lo)) {
+      throw new Error(`座標が数値ではありません: ${line}`);
+    }
+    map.set(`${pref},${port}`, { lat: la, lng: lo });
+  }
+  return map;
+}
+
+/**
  * 港マスタデータをデータベースに投入
  */
 async function seedPorts() {
@@ -54,11 +76,16 @@ async function seedPorts() {
     const ports = parsePortsCSV(csvContent);
     console.log(`📍 Found ${ports.length} ports in CSV`);
 
+    // 座標は tide736.net から取らず、prisma/data/port-coordinates.csv を正とする（#345）
+    const coords = parseCoordinatesCSV(
+      fs.readFileSync(path.join(__dirname, 'data/port-coordinates.csv'), 'utf-8'),
+    );
+
     // Prisma クライアントが正常に初期化されているか確認
     console.log('🔍 Prisma client:', typeof prisma, Object.keys(prisma).slice(0, 5));
 
     // ports テーブルに一括 upsert（SQL INSERT を使用）
-    // 既存の港は消さずに id と座標を保つ。消して作り直すと locations.port_id の
+    // 既存の港は消さずに id を保つ。座標は CSV の値で上書きする。消して作り直すと locations.port_id の
     // FK（ON DELETE SET NULL）で地点との紐づけが静かに切れる（#146）。
     // CSV から消えた港は残る。消すと同じ理由で紐づけが切れるため。
     // 確認: bash scripts/verify-seed-rerun.sh
@@ -66,17 +93,23 @@ async function seedPorts() {
     const escapeSql = (str: string): string => str.replace(/'/g, "''");
 
     const valuesList = ports
-      .map(
-        (port) =>
-          `('${randomUUID()}', '${escapeSql(port.prefecture_code)}', '${escapeSql(port.prefecture_name)}', '${escapeSql(port.port_code)}', '${escapeSql(port.name)}', NULL, NULL, now())`,
-      )
+      .map((port) => {
+        const c = coords.get(`${port.prefecture_code},${port.port_code}`);
+        if (!c) {
+          throw new Error(
+            `座標がありません: ${port.prefecture_code}-${port.port_code} ${port.name}`,
+          );
+        }
+        return `('${randomUUID()}', '${escapeSql(port.prefecture_code)}', '${escapeSql(port.prefecture_name)}', '${escapeSql(port.port_code)}', '${escapeSql(port.name)}', ${c.lat}, ${c.lng}, now())`;
+      })
       .join(', ');
 
     const insertQuery = `
       INSERT INTO "ports" (id, prefecture_code, prefecture_name, port_code, name, latitude, longitude, created_at)
       VALUES ${valuesList}
       ON CONFLICT (prefecture_code, port_code)
-        DO UPDATE SET name = EXCLUDED.name, prefecture_name = EXCLUDED.prefecture_name
+        DO UPDATE SET name = EXCLUDED.name, prefecture_name = EXCLUDED.prefecture_name,
+          latitude = EXCLUDED.latitude, longitude = EXCLUDED.longitude
     `;
 
     try {
