@@ -5,7 +5,7 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { ApiError } from '@/lib/apiClient';
-import { logApiError } from '@/lib/apiErrorUtils';
+import { getErrorMessage, logApiError } from '@/lib/apiErrorUtils';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
@@ -84,7 +84,7 @@ async function handleGet(request: NextRequest) {
       ...result,
     });
   } catch (error) {
-    // ApiErrorの場合は詳細なエラーレスポンスを返す
+    // ApiError の message には上流の応答本文が入るので、応答には種別ごとの固定文言を返す
     if (error instanceof ApiError) {
       logApiError(error, { endpoint: '/api/weather', lat, lon, type });
 
@@ -93,7 +93,7 @@ async function handleGet(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: error.message,
+          error: getErrorMessage(error),
           code: error.type,
           retryable: error.retryable,
         },

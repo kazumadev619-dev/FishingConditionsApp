@@ -83,7 +83,6 @@ export async function POST(request: NextRequest): Promise<AddFavoriteResponse> {
     return NextResponse.json({ success: true, locationId: result.locationId });
   } catch (error) {
     logger.error({ error }, 'Failed to add favorite');
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: `Failed to add favorite: ${errorMessage}` }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to add favorite' }, { status: 500 });
   }
 }
