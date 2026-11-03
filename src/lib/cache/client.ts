@@ -10,6 +10,8 @@ export type CacheReadResult<T> = { hit: true; value: T } | { hit: false };
  */
 const ERROR_LOG_INTERVAL_MS = 5 * 60 * 1000;
 
+const COMMAND_TIMEOUT_MS = 1000;
+
 /**
  * ioredisを使用したキャッシュクライアント
  */
@@ -24,6 +26,10 @@ class CacheClient {
       this.client = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         connectTimeout: 10000,
+        // 接続は保ったまま Redis が黙ると、コマンドが返らず呼び出し元のリクエストも止まる（#336）。
+        // 普段の応答は 1ms 未満（ローカルの実測で最大 1ms）。cache の全コマンドに効くので、
+        // 余裕を持たせつつ、リクエストを長く止めない 1 秒にする。超えたら既存の catch がミスや null に落とす。
+        commandTimeout: COMMAND_TIMEOUT_MS,
         // 試行回数に比例して間隔を空けて再接続する（200ms 刻み、上限 5 秒）。
         // null を返さない＝諦めない。Redis が長時間落ちていても、復旧すれば戻る。
         retryStrategy: (times) => Math.min(times * 200, 5000),
