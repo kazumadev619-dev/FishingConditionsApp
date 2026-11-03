@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { toLocationCoordinates } from '@/lib/locationIdentity';
 import prisma from '@/lib/prisma';
+import { isValidUUID } from '@/lib/validators';
 import type { FavoriteRequest } from '@/types/favorites';
 
 const CoordinatesSchema = z.object({
@@ -78,6 +79,21 @@ export async function resolveLocationId(body: FavoriteRequest): Promise<Location
         { error: 'locationId, portId, or coordinates is required' },
         { status: 400 },
       ),
+    };
+  }
+
+  // 列は @db.Uuid。形式の違う値は DB 側の変換で失敗して 500 になるので先に弾く（#330）
+  if (locationId && !isValidUUID(locationId)) {
+    return {
+      success: false,
+      response: NextResponse.json({ error: 'Invalid locationId' }, { status: 400 }),
+    };
+  }
+
+  if (portId && !isValidUUID(portId)) {
+    return {
+      success: false,
+      response: NextResponse.json({ error: 'Invalid portId' }, { status: 400 }),
     };
   }
 
