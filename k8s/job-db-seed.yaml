@@ -13,8 +13,7 @@ metadata:
     app.kubernetes.io/component: migration
 spec:
   backoffLimit: 1
-  # 港座標の更新は tide736.net を港ごとに叩くため数分かかる
-  activeDeadlineSeconds: 1800
+  activeDeadlineSeconds: 600
   ttlSecondsAfterFinished: 3600
   template:
     metadata:
@@ -38,15 +37,11 @@ spec:
             - -c
             - |
               set -e
-              echo "1/2: seed を実行"
               node --import tsx/esm prisma/seed.ts
-              echo "2/2: 港座標を外部 API から更新（数分かかる）"
-              node --import tsx/esm scripts/update-port-coordinates.ts
-              echo "完了"
-          # prisma/seed.ts と scripts/update-port-coordinates.ts は Prisma CLI を
-          # 通さず process.env.DATABASE_URL から自前で pg.Pool を作る。読むのは
-          # DATABASE_URL だけ（DDL は無く、ports への INSERT ... ON CONFLICT DO UPDATE
-          # と UPDATE のみ）なので、アプリロール fishing_app_rw の direct 接続を渡す。
+          # prisma/seed.ts は Prisma CLI を通さず process.env.DATABASE_URL から
+          # 自前で pg.Pool を作る。読むのは DATABASE_URL だけ（DDL は無く、
+          # ports への INSERT ... ON CONFLICT DO UPDATE のみ。座標は
+          # prisma/data/port-coordinates.csv から入れ、外部 API は呼ばない。#345）なので、アプリロール fishing_app_rw の direct 接続を渡す。
           # オーナー（DATABASE_URL_DIRECT）は渡さない（#135）。
           # direct なのは pooled では seed の一括投入が PgBouncer 経由で詰まるため。
           env:
