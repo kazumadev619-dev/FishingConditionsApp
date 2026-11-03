@@ -11,6 +11,9 @@ vi.mock('@/lib/prisma', () => ({ default: prismaMock }));
 import type { FavoriteRequest } from '@/types/favorites';
 import { resolveLocationId } from './locationResolver';
 
+// ports.id は @db.Uuid。UUID でない portId は入口で 400 になる（#330）
+const PORT_ID = '22222222-2222-4222-8222-222222222222';
+
 beforeEach(() => {
   vi.clearAllMocks();
 });
@@ -40,7 +43,7 @@ describe('resolveLocationId（座標から locations を作る）', () => {
 
   it('港から作るときは port_id を付ける', async () => {
     prismaMock.ports.findUnique.mockResolvedValue({
-      id: 'port-1',
+      id: PORT_ID,
       name: '築地',
       latitude: 35.6667,
       longitude: 139.767,
@@ -48,18 +51,18 @@ describe('resolveLocationId（座標から locations を作る）', () => {
     prismaMock.locations.createMany.mockResolvedValue({ count: 1 });
     prismaMock.locations.findUniqueOrThrow.mockResolvedValue({ id: 'loc-1' });
 
-    const result = await resolveLocationId({ portId: 'port-1' });
+    const result = await resolveLocationId({ portId: PORT_ID });
 
     expect(result).toEqual({ success: true, locationId: 'loc-1' });
     expect(prismaMock.locations.createMany).toHaveBeenCalledWith({
-      data: expect.objectContaining({ name: '築地', port_id: 'port-1' }),
+      data: expect.objectContaining({ name: '築地', port_id: PORT_ID }),
       skipDuplicates: true,
     });
   });
 
   it('港の経路では、港に結びついていない行の名前と port_id を港に揃える', async () => {
     prismaMock.ports.findUnique.mockResolvedValue({
-      id: 'port-1',
+      id: PORT_ID,
       name: '築地',
       latitude: 35.66671,
       longitude: 139.76701,
@@ -67,11 +70,11 @@ describe('resolveLocationId（座標から locations を作る）', () => {
     prismaMock.locations.createMany.mockResolvedValue({ count: 0 });
     prismaMock.locations.findUniqueOrThrow.mockResolvedValue({ id: 'existing' });
 
-    await resolveLocationId({ portId: 'port-1' });
+    await resolveLocationId({ portId: PORT_ID });
 
     expect(prismaMock.locations.updateMany).toHaveBeenCalledWith({
       where: { latitude: 35.6667, longitude: 139.767, port_id: null },
-      data: { name: '築地', port_id: 'port-1' },
+      data: { name: '築地', port_id: PORT_ID },
     });
   });
 

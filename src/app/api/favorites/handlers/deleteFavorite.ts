@@ -23,6 +23,11 @@ export async function DELETE(
       return NextResponse.json({ error: 'locationId is required' }, { status: 400 });
     }
 
+    // 列は @db.Uuid。形式の違う値を渡すと DB 側の変換で失敗して 500 になる（#330）
+    if (!isValidUUID(locationId)) {
+      return NextResponse.json({ error: 'Invalid locationId' }, { status: 400 });
+    }
+
     const result = await prisma.user_favorites.deleteMany({
       where: { user_id: userId, location_id: locationId },
     });
