@@ -6,11 +6,9 @@ import { withUserRateLimit } from '@/lib/rateLimit';
 import { withServerTiming } from '@/lib/serverTiming';
 import { isValidQuery, LIMIT_REGEX } from '@/lib/validators';
 
-export async function GET(request: NextRequest) {
-  return withServerTiming('locations-search', () =>
-    withUserRateLimit('locations-search', () => handleGet(request)),
-  );
-}
+export const GET = withServerTiming('locations-search', (request: NextRequest) =>
+  withUserRateLimit('locations-search', () => handleGet(request)),
+);
 
 async function handleGet(request: NextRequest) {
   try {

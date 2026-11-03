@@ -21,9 +21,9 @@ import { parseAndValidateCoordinates } from '@/lib/validators';
  * - type: 'current' | 'forecast'（デフォルト: 'current'）
  * - units: 'standard' | 'metric' | 'imperial'（デフォルト: 'metric'）
  */
-export async function GET(request: NextRequest) {
-  return withServerTiming('weather', () => withUserRateLimit('weather', () => handleGet(request)));
-}
+export const GET = withServerTiming('weather', (request: NextRequest) =>
+  withUserRateLimit('weather', () => handleGet(request)),
+);
 
 async function handleGet(request: NextRequest) {
   // APIキーのチェック

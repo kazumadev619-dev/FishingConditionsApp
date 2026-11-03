@@ -11,9 +11,9 @@ import {
   PREFECTURE_CODE_REGEX,
 } from '@/lib/validators';
 
-export async function GET(request: NextRequest) {
-  return withServerTiming('tide', () => withUserRateLimit('tide', () => handleGet(request)));
-}
+export const GET = withServerTiming('tide', (request: NextRequest) =>
+  withUserRateLimit('tide', () => handleGet(request)),
+);
 
 async function handleGet(request: NextRequest) {
   try {
