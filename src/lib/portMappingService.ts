@@ -9,7 +9,7 @@ import prisma from '@/lib/prisma';
 /**
  * 港と距離の情報
  */
-export type PortWithDistance = ports & {
+type PortWithDistance = ports & {
   distance: number;
 };
 
@@ -21,7 +21,7 @@ export type PortWithDistance = ports & {
  * @param lon2 地点2の経度
  * @returns 距離（km）
  */
-export function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // 地球の半径（km）
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLon = ((lon2 - lon1) * Math.PI) / 180;

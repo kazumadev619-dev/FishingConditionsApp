@@ -206,12 +206,11 @@ src/lib/validators/coordinateValidator.test.ts   ← 隣に置く
 ```typescript
 // src/lib/validators/coordinateValidator.test.ts
 import { describe, expect, it } from 'vitest';
-import { dmToDegrees } from './coordinateValidator';
+import { roundCoordinate } from './coordinateValidator';
 
-describe('dmToDegrees', () => {
-  it('度分形式を十進度に変換する', () => {
-    // 35.4 は 35度40分。十進度の 35.4 ではない
-    expect(dmToDegrees(35.4)).toBeCloseTo(35.6667, 4);
+describe('roundCoordinate', () => {
+  it('小数4桁に丸める', () => {
+    expect(roundCoordinate(35.66666)).toBe(35.6667);
   });
 });
 ```

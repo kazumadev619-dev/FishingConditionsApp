@@ -8,16 +8,22 @@ export const loggerOptions: pino.LoggerOptions = {
 
   // 本番環境: JSON形式のみ（pretty OFF）
   // 開発環境: pino-prettyで読みやすい形式
-  transport: !isProduction
-    ? {
-        target: 'pino-pretty',
-        options: {
-          colorize: true,
-          translateTime: 'SYS:standard',
-          ignore: 'pid,hostname',
-        },
-      }
-    : undefined, // 本番環境では transport を設定しない = 純粋なJSON出力
+  // target は絶対パスで渡す。名前だと next dev の再評価で解決に失敗し、以後 500 になる（#332）
+  // node:module は静的に import しない（クライアントのビルドが落ちる）。ブラウザには transport が無いのでサーバーのみ
+  transport:
+    !isProduction && typeof window === 'undefined'
+      ? {
+          target: process
+            .getBuiltinModule('node:module')
+            .createRequire(import.meta.url)
+            .resolve('pino-pretty'),
+          options: {
+            colorize: true,
+            translateTime: 'SYS:standard',
+            ignore: 'pid,hostname',
+          },
+        }
+      : undefined, // 本番環境では transport を設定しない = 純粋なJSON出力
 
   // pino が既定で Error を展開するのは `err` キーだけ。呼び出し元の多くは
   // `{ error }` で渡しているので、こちらも展開しないと `"error":{}` になり

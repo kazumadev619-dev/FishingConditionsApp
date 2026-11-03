@@ -78,7 +78,7 @@ export function getTimeExplanation(score: number): string {
 /**
  * 潮汐イベント（満潮・干潮）をフォーマット
  */
-export interface TideEventDisplay {
+interface TideEventDisplay {
   time: string;
   height: string;
 }

@@ -1,10 +1,5 @@
-import { ApiError, ApiErrorType } from './apiClient';
+import { type ApiError, ApiErrorType } from './apiClient';
 import { logger } from './logger';
-
-// ApiError インスタンスかどうかを判定
-export function isApiError(error: unknown): error is ApiError {
-  return error instanceof ApiError;
-}
 
 // エラー型から日本語のメッセージを生成
 export function getErrorMessage(error: ApiError): string {
@@ -48,32 +43,4 @@ export function logApiError(error: ApiError, context?: Record<string, unknown>):
     ...context,
   };
   logger.error(logData, 'API request failed');
-}
-
-/**
- * リトライ可能なエラーの場合、待機して再試行する
- * （ApiClient の内部リトライが失敗した場合用）
- */
-export async function retryWithBackoff<T>(
-  fn: () => Promise<T>,
-  maxRetries: number = 3,
-  initialDelay: number = 100,
-): Promise<T> {
-  let lastError: Error | undefined;
-
-  for (let attempt = 0; attempt < maxRetries; attempt++) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      if (attempt < maxRetries - 1) {
-        const delay = initialDelay * 2 ** attempt;
-        logger.warn({ attempt: attempt + 1, delayMs: delay }, 'Retry attempt failed, retrying...');
-        await new Promise((resolve) => setTimeout(resolve, delay));
-      }
-    }
-  }
-
-  throw lastError;
 }

@@ -21,7 +21,7 @@ export type { DailyTide, TideEvent };
 /**
  * 潮汐取得時のオプション
  */
-export interface TideOptions {
+interface TideOptions {
   /** キャッシュをスキップするか */
   skipCache?: boolean;
   /** 取得範囲（day, week, month） */
@@ -31,7 +31,7 @@ export interface TideOptions {
 /**
  * 潮汐サービスのレスポンス型
  */
-export interface TideResponse<T> extends CacheResponse<T> {}
+interface TideResponse<T> extends CacheResponse<T> {}
 
 /**
  * アプリケーション用に整形された潮汐データ
@@ -132,11 +132,4 @@ export async function getTideData(
   };
 
   return fetchWithOptionalCache(cacheKey, CACHE_TTL.TIDE, skipCache, fetchTide, reviveTideDates);
-}
-
-/**
- * API キーが不要（tide736.net はキー不要）なので常に true
- */
-export function isTideApiConfigured(): boolean {
-  return true;
 }
