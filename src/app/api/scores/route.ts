@@ -193,13 +193,7 @@ async function handleGet(
     });
   } catch (error) {
     logger.error({ err: error }, 'Scores API error');
-
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-
-    return NextResponse.json(
-      { error: `Failed to calculate fishing score: ${errorMessage}` },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: 'Failed to calculate fishing score' }, { status: 500 });
   }
 }
 

@@ -289,10 +289,15 @@ docker compose --profile tools run --rm migrator
 # seed 実行
 docker compose --profile tools run --rm migrator node --import tsx/esm prisma/seed.ts
 
-# Prisma Studio は migrator イメージのCLIで起動する（ポート公開が必要）
-docker compose --profile tools run --rm --service-ports migrator \
-  node_modules/.bin/prisma studio
+# Prisma Studio を起動し、ホストのブラウザで http://localhost:5555 を開く（Ctrl-C で停止）
+# docker/ で実行する。--service-ports を省くとポートが公開されない
+docker compose --profile tools run --rm --service-ports prisma-studio
+
+# ポートを変える場合（127.0.0.1 にだけ公開される）
+PRISMA_STUDIO_PORT=5556 docker compose --profile tools run --rm --service-ports prisma-studio
 ```
+
+ホストに依存を入れてあるなら、リポジトリのルートで `npm run prisma:studio` でも開けます（`.env.local` の `DATABASE_URL_DIRECT` に接続します）。
 
 ### 2.7 Redis 操作
 

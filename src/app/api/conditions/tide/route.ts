@@ -68,8 +68,7 @@ async function handleGet(request: NextRequest) {
       },
     );
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     logger.error({ err: error }, 'Tide API error');
-    return NextResponse.json({ error: errorMessage, status: 500 }, { status: 500 });
+    return createErrorResponse('Failed to fetch tide data', 500);
   }
 }

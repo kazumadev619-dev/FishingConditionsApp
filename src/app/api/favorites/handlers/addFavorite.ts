@@ -58,7 +58,16 @@ export async function POST(request: NextRequest): Promise<AddFavoriteResponse> {
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 
-    const body: FavoriteRequest = await request.json();
+    let body: FavoriteRequest | null;
+    try {
+      body = await request.json();
+    } catch {
+      // 本文が JSON でないのは入力の誤り。500 にすると障害として数えられる（#330）
+      return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 });
+    }
+    if (typeof body !== 'object' || body === null) {
+      return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
+    }
     const result = await resolveLocationId(body);
 
     if (!result.success) {
@@ -83,7 +92,6 @@ export async function POST(request: NextRequest): Promise<AddFavoriteResponse> {
     return NextResponse.json({ success: true, locationId: result.locationId });
   } catch (error) {
     logger.error({ error }, 'Failed to add favorite');
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    return NextResponse.json({ error: `Failed to add favorite: ${errorMessage}` }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to add favorite' }, { status: 500 });
   }
 }

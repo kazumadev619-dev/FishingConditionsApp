@@ -5,10 +5,20 @@ import type { Jsonified } from './types';
 export type CacheReadResult<T> = { hit: true; value: T } | { hit: false };
 
 /**
+ * Redis の error を記録する最短の間隔。再接続は 5 秒ごとに無期限で続くので、
+ * 間引かないと切断中の1本の接続だけで error が1日に約 17,000 行になる（#121）。
+ */
+const ERROR_LOG_INTERVAL_MS = 5 * 60 * 1000;
+
+const COMMAND_TIMEOUT_MS = 1000;
+
+/**
  * ioredisを使用したキャッシュクライアント
  */
 class CacheClient {
   private client: Redis | null = null;
+  private failedAttempts = 0;
+  private lastErrorLoggedAt = 0;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -16,9 +26,12 @@ class CacheClient {
       this.client = new Redis(redisUrl, {
         maxRetriesPerRequest: 3,
         connectTimeout: 10000,
+        // 接続は保ったまま Redis が黙ると、コマンドが返らず呼び出し元のリクエストも止まる（#336）。
+        // 普段の応答は 1ms 未満（ローカルの実測で最大 1ms）。cache の全コマンドに効くので、
+        // 余裕を持たせつつ、リクエストを長く止めない 1 秒にする。超えたら既存の catch がミスや null に落とす。
+        commandTimeout: COMMAND_TIMEOUT_MS,
         // 試行回数に比例して間隔を空けて再接続する（200ms 刻み、上限 5 秒）。
-        // null を返さない＝諦めないので、Redis が長時間落ちている間は
-        // 5 秒ごとに error/reconnecting ログが出続ける点に注意。
+        // null を返さない＝諦めない。Redis が長時間落ちていても、復旧すれば戻る。
         retryStrategy: (times) => Math.min(times * 200, 5000),
       });
 
@@ -26,19 +39,33 @@ class CacheClient {
       // ここで quit()/null 代入をすると Pod 再起動までキャッシュが復活しない。
       // 接続断中は isAvailable() が false を返し、呼び出し側は素通しになる。
       this.client.on('error', (err) => {
-        logger.error({ err }, 'Redis client error');
+        this.failedAttempts++;
+        const now = Date.now();
+        if (now - this.lastErrorLoggedAt < ERROR_LOG_INTERVAL_MS) {
+          return;
+        }
+        this.lastErrorLoggedAt = now;
+        logger.error({ err, failedAttempts: this.failedAttempts }, 'Redis client error');
       });
 
       this.client.on('reconnecting', (delay: number) => {
-        logger.warn({ delay }, 'Redis client reconnecting');
+        logger.debug({ delay }, 'Redis client reconnecting');
       });
 
       this.client.on('ready', () => {
-        logger.info('Redis client ready');
+        logger.info({ failedAttempts: this.failedAttempts }, 'Redis client ready');
+        this.failedAttempts = 0;
       });
     } else {
       logger.warn('REDIS_URL is not configured. Caching disabled.');
     }
+  }
+
+  /**
+   * 接続を閉じ、再接続もやめる。元に戻せず、このインスタンスは以後ずっと素通しになる
+   */
+  public disconnect(): void {
+    this.client?.disconnect();
   }
 
   /**
@@ -177,5 +204,10 @@ class CacheClient {
   }
 }
 
-// シングルトンインスタンス
-export const cache = new CacheClient();
+// next dev はこのモジュールを評価し直すので、使い回さないと接続が増え続ける。
+// NODE_ENV で分岐しないこと。RSC とルートハンドラは本番でも別々に評価するので、
+// 分岐すると本番の接続とログが2倍になる（#121）。
+// 使い回す代わりに、このファイルの変更を next dev で反映するには再起動が要る。
+const globalForCache = globalThis as typeof globalThis & { cacheClient?: CacheClient };
+globalForCache.cacheClient ??= new CacheClient();
+export const cache = globalForCache.cacheClient;
