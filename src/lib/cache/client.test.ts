@@ -54,8 +54,9 @@ beforeEach(() => {
   redisMock.status = 'ready';
 });
 
-// cache はテスト間で共有で、コマンド失敗のログは5分に1回に間引かれる。
-// 呼ぶたびに前回より5分以上進めた偽の時計にして、そのテストの最初の失敗が必ず error になるようにする
+// cache はテスト間で共有で、接続エラーもコマンド失敗も5分に1回に間引かれる。
+// 呼ぶたびに前回より5分以上進めた偽の時計にして、そのテストの最初の失敗が必ず error になるようにする。
+// 時計はこのファイルで1つにする（別々に持つと、順序を変えたとき片方の時刻が巻き戻って落ちる）
 const COMMAND_LOG_INTERVAL_MS = 5 * 60 * 1000;
 let commandClock = Date.now();
 function startCommandLogClock() {
@@ -185,18 +186,11 @@ describe('Redis に届かないときのログ', () => {
     }
   };
 
-  // cache はテスト間で共有なので、最後に記録した時刻より前に時計を戻さない
-  let now = Date.now();
-
+  // cache はテスト間で共有なので、全テストで1つの時計を使い、時刻を巻き戻さない
   beforeEach(() => {
-    vi.useFakeTimers({ now });
+    startCommandLogClock();
     redisMock.handlers.ready?.();
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    now = Date.now() + INTERVAL_MS;
-    vi.useRealTimers();
   });
 
   it('切断の最初のエラーはすぐ error で残す', () => {
@@ -302,16 +296,32 @@ describe('Redis が応答しないときのコマンド失敗のログ', () => {
   });
 
   it.each([
-    ['get', () => cache.get('k'), 'Failed to get cached data'],
-    ['set', () => cache.set('k', { a: 1 }, 60), 'Failed to set cache data'],
-    ['increment', () => cache.increment('k', 60), 'Failed to increment counter'],
-    ['delete', () => cache.delete('k'), 'Failed to delete cache data'],
+    ['get', () => cache.get('k'), { key: 'k', error: timeout }, 'Failed to get cached data'],
+    [
+      'set',
+      () => cache.set('k', { a: 1 }, 60),
+      { key: 'k', error: timeout },
+      'Failed to set cache data',
+    ],
+    [
+      'increment',
+      () => cache.increment('k', 60),
+      { key: 'k', err: timeout },
+      'Failed to increment counter',
+    ],
+    [
+      'delete',
+      () => cache.delete('k'),
+      { key: 'k', error: timeout },
+      'Failed to delete cache data',
+    ],
     [
       'deleteByPattern',
       () => cache.deleteByPattern('w:*'),
+      { pattern: 'w:*', error: timeout },
       'Failed to delete cache data by pattern',
     ],
-  ])('%s の失敗も間引く（最初の1回だけ error）', async (_name, run, message) => {
+  ])('%s の失敗も間引く（最初の1回だけ error）', async (_name, run, fields, message) => {
     redisMock.del.mockRejectedValue(timeout);
     redisMock.scanStream.mockImplementation(() => ({
       [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(timeout) }),
@@ -324,7 +334,7 @@ describe('Redis が応答しないときのコマンド失敗のログ', () => {
     await run();
 
     expect(loggerMock.error).toHaveBeenCalledTimes(1);
-    expect(loggerMock.error).toHaveBeenCalledWith(expect.anything(), message);
+    expect(loggerMock.error).toHaveBeenCalledWith(fields, message);
     expect(loggerMock.debug).toHaveBeenCalledTimes(1);
   });
 
