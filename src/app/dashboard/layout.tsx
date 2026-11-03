@@ -1,6 +1,5 @@
 'use client';
 
-import { motion } from 'framer-motion';
 import { useState } from 'react';
 import { AppHeader } from '@/components/organisms/AppHeader';
 import { AppSidebar } from '@/components/organisms/AppSidebar';
@@ -14,20 +13,6 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   return (
     <FavoritesProvider>
       <div className="relative min-h-screen overflow-hidden bg-background">
-        {/* Animated gradient background */}
-        <motion.div
-          className="absolute inset-0 -z-10 opacity-20"
-          animate={{
-            background: [
-              'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.5) 0%, rgba(14, 165, 233, 0.5) 50%, rgba(0, 0, 0, 0) 100%)',
-              'radial-gradient(circle at 30% 70%, rgba(6, 182, 212, 0.5) 0%, rgba(59, 130, 246, 0.5) 50%, rgba(0, 0, 0, 0) 100%)',
-              'radial-gradient(circle at 70% 30%, rgba(14, 165, 233, 0.5) 0%, rgba(6, 182, 212, 0.5) 50%, rgba(0, 0, 0, 0) 100%)',
-              'radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.5) 0%, rgba(14, 165, 233, 0.5) 50%, rgba(0, 0, 0, 0) 100%)',
-            ],
-          }}
-          transition={{ duration: 30, repeat: Number.POSITIVE_INFINITY, ease: 'linear' }}
-        />
-
         {/* Mobile menu overlay */}
         {mobileMenuOpen && (
           <button

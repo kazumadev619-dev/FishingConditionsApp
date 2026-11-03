@@ -8,17 +8,10 @@ import { JAPAN_TIME_ZONE } from './dateUtils';
 export { getScoreRank } from './scoreRank';
 
 /**
- * ランクから色を取得
+ * ランクの色（globals.css の --score-*）を取得
  */
 export function getRankColor(rank: ScoreRank): string {
-  const colors = {
-    excellent: '#22c55e', // 緑
-    good: '#3b82f6', // 青
-    fair: '#f59e0b', // オレンジ
-    poor: '#f97316', // オレンジ赤
-    bad: '#ef4444', // 赤
-  };
-  return colors[rank];
+  return `var(--score-${rank})`;
 }
 
 /**
@@ -96,6 +89,6 @@ export function formatTideEvent(timeStr: string, cm: number): TideEventDisplay {
 
   return {
     time: `${hours.padStart(2, '0')}:${minutes.padStart(2, '0')}`,
-    height: `${(cm / 100).toFixed(1)}m`,
+    height: `${(cm / 100).toFixed(1)} m`,
   };
 }

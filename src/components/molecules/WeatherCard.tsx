@@ -10,6 +10,26 @@ interface WeatherCardProps {
 }
 
 export function WeatherCard({ score, weather }: WeatherCardProps) {
+  const details = [
+    [
+      WEATHER_CARD_LABELS.WIND_SPEED,
+      `${weather.windSpeed.toFixed(1)} ${WEATHER_CARD_LABELS.WIND_SPEED_UNIT}`,
+    ],
+    [WEATHER_CARD_LABELS.WIND_DIRECTION, getWindDirection(weather.windDeg)],
+    [WEATHER_CARD_LABELS.HUMIDITY, `${weather.humidity} ${WEATHER_CARD_LABELS.HUMIDITY_UNIT}`],
+    [WEATHER_CARD_LABELS.PRESSURE, `${weather.pressure} ${WEATHER_CARD_LABELS.PRESSURE_UNIT}`],
+    [
+      WEATHER_CARD_LABELS.CLOUDINESS,
+      `${weather.cloudiness} ${WEATHER_CARD_LABELS.CLOUDINESS_UNIT}`,
+    ],
+    [
+      WEATHER_CARD_LABELS.VISIBILITY,
+      `${(weather.visibility / 1000).toFixed(1)} ${WEATHER_CARD_LABELS.VISIBILITY_UNIT}`,
+    ],
+    [WEATHER_CARD_LABELS.SUNRISE, formatTime(weather.sunrise)],
+    [WEATHER_CARD_LABELS.SUNSET, formatTime(weather.sunset)],
+  ];
+
   return (
     <Card>
       <CardHeader>
@@ -18,7 +38,7 @@ export function WeatherCard({ score, weather }: WeatherCardProps) {
       <CardContent className="space-y-4">
         <div>
           <span className="text-sm text-muted-foreground">{WEATHER_CARD_LABELS.SCORE}</span>
-          <span className="ml-2 font-semibold">
+          <span className="ml-2 font-mono text-data tabular-nums">
             {Math.round(score)}
             {SCORE_CARD_LABELS.WEATHER_MAX}
           </span>
@@ -29,45 +49,19 @@ export function WeatherCard({ score, weather }: WeatherCardProps) {
             <WeatherIcon condition={weather.weather.main} size={32} />
             <span>{weather.weather.description}</span>
           </div>
-          <span className="text-3xl font-bold">
-            {Math.round(weather.temperature)}
-            {WEATHER_CARD_LABELS.TEMPERATURE_UNIT}
+          <span className="font-mono text-metric tabular-nums">
+            {Math.round(weather.temperature)} {WEATHER_CARD_LABELS.TEMPERATURE_UNIT}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 text-sm">
-          <div>
-            {WEATHER_CARD_LABELS.WIND_SPEED} {weather.windSpeed.toFixed(1)}{' '}
-            {WEATHER_CARD_LABELS.WIND_SPEED_UNIT}
-          </div>
-          <div>
-            {WEATHER_CARD_LABELS.WIND_DIRECTION} {getWindDirection(weather.windDeg)}
-          </div>
-          <div>
-            {WEATHER_CARD_LABELS.HUMIDITY} {weather.humidity}
-            {WEATHER_CARD_LABELS.HUMIDITY_UNIT}
-          </div>
-          <div>
-            {WEATHER_CARD_LABELS.PRESSURE} {weather.pressure} {WEATHER_CARD_LABELS.PRESSURE_UNIT}
-          </div>
-          <div>
-            {WEATHER_CARD_LABELS.CLOUDINESS} {weather.cloudiness}
-            {WEATHER_CARD_LABELS.CLOUDINESS_UNIT}
-          </div>
-          <div>
-            {WEATHER_CARD_LABELS.VISIBILITY} {(weather.visibility / 1000).toFixed(1)}{' '}
-            {WEATHER_CARD_LABELS.VISIBILITY_UNIT}
-          </div>
-        </div>
-
-        <div className="border-t pt-4 flex justify-between text-sm">
-          <div>
-            {WEATHER_CARD_LABELS.SUNRISE} {formatTime(weather.sunrise)}
-          </div>
-          <div>
-            {WEATHER_CARD_LABELS.SUNSET} {formatTime(weather.sunset)}
-          </div>
-        </div>
+        <dl className="grid grid-cols-2 gap-3 border-t pt-4">
+          {details.map(([label, value]) => (
+            <div key={label}>
+              <dt className="text-label text-muted-foreground">{label}</dt>
+              <dd className="font-mono text-data tabular-nums">{value}</dd>
+            </div>
+          ))}
+        </dl>
       </CardContent>
     </Card>
   );

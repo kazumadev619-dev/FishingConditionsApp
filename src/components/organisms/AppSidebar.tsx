@@ -1,6 +1,6 @@
 'use client';
 
-import { ChevronDown, Heart, Home, LogOut, MapPin, Search, User, Waves } from 'lucide-react';
+import { ChevronDown, Home, LogOut, MapPin, Search, Star, User, Waves } from 'lucide-react';
 import { signOut, useSession } from 'next-auth/react';
 import { useState } from 'react';
 import { FavoritesModal } from '@/components/organisms/FavoritesModal';
@@ -17,15 +17,15 @@ import { cn } from '@/lib/utils';
 const sidebarItems = [
   {
     title: 'ホーム',
-    icon: <Home />,
+    icon: <Home className="h-4 w-4" />,
     isActive: true,
   },
   {
     title: '釣り場',
-    icon: <MapPin />,
+    icon: <MapPin className="h-4 w-4" />,
     items: [
       { title: '検索', icon: <Search className="h-4 w-4" />, component: 'search' },
-      { title: 'お気に入り', icon: <Heart className="h-4 w-4" />, component: 'favorites' },
+      { title: 'お気に入り', icon: <Star className="h-4 w-4" />, component: 'favorites' },
     ],
   },
 ];
@@ -53,7 +53,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
   return (
     <div
       className={cn(
-        'fixed inset-y-0 left-0 z-30 w-64 transform border-r bg-background transition-transform duration-300 ease-in-out',
+        'fixed inset-y-0 left-0 z-30 w-64 transform border-r bg-sidebar text-sidebar-foreground transition-transform duration-300 ease-in-out',
         isOpen ? 'translate-x-0' : '-translate-x-full',
       )}
     >
@@ -61,11 +61,11 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
         {/* Logo */}
         <div className="p-4">
           <div className="flex items-center gap-3">
-            <div className="flex aspect-square size-10 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-cyan-600 text-white">
+            <div className="flex aspect-square size-10 items-center justify-center rounded-md bg-primary text-primary-foreground">
               <Waves className="size-5" />
             </div>
             <div>
-              <h2 className="font-semibold">釣りコンディション</h2>
+              <h2 className="font-bold">釣りコンディション</h2>
               <p className="text-xs text-muted-foreground">Fishing Conditions</p>
             </div>
           </div>
@@ -79,8 +79,10 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                 <button
                   type="button"
                   className={cn(
-                    'flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium',
-                    item.isActive ? 'bg-primary/10 text-primary' : 'hover:bg-muted',
+                    'flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium',
+                    item.isActive
+                      ? 'bg-primary font-bold text-primary-foreground'
+                      : 'hover:bg-accent',
                   )}
                   onClick={() => item.items && toggleExpanded(item.title)}
                 >
@@ -115,7 +117,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                             key={subItem.title}
                             type="button"
                             onClick={() => setIsFavoritesModalOpen(true)}
-                            className="flex w-full items-center gap-2 rounded-2xl px-3 py-2 text-sm hover:bg-muted"
+                            className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm hover:bg-accent"
                           >
                             {subItem.icon}
                             <span>{subItem.title}</span>
@@ -128,7 +130,7 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
                           <a
                             key={subItem.title}
                             href={subItem.url}
-                            className="flex items-center justify-between rounded-2xl px-3 py-2 text-sm hover:bg-muted"
+                            className="flex items-center justify-between rounded-md px-3 py-2 text-sm hover:bg-accent"
                           >
                             {subItem.title}
                           </a>
@@ -150,17 +152,20 @@ export function AppSidebar({ isOpen }: AppSidebarProps) {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex w-full items-center justify-between rounded-2xl px-3 py-2 text-sm font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                className="flex w-full items-center justify-between rounded-md px-3 py-2 text-sm font-medium hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
               >
-                <div className="flex items-center gap-3">
-                  <User className="h-6 w-6" />
+                <div className="flex min-w-0 items-center gap-3">
+                  <User className="h-6 w-6 shrink-0" />
                   <span className="truncate">{session?.user?.email || 'ユーザー'}</span>
                 </div>
                 <ChevronDown className="h-4 w-4 opacity-50" />
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem onClick={handleLogout} className="text-red-600 focus:text-red-600">
+              <DropdownMenuItem
+                onClick={handleLogout}
+                className="text-destructive focus:text-destructive"
+              >
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>ログアウト</span>
               </DropdownMenuItem>

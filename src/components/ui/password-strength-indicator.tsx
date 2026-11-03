@@ -17,20 +17,20 @@ const strengthConfig: Record<
 > = {
   weak: {
     label: '弱',
-    color: 'text-red-600 dark:text-red-400',
-    bgColor: 'bg-red-500',
+    color: 'text-destructive',
+    bgColor: 'bg-destructive',
     width: 'w-1/3',
   },
   medium: {
     label: '中',
-    color: 'text-yellow-600 dark:text-yellow-400',
-    bgColor: 'bg-yellow-500',
+    color: 'text-muted-foreground',
+    bgColor: 'bg-muted-foreground',
     width: 'w-2/3',
   },
   strong: {
     label: '強',
-    color: 'text-green-600 dark:text-green-400',
-    bgColor: 'bg-green-500',
+    color: 'text-primary',
+    bgColor: 'bg-primary',
     width: 'w-full',
   },
 };
@@ -46,10 +46,10 @@ export function PasswordStrengthIndicator({ password }: PasswordStrengthIndicato
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between text-sm">
-        <span className="text-gray-700 dark:text-gray-300">パスワード強度:</span>
+        <span className="text-foreground">パスワード強度:</span>
         <span className={`font-medium ${config.color}`}>{config.label}</span>
       </div>
-      <div className="h-2 w-full bg-gray-200 rounded-full overflow-hidden dark:bg-gray-700">
+      <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
         <div className={`h-full ${config.bgColor} ${config.width} transition-all duration-300`} />
       </div>
     </div>

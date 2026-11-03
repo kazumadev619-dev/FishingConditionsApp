@@ -1,7 +1,7 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import { Heart } from 'lucide-react';
+import { Star } from 'lucide-react';
 
 interface FavoriteButtonProps {
   isFavorite: boolean;
@@ -32,7 +32,7 @@ export function FavoriteButton({
     <motion.button
       onClick={onToggle}
       disabled={isLoading}
-      className={`${sizeClasses[size]} flex items-center justify-center rounded-full transition-colors hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed`}
+      className={`${sizeClasses[size]} flex items-center justify-center rounded-full transition-colors hover:bg-accent disabled:bg-muted disabled:cursor-not-allowed`}
       whileTap={{ scale: 0.9 }}
       aria-label={isFavorite ? 'お気に入りから削除' : 'お気に入りに追加'}
     >
@@ -43,10 +43,10 @@ export function FavoriteButton({
         }}
         transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       >
-        <Heart
+        <Star
           size={iconSizes[size]}
           className={`transition-colors ${
-            isFavorite ? 'fill-red-500 text-red-500' : 'text-gray-400 hover:text-red-400'
+            isFavorite ? 'fill-primary text-primary' : 'text-muted-foreground'
           }`}
         />
       </motion.div>

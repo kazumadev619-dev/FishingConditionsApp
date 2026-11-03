@@ -1,36 +1,44 @@
+import {
+  Cloud,
+  CloudDrizzle,
+  CloudFog,
+  CloudLightning,
+  CloudRain,
+  CloudSun,
+  type LucideIcon,
+  Snowflake,
+  Sun,
+} from 'lucide-react';
+
+const ICONS: Record<string, LucideIcon> = {
+  Clear: Sun,
+  Sunny: Sun,
+  晴れ: Sun,
+  'Partly Cloudy': CloudSun,
+  Cloudy: Cloud,
+  Clouds: Cloud,
+  曇り: Cloud,
+  'Light Rain': CloudDrizzle,
+  Drizzle: CloudDrizzle,
+  小雨: CloudDrizzle,
+  Rain: CloudRain,
+  雨: CloudRain,
+  'Heavy Rain': CloudLightning,
+  Thunderstorm: CloudLightning,
+  嵐: CloudLightning,
+  Snow: Snowflake,
+  雪: Snowflake,
+  Mist: CloudFog,
+  Fog: CloudFog,
+};
+
 interface WeatherIconProps {
   condition: string;
   size?: number;
 }
 
 export function WeatherIcon({ condition, size = 24 }: WeatherIconProps) {
-  const icons: Record<string, string> = {
-    Clear: '☀️',
-    Sunny: '☀️',
-    晴れ: '☀️',
-    'Partly Cloudy': '⛅',
-    Cloudy: '☁️',
-    Clouds: '☁️',
-    曇り: '☁️',
-    'Light Rain': '🌦️',
-    Drizzle: '🌦️',
-    小雨: '🌦️',
-    Rain: '🌧️',
-    雨: '🌧️',
-    'Heavy Rain': '⛈️',
-    Thunderstorm: '⛈️',
-    嵐: '⛈️',
-    Snow: '❄️',
-    雪: '❄️',
-    Mist: '🌫️',
-    Fog: '🌫️',
-  };
+  const Icon = ICONS[condition] ?? Cloud;
 
-  const icon = icons[condition] || '☁️';
-
-  return (
-    <span style={{ fontSize: size }} role="img" aria-label={condition} className="inline-block">
-      {icon}
-    </span>
-  );
+  return <Icon size={size} role="img" aria-label={condition} className="text-primary" />;
 }

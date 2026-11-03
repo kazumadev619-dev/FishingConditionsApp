@@ -3,6 +3,30 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
+  --font-sans: var(--font-biz-udp), "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  --font-display: var(--font-shippori), "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
+  --text-title: 1.75rem;
+  --text-title--line-height: 2.25rem;
+  --text-title--font-weight: 700;
+  --text-heading: 1.25rem;
+  --text-heading--line-height: 1.75rem;
+  --text-heading--font-weight: 600;
+  --text-label: 0.75rem;
+  --text-label--line-height: 1rem;
+  --text-label--font-weight: 700;
+  --text-label--letter-spacing: 0.04em;
+  --text-score: 4rem;
+  --text-score--line-height: 4rem;
+  --text-score--font-weight: 600;
+  --text-score--letter-spacing: -0.02em;
+  --text-metric: 1.5rem;
+  --text-metric--line-height: 2rem;
+  --text-metric--font-weight: 500;
+  --text-data: 0.875rem;
+  --text-data--line-height: 1.25rem;
+  --text-data--font-weight: 500;
+  --shadow-card: var(--card-shadow);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
@@ -40,73 +64,76 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
+/* Claude Design のデザインシステムが正。変えるときは両方を更新する（ADR-006） */
 :root {
   --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --card-shadow: 0 1px 2px rgba(13, 36, 54, 0.06);
+  --background: oklch(0.975 0.012 85);
+  --foreground: oklch(0.25 0.045 245);
+  --card: oklch(0.992 0.006 85);
+  --primary: oklch(0.42 0.09 240);
+  --primary-foreground: oklch(0.985 0.008 85);
+  --secondary: oklch(0.92 0.03 80);
+  --muted: oklch(0.94 0.018 85);
+  --muted-foreground: oklch(0.48 0.035 240);
+  --accent: oklch(0.93 0.035 195);
+  --destructive: oklch(0.53 0.19 28);
+  --border: oklch(0.88 0.02 80);
+  --input: oklch(0.63 0.03 80);
+  --ring: oklch(0.5 0.1 235);
+  --score-excellent: oklch(0.46 0.1 195);
+  --score-good: oklch(0.5 0.11 240);
+  --score-fair: oklch(0.55 0.115 75);
+  --score-poor: oklch(0.56 0.15 48);
+  --score-bad: oklch(0.52 0.18 25);
+  --score-foreground: oklch(0.992 0.006 85);
+  --sidebar: oklch(0.955 0.016 85);
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --chart-1: oklch(0.488 0.243 264.376);
-  --chart-2: oklch(0.696 0.17 162.48);
-  --chart-3: oklch(0.769 0.188 70.08);
-  --chart-4: oklch(0.627 0.265 303.9);
-  --chart-5: oklch(0.645 0.246 16.439);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-primary: oklch(0.488 0.243 264.376);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-ring: oklch(0.551 0.027 264.364);
+  --card-shadow: 0 0 #0000;
+  --background: oklch(0.19 0.03 240);
+  --foreground: oklch(0.95 0.012 85);
+  --card: oklch(0.235 0.035 240);
+  --primary: oklch(0.8 0.08 225);
+  --primary-foreground: oklch(0.21 0.04 240);
+  --secondary: oklch(0.31 0.035 235);
+  --muted: oklch(0.28 0.03 240);
+  --muted-foreground: oklch(0.75 0.025 230);
+  --accent: oklch(0.33 0.045 210);
+  --destructive: oklch(0.7 0.16 28);
+  --border: oklch(0.34 0.03 240);
+  --input: oklch(0.53 0.035 235);
+  --ring: oklch(0.78 0.09 220);
+  --score-excellent: oklch(0.78 0.1 190);
+  --score-good: oklch(0.76 0.09 235);
+  --score-fair: oklch(0.82 0.12 85);
+  --score-poor: oklch(0.76 0.14 55);
+  --score-bad: oklch(0.7 0.17 25);
+  --score-foreground: oklch(0.21 0.04 240);
+  --sidebar: oklch(0.21 0.033 240);
+}
+
+/* 別名。.dark がどの要素に付いても追従するよう、両方のセレクタに書く */
+:root,
+.dark {
+  --card-foreground: var(--foreground);
+  --popover: var(--card);
+  --popover-foreground: var(--foreground);
+  --secondary-foreground: var(--foreground);
+  --accent-foreground: var(--foreground);
+  --chart-1: var(--primary);
+  --chart-2: var(--score-excellent);
+  --chart-3: var(--score-fair);
+  --chart-4: var(--score-poor);
+  --chart-5: var(--muted-foreground);
+  --sidebar-foreground: var(--foreground);
+  --sidebar-primary: var(--primary);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-accent: var(--accent);
+  --sidebar-accent-foreground: var(--foreground);
+  --sidebar-border: var(--border);
+  --sidebar-ring: var(--ring);
 }
 
 @layer base {
@@ -115,5 +142,15 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-size: 0.9375rem;
+    line-height: 1.5rem;
+  }
+  h1,
+  h2,
+  h3 {
+    @apply font-display;
+  }
+  .lucide {
+    stroke-width: 1.75;
   }
 }

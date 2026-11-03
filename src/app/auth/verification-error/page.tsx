@@ -36,9 +36,9 @@ function VerificationErrorContent() {
     <Card className="mx-auto max-w-md">
       <CardHeader>
         <div className="flex justify-center mb-4">
-          <XCircle className="h-16 w-16 text-red-500" />
+          <XCircle className="h-16 w-16 text-destructive" />
         </div>
-        <CardTitle className="text-2xl text-center">{errorInfo.title}</CardTitle>
+        <CardTitle className="text-title text-center">{errorInfo.title}</CardTitle>
         <CardDescription className="text-center">{errorInfo.description}</CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -55,7 +55,7 @@ function VerificationErrorContent() {
 
 export default function VerificationErrorPage() {
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
+    <div className="flex items-center justify-center min-h-screen bg-background">
       <Suspense
         fallback={
           <Card className="mx-auto max-w-md">

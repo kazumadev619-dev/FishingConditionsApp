@@ -3,7 +3,7 @@ import type { ScoreRank } from '@/types/scoring';
 
 interface ScoreBadgeProps {
   rank: ScoreRank;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md';
 }
 
 export function ScoreBadge({ rank, size = 'md' }: ScoreBadgeProps) {
@@ -13,13 +13,12 @@ export function ScoreBadge({ rank, size = 'md' }: ScoreBadgeProps) {
   const sizeClasses = {
     sm: 'text-xs px-2 py-1',
     md: 'text-sm px-3 py-1.5',
-    lg: 'text-base px-4 py-2',
   };
 
   return (
     <span
-      className={`inline-flex items-center rounded-full font-semibold ${sizeClasses[size]}`}
-      style={{ backgroundColor: color, color: 'white' }}
+      className={`inline-flex items-center rounded-full font-bold ${sizeClasses[size]}`}
+      style={{ backgroundColor: color, color: 'var(--score-foreground)' }}
       role="status"
       aria-label={`スコアランク: ${label}`}
     >

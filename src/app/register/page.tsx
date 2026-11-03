@@ -21,11 +21,11 @@ export default function RegisterPage() {
   const handleGoogleSignIn = () => signInWithGoogle(setGoogleError);
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
+    <div className="flex items-center justify-center min-h-screen bg-background">
       <form action={dispatch}>
         <Card className="mx-auto max-w-sm">
           <CardHeader>
-            <CardTitle className="text-2xl">新規登録</CardTitle>
+            <CardTitle className="text-title">新規登録</CardTitle>
             <CardDescription>
               アカウントを作成するために以下の情報を入力してください
             </CardDescription>
@@ -61,7 +61,7 @@ export default function RegisterPage() {
 
               {errorMessage && (
                 <div
-                  className="flex items-center space-x-2 text-sm text-red-500"
+                  className="flex items-center space-x-2 text-sm text-destructive"
                   aria-live="polite"
                   aria-atomic="true"
                 >
@@ -76,7 +76,7 @@ export default function RegisterPage() {
                   <span className="w-full border-t" />
                 </div>
                 <div className="relative flex justify-center text-xs uppercase">
-                  <span className="bg-background px-2 text-muted-foreground">または</span>
+                  <span className="bg-card px-2 text-muted-foreground">または</span>
                 </div>
               </div>
 
@@ -109,7 +109,7 @@ export default function RegisterPage() {
 
               {googleError && (
                 <div
-                  className="flex items-center space-x-2 text-sm text-red-500"
+                  className="flex items-center space-x-2 text-sm text-destructive"
                   aria-live="polite"
                   aria-atomic="true"
                 >
