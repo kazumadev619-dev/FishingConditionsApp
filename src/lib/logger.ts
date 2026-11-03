@@ -9,11 +9,14 @@ export const loggerOptions: pino.LoggerOptions = {
   // 本番環境: JSON形式のみ（pretty OFF）
   // 開発環境: pino-prettyで読みやすい形式
   // target は絶対パスで渡す。名前だと next dev の再評価で解決に失敗し、以後 500 になる（#332）
-  // ponytail: 起動ディレクトリがプロジェクト直下である前提。ブラウザには process.cwd() が無いのでサーバーのみ
+  // node:module は静的に import しない（クライアントのビルドが落ちる）。ブラウザには transport が無いのでサーバーのみ
   transport:
     !isProduction && typeof window === 'undefined'
       ? {
-          target: `${process.cwd()}/node_modules/pino-pretty/index.js`,
+          target: process
+            .getBuiltinModule('node:module')
+            .createRequire(import.meta.url)
+            .resolve('pino-pretty'),
           options: {
             colorize: true,
             translateTime: 'SYS:standard',
