@@ -65,6 +65,7 @@ sequenceDiagram
     participant UI as /register
     participant Action as signup()
     participant Validation as Zod Validator
+    participant Redis as Redis
     participant Bcrypt as bcrypt
     participant DB as Prisma + PostgreSQL
     participant Token as Token Generator
@@ -82,17 +83,19 @@ sequenceDiagram
         Action-->>UI: エラーメッセージ
         UI-->>User: エラー表示
     else バリデーション成功
-        Action->>DB: メール重複チェック
-        DB-->>Action: 結果
+        Action->>Redis: 回数を確認<br/>(接続元、正規化したアドレス)
+        Redis-->>Action: 結果
 
-        alt メール既に存在
-            Action-->>UI: "既に登録済み"
+        alt 上限を超えた
+            Action-->>UI: "時間をおいて再度お試しください"
             UI-->>User: エラー表示
-        else メール未使用
+        else 上限の内
+            Action->>DB: 7日超の未確認の登録と<br/>期限切れトークンを削除
             Action->>Bcrypt: パスワードハッシュ化
             Bcrypt-->>Action: ハッシュ値
 
             Action->>DB: users作成<br/>(password_hash, email_verified_at=NULL)
+            Note over Action,DB: 同じメールの行があれば一意制約で失敗し、<br/>"既に使用されています" を返す
             DB-->>Action: 成功
 
             Note over Action,Email: メール検証フロー

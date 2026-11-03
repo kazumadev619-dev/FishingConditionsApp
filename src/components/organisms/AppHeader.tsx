@@ -23,7 +23,7 @@ export function AppHeader({ onToggleSidebar, onToggleMobileSidebar }: AppHeaderP
 
       {/* Title */}
       <div className="flex flex-1 items-center justify-between">
-        <h1 className="text-xl font-semibold">ダッシュボード</h1>
+        <h1 className="text-heading">ダッシュボード</h1>
       </div>
     </header>
   );

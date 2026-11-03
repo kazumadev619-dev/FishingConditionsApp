@@ -49,7 +49,7 @@ export function DashboardGrid({ data, location }: DashboardGridProps) {
         transition={headerAnimation.transition}
       >
         <div className="flex justify-between items-center mb-2">
-          <h1 className="text-3xl font-bold">
+          <h1 className="text-title">
             {data.location.name} {DASHBOARD_LABELS.LOCATION_SUFFIX}
           </h1>
           <FavoriteButton
@@ -114,12 +114,12 @@ export function DashboardGrid({ data, location }: DashboardGridProps) {
 
       {data.fishingScore.explanation && (
         <motion.div
-          className="mt-6 p-4 bg-card rounded-lg border"
+          className="mt-6 p-6 bg-card rounded-lg border shadow-card"
           initial={explanationAnimation.initial}
           animate={explanationAnimation.animate}
           transition={explanationAnimation.transition}
         >
-          <h3 className="font-semibold mb-2">{DASHBOARD_LABELS.SCORE_EXPLANATION_TITLE}</h3>
+          <h3 className="text-heading mb-2">{DASHBOARD_LABELS.SCORE_EXPLANATION_TITLE}</h3>
           <p className="text-sm text-muted-foreground whitespace-pre-line">
             {data.fishingScore.explanation}
           </p>
@@ -132,7 +132,7 @@ export function DashboardGrid({ data, location }: DashboardGridProps) {
         animate={mapAnimation.animate}
         transition={mapAnimation.transition}
       >
-        <h2 className="text-xl font-semibold mb-4">{DASHBOARD_LABELS.LOCATION_MAP_TITLE}</h2>
+        <h2 className="text-heading mb-4">{DASHBOARD_LABELS.LOCATION_MAP_TITLE}</h2>
         <div className="rounded-lg overflow-hidden border">
           <FishingLocationMap
             latitude={data.location.latitude}

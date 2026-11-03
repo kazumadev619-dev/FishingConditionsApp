@@ -27,19 +27,19 @@ export function generateExplanation(
 
   switch (rank) {
     case 'excellent':
-      explanation = '🟢 絶好調！釣りに最適な条件です。';
+      explanation = '絶好調！釣りに最適な条件です。';
       break;
     case 'good':
-      explanation = '🔵 好調です。釣りに良い条件です。';
+      explanation = '好調です。釣りに良い条件です。';
       break;
     case 'fair':
-      explanation = '🟡 普通です。釣れる可能性があります。';
+      explanation = '普通です。釣れる可能性があります。';
       break;
     case 'poor':
-      explanation = '🟠 厳しい条件です。釣りには不向きです。';
+      explanation = '厳しい条件です。釣りには不向きです。';
       break;
     case 'bad':
-      explanation = '🔴 非常に悪い条件です。釣りをお勧めできません。';
+      explanation = '非常に悪い条件です。釣りをお勧めできません。';
       break;
   }
 
@@ -51,11 +51,11 @@ export function generateExplanation(
   if (todayTides?.daily.moon) {
     const moonAge = todayTides.daily.moon.age;
     const tideName = todayTides.daily.moon.title;
-    explanation += `\n🌙 本日は${tideName}です（月齢：${parseFloat(moonAge).toFixed(1)}）。`;
+    explanation += `\n本日は${tideName}です（月齢：${parseFloat(moonAge).toFixed(1)}）。`;
   }
 
   if (weatherData.windSpeed > 10) {
-    explanation += '\n⚠️ 風が強いため注意が必要です。';
+    explanation += '\n風が強いため注意が必要です。';
   }
 
   return explanation;
