@@ -81,11 +81,9 @@ function reviveScoringDates(data: Jsonified<ScoringResponse>): ScoringResponse {
 /**
  * スコア計算API
  */
-export async function GET(
-  request: NextRequest,
-): Promise<NextResponse<ScoringResponse | { error: string }>> {
-  return withServerTiming('scores', () => withUserRateLimit('scores', () => handleGet(request)));
-}
+export const GET = withServerTiming('scores', (request: NextRequest) =>
+  withUserRateLimit('scores', () => handleGet(request)),
+);
 
 async function handleGet(
   request: NextRequest,
