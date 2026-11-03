@@ -18,7 +18,7 @@ import {
 /**
  * 天気取得時のオプション
  */
-export interface WeatherOptions {
+interface WeatherOptions {
   /** 言語コード（デフォルト: ja） */
   lang?: string;
   /** 単位系（デフォルト: metric） */
@@ -30,7 +30,7 @@ export interface WeatherOptions {
 /**
  * 天気サービスのレスポンス型
  */
-export interface WeatherResponse<T> extends CacheResponse<T> {}
+interface WeatherResponse<T> extends CacheResponse<T> {}
 
 /**
  * アプリケーション用に整形された天気データ

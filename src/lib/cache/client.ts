@@ -2,7 +2,7 @@ import Redis from 'ioredis';
 import { logger } from '../logger';
 import type { Jsonified } from './types';
 
-export type CacheReadResult<T> = { hit: true; value: T } | { hit: false };
+type CacheReadResult<T> = { hit: true; value: T } | { hit: false };
 
 /**
  * Redis の error を記録する最短の間隔。再接続は 5 秒ごとに無期限で続くので、

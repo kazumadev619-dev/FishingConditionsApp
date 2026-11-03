@@ -70,7 +70,7 @@ function violationHints(error: Prisma.PrismaClientKnownRequestError): string[] {
 }
 
 /** 判定したい制約の指定 */
-export interface ConstraintDescriptor {
+interface ConstraintDescriptor {
   /** この制約違反が現れる Prisma のエラーコード */
   code: string;
   /** DB 上の制約名（`users_email_key` など） */
