@@ -53,7 +53,8 @@ function parseCoordinatesCSV(csvContent: string): Map<string, { lat: number; lng
     const [pref, port, lat, lng] = line.split(',').map((v) => v.trim());
     const la = Number(lat);
     const lo = Number(lng);
-    if (!Number.isFinite(la) || !Number.isFinite(lo)) {
+    // Number('') は 0 になるので、空欄は先に弾く
+    if (lat === '' || lng === '' || !Number.isFinite(la) || !Number.isFinite(lo)) {
       throw new Error(`座標が数値ではありません: ${line}`);
     }
     map.set(`${pref},${port}`, { lat: la, lng: lo });

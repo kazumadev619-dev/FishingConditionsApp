@@ -26,6 +26,8 @@ describe('prisma/data/port-coordinates.csv', () => {
 
   it('緯度・経度が有限で、範囲内にある', () => {
     for (const [pref, port, lat, lng] of coords) {
+      // Number('') は 0 になるので、空欄は先に弾く
+      expect(lat !== '' && lng !== '', `${pref}-${port} が空欄`).toBe(true);
       const la = Number(lat);
       const lo = Number(lng);
       expect(Number.isFinite(la) && la >= -90 && la <= 90, `${pref}-${port} lat=${lat}`).toBe(true);
