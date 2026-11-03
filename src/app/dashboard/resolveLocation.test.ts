@@ -13,12 +13,17 @@ vi.mock('@/lib/logger', () => ({
   logger: { warn: vi.fn(), error: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 
+import { logger } from '@/lib/logger';
 import { findNearestPort } from '@/lib/portMappingService';
 import { isUserRateLimited } from '@/lib/rateLimit';
 import { DEFAULT_LOCATION, resolveLocation } from './resolveLocation';
 
+const PORT_ID = '11111111-1111-4111-8111-111111111111';
+const LOCATION_ID = '22222222-2222-4222-8222-222222222222';
+const UNKNOWN_ID = '33333333-3333-4333-8333-333333333333';
+
 const TSUKIJI_PORT = {
-  id: 'port-1',
+  id: PORT_ID,
   name: '築地',
   prefecture_code: '13',
   port_code: '2',
@@ -28,7 +33,7 @@ const TSUKIJI_PORT = {
 
 /** 築地港と同じ座標で既に作られている locations 行（お気に入り登録済みの地点） */
 const TSUKIJI_LOCATION = {
-  id: 'loc-1',
+  id: LOCATION_ID,
   name: '築地',
   latitude: 35.6667,
   longitude: 139.767,
@@ -49,23 +54,23 @@ describe('resolveLocation（?portId=）', () => {
     prismaMock.ports.findUnique.mockResolvedValue(TSUKIJI_PORT);
     prismaMock.locations.findFirst.mockResolvedValue(TSUKIJI_LOCATION);
 
-    const location = await resolveLocation({ portId: 'port-1' });
+    const location = await resolveLocation({ portId: PORT_ID });
 
-    expect(location.id).toBe('loc-1');
-    expect(location.source).toEqual({ type: 'port', portId: 'port-1' });
+    expect(location.id).toBe(LOCATION_ID);
+    expect(location.source).toEqual({ type: 'port', portId: PORT_ID });
   });
 
   it('対応する locations がまだ無ければ id は付かない', async () => {
     prismaMock.ports.findUnique.mockResolvedValue(TSUKIJI_PORT);
 
-    const location = await resolveLocation({ portId: 'port-1' });
+    const location = await resolveLocation({ portId: PORT_ID });
 
     expect(location.id).toBeUndefined();
     expect(location.name).toBe('築地');
   });
 
   it('港が見つからなければデフォルト地点を返す', async () => {
-    const location = await resolveLocation({ portId: 'unknown' });
+    const location = await resolveLocation({ portId: UNKNOWN_ID });
 
     expect(location).toEqual(DEFAULT_LOCATION);
   });
@@ -81,7 +86,7 @@ describe('resolveLocation（?lat=&lng=）', () => {
 
     const location = await resolveLocation({ lat: '35.6667', lng: '139.767', name: '築地' });
 
-    expect(location.id).toBe('loc-1');
+    expect(location.id).toBe(LOCATION_ID);
   });
 
   it('上限を超えたら最寄り港を探さず、デフォルト地点に落とす', async () => {
@@ -114,9 +119,9 @@ describe('resolveLocation（?locationId=）', () => {
       port: TSUKIJI_PORT,
     });
 
-    const location = await resolveLocation({ locationId: 'loc-1' });
+    const location = await resolveLocation({ locationId: LOCATION_ID });
 
-    expect(location.id).toBe('loc-1');
+    expect(location.id).toBe(LOCATION_ID);
     expect(location.prefectureCode).toBe('13');
     expect(location.portCode).toBe('2');
   });
@@ -129,9 +134,25 @@ describe('resolveLocation（DB 障害時）', () => {
     prismaMock.ports.findUnique.mockResolvedValue(TSUKIJI_PORT);
     prismaMock.locations.findFirst.mockRejectedValue(new Error('DB unreachable'));
 
-    const location = await resolveLocation({ portId: 'port-1' });
+    const location = await resolveLocation({ portId: PORT_ID });
 
     expect(location.id).toBeUndefined();
     expect(location.name).toBe('築地');
+  });
+});
+
+describe('resolveLocation（UUID でない id）', () => {
+  // #340: @db.Uuid 列に渡すと DB が失敗して ERROR ログが出る。URL を書き換えるだけで出せてしまう
+  it.each([
+    ['locationId', { locationId: 'not-a-uuid' }],
+    ['portId', { portId: 'not-a-uuid' }],
+  ])('%s が UUID でなければ DB に問い合わせず、warn でデフォルト地点を返す', async (_, params) => {
+    const location = await resolveLocation(params);
+
+    expect(location).toEqual(DEFAULT_LOCATION);
+    expect(prismaMock.locations.findUnique).not.toHaveBeenCalled();
+    expect(prismaMock.ports.findUnique).not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalled();
+    expect(logger.error).not.toHaveBeenCalled();
   });
 });

@@ -7,6 +7,8 @@ const redisMock = vi.hoisted(() => {
     status: 'ready',
     get: vi.fn(),
     set: vi.fn(),
+    del: vi.fn(),
+    scanStream: vi.fn(),
     multi: vi.fn(),
     disconnect: vi.fn(),
     constructed: vi.fn(),
@@ -30,6 +32,8 @@ vi.mock('ioredis', () => ({
     }
     get = redisMock.get;
     set = redisMock.set;
+    del = redisMock.del;
+    scanStream = redisMock.scanStream;
     on = (event: string, handler: (arg?: unknown) => void) => {
       redisMock.handlers[event] = handler;
     };
@@ -48,6 +52,21 @@ const redisOptions = redisMock.constructed.mock.calls[0]?.[1] as {
 beforeEach(() => {
   vi.clearAllMocks();
   redisMock.status = 'ready';
+});
+
+// cache はテスト間で共有で、接続エラーもコマンド失敗も5分に1回に間引かれる。
+// 呼ぶたびに前回より5分以上進めた偽の時計にして、そのテストの最初の失敗が必ず error になるようにする。
+// 時計はこのファイルで1つにする（別々に持つと、順序を変えたとき片方の時刻が巻き戻って落ちる）
+const COMMAND_LOG_INTERVAL_MS = 5 * 60 * 1000;
+let commandClock = Date.now();
+function startCommandLogClock() {
+  commandClock = Math.max(commandClock, Date.now()) + COMMAND_LOG_INTERVAL_MS + 1;
+  vi.useFakeTimers({ now: commandClock });
+}
+afterEach(() => {
+  // 偽の時計が進んだ分を持ち越して、次のテストが時間を巻き戻さないようにする
+  if (vi.isFakeTimers()) commandClock = Math.max(commandClock, Date.now());
+  vi.useRealTimers();
 });
 
 describe('CacheClient.get', () => {
@@ -137,6 +156,7 @@ describe('CacheClient.increment', () => {
   });
 
   it('Redis のエラーは null にしてログに残す', async () => {
+    startCommandLogClock();
     givenTransaction([
       [null, 'OK'],
       [new Error('boom'), null],
@@ -166,18 +186,11 @@ describe('Redis に届かないときのログ', () => {
     }
   };
 
-  // cache はテスト間で共有なので、最後に記録した時刻より前に時計を戻さない
-  let now = Date.now();
-
+  // cache はテスト間で共有なので、全テストで1つの時計を使い、時刻を巻き戻さない
   beforeEach(() => {
-    vi.useFakeTimers({ now });
+    startCommandLogClock();
     redisMock.handlers.ready?.();
     vi.clearAllMocks();
-  });
-
-  afterEach(() => {
-    now = Date.now() + INTERVAL_MS;
-    vi.useRealTimers();
   });
 
   it('切断の最初のエラーはすぐ error で残す', () => {
@@ -246,6 +259,110 @@ describe('Redis に届かないときのログ', () => {
 
     expect(redisOptions.retryStrategy(1_000_000)).toBe(5000);
     expect(redisMock.disconnect).not.toHaveBeenCalled();
+  });
+});
+
+// 接続エラーのログ（上の describe）と時計を共有するので、その後ろに置く。
+describe('Redis が応答しないときのコマンド失敗のログ', () => {
+  const timeout = new Error('Command timed out');
+
+  beforeEach(() => {
+    startCommandLogClock();
+    redisMock.get.mockRejectedValue(timeout);
+    redisMock.set.mockRejectedValue(timeout);
+  });
+
+  it('最初の失敗は key とエラーごと error で残す', async () => {
+    await cache.get('weather:1');
+
+    expect(loggerMock.error).toHaveBeenCalledTimes(1);
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      { key: 'weather:1', error: timeout },
+      'Failed to get cached data',
+    );
+  });
+
+  it('続く失敗は error にせず debug に落とす', async () => {
+    await cache.get('weather:1');
+    await cache.get('weather:2');
+    await cache.set('weather:3', { a: 1 }, 60);
+
+    expect(loggerMock.error).toHaveBeenCalledTimes(1);
+    expect(loggerMock.debug).toHaveBeenCalledWith(
+      { key: 'weather:2', error: timeout },
+      'Failed to get cached data',
+    );
+    expect(loggerMock.debug).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    ['get', () => cache.get('k'), { key: 'k', error: timeout }, 'Failed to get cached data'],
+    [
+      'set',
+      () => cache.set('k', { a: 1 }, 60),
+      { key: 'k', error: timeout },
+      'Failed to set cache data',
+    ],
+    [
+      'increment',
+      () => cache.increment('k', 60),
+      { key: 'k', err: timeout },
+      'Failed to increment counter',
+    ],
+    [
+      'delete',
+      () => cache.delete('k'),
+      { key: 'k', error: timeout },
+      'Failed to delete cache data',
+    ],
+    [
+      'deleteByPattern',
+      () => cache.deleteByPattern('w:*'),
+      { pattern: 'w:*', error: timeout },
+      'Failed to delete cache data by pattern',
+    ],
+  ])('%s の失敗も間引く（最初の1回だけ error）', async (_name, run, fields, message) => {
+    redisMock.del.mockRejectedValue(timeout);
+    redisMock.scanStream.mockImplementation(() => ({
+      [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(timeout) }),
+    }));
+    redisMock.multi.mockReturnValue({
+      set: () => ({ incr: () => ({ exec: () => Promise.reject(timeout) }) }),
+    });
+
+    await run();
+    await run();
+
+    expect(loggerMock.error).toHaveBeenCalledTimes(1);
+    expect(loggerMock.error).toHaveBeenCalledWith(fields, message);
+    expect(loggerMock.debug).toHaveBeenCalledTimes(1);
+  });
+
+  it('1日黙り続けても、error は5分に1行に収まる', async () => {
+    for (let elapsed = 0; elapsed < 24 * 60 * 60 * 1000; elapsed += 5000) {
+      await cache.get('weather:1');
+      vi.advanceTimersByTime(5000);
+    }
+
+    expect(loggerMock.error).toHaveBeenCalledTimes(288);
+  });
+
+  it('5分たったら、次の失敗はまた error で残す', async () => {
+    await cache.get('weather:1');
+    vi.advanceTimersByTime(COMMAND_LOG_INTERVAL_MS);
+    await cache.get('weather:2');
+
+    expect(loggerMock.error).toHaveBeenCalledTimes(2);
+  });
+
+  it('接続エラーを出した直後でも、最初のコマンド失敗は error で残す', async () => {
+    redisMock.handlers.error?.(new Error('connect ECONNREFUSED'));
+    await cache.get('weather:1');
+
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.objectContaining({ key: 'weather:1' }),
+      'Failed to get cached data',
+    );
   });
 });
 

@@ -19,6 +19,7 @@ class CacheClient {
   private client: Redis | null = null;
   private failedAttempts = 0;
   private lastErrorLoggedAt = 0;
+  private lastCommandErrorLoggedAt = 0;
 
   constructor() {
     const redisUrl = process.env.REDIS_URL;
@@ -62,6 +63,22 @@ class CacheClient {
   }
 
   /**
+   * コマンド失敗のログ。Redis が黙っている間はリクエストごとに失敗するので、
+   * 接続エラーと同じ間隔で間引く（#343）。最初の1回は key とエラーごと ERROR で残し、
+   * 間引いた分は debug に落とす。接続エラーの間引きとは別に数える
+   * （接続エラーを出した直後でも、コマンド失敗の最初の1回は残すため）。
+   */
+  private logCommandError(fields: Record<string, unknown>, message: string): void {
+    const now = Date.now();
+    if (now - this.lastCommandErrorLoggedAt < ERROR_LOG_INTERVAL_MS) {
+      logger.debug(fields, message);
+      return;
+    }
+    this.lastCommandErrorLoggedAt = now;
+    logger.error(fields, message);
+  }
+
+  /**
    * 接続を閉じ、再接続もやめる。元に戻せず、このインスタンスは以後ずっと素通しになる
    */
   public disconnect(): void {
@@ -89,7 +106,7 @@ class CacheClient {
     try {
       result = await this.client.get(key);
     } catch (error) {
-      logger.error({ key, error }, 'Failed to get cached data');
+      this.logCommandError({ key, error }, 'Failed to get cached data');
       return { hit: false };
     }
 
@@ -126,7 +143,7 @@ class CacheClient {
       const result = await this.client.set(key, serialized, 'EX', ttlSeconds);
       return result === 'OK';
     } catch (error) {
-      logger.error({ key, error }, 'Failed to set cache data');
+      this.logCommandError({ key, error }, 'Failed to set cache data');
       return false;
     }
   }
@@ -153,7 +170,7 @@ class CacheClient {
       }
       return count as number;
     } catch (err) {
-      logger.error({ key, err }, 'Failed to increment counter');
+      this.logCommandError({ key, err }, 'Failed to increment counter');
       return null;
     }
   }
@@ -170,7 +187,7 @@ class CacheClient {
       const result = await this.client.del(key);
       return result > 0;
     } catch (error) {
-      logger.error({ key, error }, 'Failed to delete cache data');
+      this.logCommandError({ key, error }, 'Failed to delete cache data');
       return false;
     }
   }
@@ -198,7 +215,7 @@ class CacheClient {
         }
       }
     } catch (error) {
-      logger.error({ pattern, error }, 'Failed to delete cache data by pattern');
+      this.logCommandError({ pattern, error }, 'Failed to delete cache data by pattern');
     }
     return deletedCount;
   }
