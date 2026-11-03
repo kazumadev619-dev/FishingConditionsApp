@@ -3,6 +3,7 @@ import { logger } from '@/lib/logger';
 import { findNearestPort } from '@/lib/portMappingService';
 import prisma from '@/lib/prisma';
 import { isUserRateLimited } from '@/lib/rateLimit';
+import { isValidUUID } from '@/lib/validators';
 
 const DEFAULT_PLACE = {
   name: '東京湾（芝浦）',
@@ -82,6 +83,11 @@ export async function resolveLocation(searchParams: DashboardSearchParams): Prom
 async function resolveFromSearchParams(searchParams: DashboardSearchParams): Promise<LocationData> {
   // パターン0: locationId指定（お気に入りから遷移した場合など）
   if (searchParams.locationId) {
+    // @db.Uuid の列に UUID でない値を渡すと DB が失敗して ERROR ログになる（#340）
+    if (!isValidUUID(searchParams.locationId)) {
+      logger.warn({ locationId: searchParams.locationId }, 'Invalid locationId');
+      return DEFAULT_LOCATION;
+    }
     try {
       const location = await prisma.locations.findUnique({
         where: { id: searchParams.locationId },
@@ -134,6 +140,10 @@ async function resolveFromSearchParams(searchParams: DashboardSearchParams): Pro
 
   // パターン1: portId指定
   if (searchParams.portId) {
+    if (!isValidUUID(searchParams.portId)) {
+      logger.warn({ portId: searchParams.portId }, 'Invalid portId');
+      return DEFAULT_LOCATION;
+    }
     try {
       const port = await prisma.ports.findUnique({
         where: { id: searchParams.portId },
