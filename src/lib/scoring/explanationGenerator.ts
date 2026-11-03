@@ -3,7 +3,7 @@ import type { FormattedTideData } from '../tideService';
 import { formatDateInJapan } from '../utils/dateUtils';
 import { getScoreRank } from '../utils/scoreRank';
 
-export function getComponentLabel(component: 'tide' | 'weather' | 'time'): string {
+function getComponentLabel(component: 'tide' | 'weather' | 'time'): string {
   switch (component) {
     case 'tide':
       return '潮汐';

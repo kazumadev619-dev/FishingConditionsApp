@@ -23,10 +23,7 @@ function getResendClient(): Resend {
  * @param verificationUrl - 検証用URL（トークン含む）
  * @returns 送信成功時はtrue、失敗時はfalse
  */
-export async function sendVerificationEmail(
-  email: string,
-  verificationUrl: string,
-): Promise<boolean> {
+async function sendVerificationEmail(email: string, verificationUrl: string): Promise<boolean> {
   try {
     // Resendクライアントを取得（遅延初期化）
     const resend = getResendClient();
