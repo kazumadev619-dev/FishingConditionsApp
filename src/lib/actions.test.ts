@@ -1,4 +1,5 @@
 import bcrypt from 'bcrypt';
+import { redirect } from 'next/navigation';
 import { AuthError } from 'next-auth';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signIn } from '@/auth';
@@ -74,6 +75,45 @@ describe('signup', () => {
     expect(issueVerificationEmail).toHaveBeenCalledWith('owner@example.com');
   });
 
+  it('送れたら、確認メールのページへ進む', async () => {
+    vi.mocked(issueVerificationEmail).mockResolvedValue(true);
+
+    await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
+
+    expect(redirect).toHaveBeenCalledExactlyOnceWith('/auth/check-email');
+  });
+
+  it.each([
+    ['false を返したとき', () => vi.mocked(issueVerificationEmail).mockResolvedValue(false)],
+    [
+      '例外を投げたとき',
+      () => vi.mocked(issueVerificationEmail).mockRejectedValue(new Error('smtp')),
+    ],
+  ])(
+    'メールの送信が%s、送れなかったことを伝えるページへ進む（登録は残す）',
+    async (_case, arrange) => {
+      vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+      arrange();
+
+      await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
+
+      expect(prisma.users.create).toHaveBeenCalledOnce();
+      expect(redirect).toHaveBeenCalledExactlyOnceWith('/auth/check-email?sent=0');
+    },
+  );
+
+  it('DB への登録に失敗したら、遷移せずエラーを返し、確認メールも送らない', async () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    vi.mocked(prisma.users.create).mockRejectedValueOnce(new Error('db down'));
+
+    await expect(signup(undefined, signupForm())).resolves.toBe(
+      'ユーザーの作成に失敗しました。時間をおいて再度お試しください。',
+    );
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(issueVerificationEmail).not.toHaveBeenCalled();
+  });
+
   it('上限を超えたらハッシュも DB もメールも動かさず、再試行を案内する', async () => {
     vi.mocked(isSignupRateLimited).mockResolvedValue(true);
     const warn = vi.spyOn(logger, 'warn').mockImplementation(() => undefined);
@@ -83,6 +123,7 @@ describe('signup', () => {
     );
 
     expect(isSignupRateLimited).toHaveBeenCalledWith('owner@example.com');
+    expect(redirect).not.toHaveBeenCalled();
     expect(bcrypt.hash).not.toHaveBeenCalled();
     expect(prisma.users.create).not.toHaveBeenCalled();
     expect(prisma.users.deleteMany).not.toHaveBeenCalled();
@@ -98,6 +139,7 @@ describe('signup', () => {
     await expect(signup(undefined, signupForm('short'))).resolves.toEqual(expect.any(String));
 
     expect(isSignupRateLimited).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it('確認の必須化より後に作られ、7日を超えたパスワード登録の未確認の行と、期限切れのトークンを消す', async () => {
