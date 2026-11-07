@@ -137,6 +137,10 @@ closes #<TaskNo>
 - [ ] Lint: `npm run lint`
 - [ ] ビルド: `npm run build`
 - [ ] 手動動作確認
+- [ ] （高リスク箇所を変更したとき。`docs/guides/testing-policy.md` の7節）守る状態（何が壊れたら困るか）を書いた
+- [ ] （認証・認可、スコア計算、入力検証・レート制限）`mutation-test` の結果を載せた
+- [ ] （データ移行・シード）`bash scripts/verify-seed-rerun.sh` の結果を載せた（空の DB に `migrate deploy` を流してから seed を再実行するので、マイグレーションの変更もこれで確かめる）
+- [ ] （認証・認可、スコア計算、入力検証・レート制限）別エージェントによる反証テストの提案を取り込み、誰が書いたかを書いた
 
 ## スクリーンショット（UIの変更がある場合）
 

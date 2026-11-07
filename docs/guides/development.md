@@ -188,41 +188,52 @@ npm run check-code    # lint + format + 型チェック + テスト
 
 変更を push する前に、必ず `npm run check-code` を実行する。
 
+何を保証するテストを書くか（期待値の決め方、モックの使い分け、高リスク箇所の追加要件）は、[テスト品質ポリシー](./testing-policy.md)に従う。このガイドは、置き場所とコマンドだけを扱う。
+
 ### テストファイルの置き場所
 
 **実装の隣にコロケートする。** `tests/` にまとめない。
 
 ```
-src/lib/validators/coordinateValidator.ts
-src/lib/validators/coordinateValidator.test.ts   ← 隣に置く
+src/lib/utils/dashboardUtils.ts
+src/lib/utils/dashboardUtils.test.ts   ← 隣に置く
 ```
 
 対応関係が一目で分かり、実装ファイルを移動したときにテストが取り残されにくいためである。
 
 ### 単体テスト（Node 環境）
 
-現在有効なのはこの段階のみ。外部依存を持たない純粋関数を対象にする。
+外部依存を持たない純粋関数を主な対象にする（「単体テスト」「統合テスト」の用語は[テスト品質ポリシー](./testing-policy.md)の1節）。
 
 ```typescript
-// src/lib/validators/coordinateValidator.test.ts
-import { describe, expect, it } from 'vitest';
-import { roundCoordinate } from './coordinateValidator';
+// src/lib/utils/dashboardUtils.test.ts（簡略化した抜粋）
+import { afterEach, describe, expect, it } from 'vitest';
+import { formatTime } from './dashboardUtils';
 
-describe('roundCoordinate', () => {
-  it('小数4桁に丸める', () => {
-    expect(roundCoordinate(35.66666)).toBe(35.6667);
+describe('表示の時刻は実行環境のタイムゾーンに依存しない', () => {
+  const originalTz = process.env.TZ;
+  afterEach(() => {
+    process.env.TZ = originalTz;
+  });
+
+  // 2026-10-16T20:48:27Z = JST 10/17 05:48:27
+  const date = new Date('2026-10-16T20:48:27Z');
+
+  it('TZ=Asia/Tokyo', () => {
+    process.env.TZ = 'Asia/Tokyo';
+    expect(formatTime(date)).toBe('05:48');
   });
 });
 ```
 
-### 統合テスト・コンポーネントテスト（未導入）
+期待値の `05:48` は、実装の式を写したものではなく、固定の時刻を JST に直した値である。
 
-ADR-003 の Stage 2 / Stage 3 にあたる。着手時に以下を追加する。
+### Route Handler・コンポーネントのテスト
 
-| 段階 | 対象 | 追加するもの |
-|------|------|-------------|
-| Stage 2 | API Route Handler | （追加なし。Node 環境のまま） |
-| Stage 3 | Client Component | jsdom + React Testing Library |
+ADR-003 の Stage 2 / Stage 3 にあたる。Vitest のまま、Node 環境で動かす。
+
+- **Route Handler**（Stage 2）: `src/app/api/` の下に、Route Handler の関数を呼んで確かめるテストがある（例: `src/app/api/scores/route.test.ts`）。外部への依存はモックやスタブに置き換える（分類は[テスト品質ポリシー](./testing-policy.md)の5節）。
+- **コンポーネント**（Stage 3）: `.test.tsx` の多くは `renderToStaticMarkup`（`react-dom/server`）で描画した HTML を確かめる。jsdom と React Testing Library は導入していない。ブラウザ上の操作を確かめるテストは、いまはない。
 
 E2E（Playwright）は導入するかどうかも含めて未定である。Vitest とは別ランナーとして扱う。
 

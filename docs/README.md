@@ -13,7 +13,8 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | 依存の自動更新（Renovate）の PR を扱いたい | [guides/renovate.md](./guides/renovate.md) |
 | AI開発Watcherを運用したい | [guides/ai-development-factory.md](./guides/ai-development-factory.md) |
 | AI開発ファクトリーの現在仕様を知りたい | [reference/ai-development-factory.md](./reference/ai-development-factory.md) |
-| テストを書きたい | [guides/development.md](./guides/development.md#テスト戦略) ／ [選定理由](./adr/003-testing-strategy.md) |
+| テストを書きたい | [guides/testing-policy.md](./guides/testing-policy.md)（方針） ／ [guides/development.md](./guides/development.md#テスト戦略)（置き場所・コマンド） |
+| テストの方針・基盤を選んだ理由を知りたい | [adr/009-testing-quality-policy.md](./adr/009-testing-quality-policy.md)（方針） ／ [adr/003-testing-strategy.md](./adr/003-testing-strategy.md)（ランナー） |
 | システム全体の構成を知りたい | [reference/architecture.md](./reference/architecture.md) |
 | 認証の仕組みを知りたい | [reference/authentication.md](./reference/authentication.md) ／ [図解](./reference/authentication-diagrams.md) |
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |
