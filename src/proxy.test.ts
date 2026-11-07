@@ -330,6 +330,9 @@ describe('既定 deny', () => {
     // `/auth/` を前方一致にすると、あとから src/app/auth/ にページを足した人が
     // 意図せず公開してしまう
     expect(visit('/auth/verification-success-x', null)).toBe('login-redirect');
+    expect(visit('/auth/verification-error-x', null)).toBe('login-redirect');
+    expect(visit('/auth/check-email-x', null)).toBe('login-redirect');
+    expect(visit('/auth/check-email/x', null)).toBe('login-redirect');
     expect(visit('/login-as-admin', null)).toBe('login-redirect');
   });
 

@@ -21,7 +21,10 @@ describe('メール確認の失敗ページ', () => {
     },
   );
 
-  it.each(['user_not_found', 'server_error'])('%s では新規登録を主ボタンのままにする', (error) => {
-    expect(primaryHref(openWith(`error=${error}`))).toBe('/register');
-  });
+  it.each(['user_not_found', 'server_error', 'unknown_value', 'invalid_token_x', ''])(
+    '「%s」では新規登録を主ボタンのままにする（token の完全一致だけがログイン優先）',
+    (error) => {
+      expect(primaryHref(openWith(`error=${error}`))).toBe('/register');
+    },
+  );
 });
