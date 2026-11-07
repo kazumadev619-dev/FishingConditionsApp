@@ -133,6 +133,7 @@ ocr delegate rule --format json <reviewable_files のパス...>
 
 - **主張は番号付きで列挙する。** agent は報告の「PR 本文の主張の検証」で1つずつ判定を返す。自分の PR 本文の誤りや過少な記述はここで見つかる
 - レビュアーは変異の注入や依存の入れ替えでファイルを書き換えるため、親が作業中の worktree を検証先に渡さない
+- 高リスク箇所のうち認証・認可、スコア計算、入力検証・レート制限（`docs/guides/testing-policy.md` の7節）を変えたときは、別エージェント（`orca-cli` で Claude、または仕様と差分だけを渡した新しいエージェント。fork には頼まない）に、間違いを示すテストを差分で提案させる。取り込んだら、出典を PR 本文に書く（`pr-verifier` は検証が役目で、Write と Edit を持たず、コミットもしないので、提案役にしない）
 - 角度を変えて2本投げると噛み合う（例: セキュリティ + 型/テスト品質、インフラ + アーキテクチャ）。並行レビューでは reviewer ごとに専用 worktree を作る
 
 `pr-verifier` が選べないとき（agent 定義を足したばかりのセッション、定義がまだ develop に無いブランチにいるときなど）は、`default` に「最初に `.codex/agents/pr-verifier.toml` を Read し、`developer_instructions` に従う」と指示して投げる。**Bash を持たない agent には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
