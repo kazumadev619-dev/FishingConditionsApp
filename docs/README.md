@@ -14,6 +14,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | AI開発Watcherを運用したい | [guides/ai-development-factory.md](./guides/ai-development-factory.md) |
 | AI開発ファクトリーの現在仕様を知りたい | [reference/ai-development-factory.md](./reference/ai-development-factory.md) |
 | テストを書きたい | [guides/testing-policy.md](./guides/testing-policy.md)（方針） ／ [guides/development.md](./guides/development.md#テスト戦略)（置き場所・コマンド） |
+| 仕様の正がどこにあるかを知りたい | [adr/010-spec-source-of-truth.md](./adr/010-spec-source-of-truth.md) |
 | テストの方針・基盤を選んだ理由を知りたい | [adr/009-testing-quality-policy.md](./adr/009-testing-quality-policy.md)（方針） ／ [adr/003-testing-strategy.md](./adr/003-testing-strategy.md)（ランナー） |
 | システム全体の構成を知りたい | [reference/architecture.md](./reference/architecture.md) |
 | 認証の仕組みを知りたい | [reference/authentication.md](./reference/authentication.md) ／ [図解](./reference/authentication-diagrams.md) |
@@ -33,7 +34,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | ディレクトリ | 判定質問 | 例 |
 |-------------|---------|-----|
 | `guides/` | コマンドを打ちながら読むか？ | 開発環境構築、Docker 操作、CI の対処法 |
-| `reference/` | 実装が何をしているか調べるために読むか？ | アーキテクチャ、認証仕様、スコア算出式 |
+| `reference/` | 実装が何をしているか調べるために読むか？ 冒頭の「状態」が「仕様（正）」の文書は、テストの期待値の出どころで、実装と違えば実装の誤りとして扱う（[ADR-010](./adr/010-spec-source-of-truth.md)） | アーキテクチャ、認証仕様、スコア算出式 |
 | `adr/` | なぜ A ではなく B を選んだかを説明しているか？ | ツールチェーン選定、ディレクトリ構成の決定 |
 | `perf/` | 数値の記録か？ | パフォーマンス計測結果 |
 | `agents/` | エージェントスキルが読む設定か？ | issue tracker の場所、triage ラベル、ドメイン文書の読み方 |
