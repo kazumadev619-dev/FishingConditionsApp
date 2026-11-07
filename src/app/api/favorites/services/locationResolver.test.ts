@@ -60,6 +60,18 @@ describe('resolveLocationId（座標から locations を作る）', () => {
     });
   });
 
+  // 守る状態（#362）: 存在しない港の id では locations を作らず、404 を返す
+  it('港が見つからなければ 404 で、行を作らない（#362）', async () => {
+    prismaMock.ports.findUnique.mockResolvedValue(null);
+
+    const result = await resolveLocationId({ portId: PORT_ID });
+
+    expect(result.success).toBe(false);
+    expect(result.success === false && result.response.status).toBe(404);
+    expect(prismaMock.locations.createMany).not.toHaveBeenCalled();
+    expect(prismaMock.locations.updateMany).not.toHaveBeenCalled();
+  });
+
   it('港の経路では、港に結びついていない行の名前と port_id を港に揃える', async () => {
     prismaMock.ports.findUnique.mockResolvedValue({
       id: PORT_ID,
