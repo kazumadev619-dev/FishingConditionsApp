@@ -210,18 +210,25 @@ const ROUTES: RouteExpectation[] = [
     why: 'メール検証リンクの着地ページ。別のセッションが残っていても確認を終えられる',
   },
   {
+    pattern: '/auth/check-email',
+    sample: '/auth/check-email',
+    anonymous: 'allowed',
+    authenticated: 'dashboard-redirect',
+    why: '新規登録の直後に確認メールの送信を伝えるページ。未ログインで開く',
+  },
+  {
     pattern: '/auth/verification-success',
     sample: '/auth/verification-success',
     anonymous: 'allowed',
-    authenticated: 'dashboard-redirect',
-    why: 'メール検証リンクの着地ページ。未ログインで開くのが前提',
+    authenticated: 'allowed',
+    why: 'メール確認の結果ページ。ログイン中に確認を押しても成否が見えるように、転送しない',
   },
   {
     pattern: '/auth/verification-error',
     sample: '/auth/verification-error',
     anonymous: 'allowed',
-    authenticated: 'dashboard-redirect',
-    why: 'メール検証リンクの着地ページ。未ログインで開くのが前提',
+    authenticated: 'allowed',
+    why: 'メール確認の結果ページ。ログイン中に確認を押しても成否が見えるように、転送しない',
   },
   {
     pattern: '/dashboard',
@@ -294,12 +301,13 @@ describe('認証 allowlist', () => {
     expect(open.sort()).toEqual(['/api/auth/[...nextauth]', '/api/auth/verify-email']);
   });
 
-  it('未認証で開けるページは5つだけ', () => {
+  it('未認証で開けるページは6つだけ', () => {
     const open = ROUTES.filter(
       (r) => !r.pattern.startsWith('/api/') && !isProbe(r.pattern) && reachesHandler(r.anonymous),
     ).map((r) => r.pattern);
 
     expect(open.sort()).toEqual([
+      '/auth/check-email',
       '/auth/verification-error',
       '/auth/verification-success',
       '/auth/verify-email',

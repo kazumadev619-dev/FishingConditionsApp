@@ -21,16 +21,24 @@ import { baseAuthConfig } from './config';
  */
 const VERIFY_EMAIL_PATH = '/auth/verify-email';
 
+// ログイン中でも転送しないパス。別のセッションが残っていても確認を終えられ、
+// 押した結果（成功・失敗）も見られるようにする
+const VERIFICATION_PATHS = new Set([
+  VERIFY_EMAIL_PATH,
+  '/auth/verification-success',
+  '/auth/verification-error',
+]);
+
 const PUBLIC_PATHS = new Set([
   '/login',
   '/register',
+  // 登録の直後に「確認メールを送った」と伝えるページ。未ログインで開く
+  '/auth/check-email',
   // メール検証リンクの着地ページ。未ログインで開くのが前提。
   // `/auth/` の前方一致にはしない。前方一致にすると、あとから
   // `src/app/auth/` にページを足した人が意図せず公開してしまい、
   // 「既定 deny なので書き忘れが穴にならない」という上の方針が崩れる。
-  VERIFY_EMAIL_PATH,
-  '/auth/verification-success',
-  '/auth/verification-error',
+  ...VERIFICATION_PATHS,
 ]);
 
 /**
@@ -66,10 +74,10 @@ export const authorized: AuthorizedCallback = ({ auth, request: { nextUrl } }) =
   const { pathname } = nextUrl;
 
   // ログイン済み & 認証ページ / ルート → ダッシュボードへ
-  // メール確認だけは、別のセッションが残っていても終えられるように飛ばさない
+  // メール確認まわりは飛ばさない
   if (
     isLoggedIn &&
-    pathname !== VERIFY_EMAIL_PATH &&
+    !VERIFICATION_PATHS.has(pathname) &&
     (PUBLIC_PATHS.has(pathname) || pathname === '/')
   ) {
     return Response.redirect(new URL('/dashboard', nextUrl));

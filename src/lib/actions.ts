@@ -91,6 +91,8 @@ export async function signup(_prevState: string | undefined, formData: FormData)
 
   await purgeStaleSignups();
 
+  let emailSent = false;
+
   try {
     const password_hash = await bcrypt.hash(password, 10);
     const userId = randomUUID();
@@ -108,7 +110,7 @@ export async function signup(_prevState: string | undefined, formData: FormData)
 
     // メール検証トークンを生成して送信
     try {
-      const emailSent = await issueVerificationEmail(normalizedEmail);
+      emailSent = await issueVerificationEmail(normalizedEmail);
 
       if (!emailSent) {
         logger.error({ email: maskEmail(normalizedEmail) }, 'Failed to send verification email');
@@ -174,7 +176,8 @@ export async function signup(_prevState: string | undefined, formData: FormData)
     return 'ユーザーの作成に失敗しました。時間をおいて再度お試しください。';
   }
 
-  redirect('/login');
+  // 送れなかったときも登録は残る。ログインすると確認メールを送り直す
+  redirect(emailSent ? '/auth/check-email' : '/auth/check-email?sent=0');
 }
 
 export async function authenticate(_prevState: string | undefined, formData: FormData) {
