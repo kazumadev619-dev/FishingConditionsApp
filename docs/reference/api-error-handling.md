@@ -2,7 +2,7 @@
 
 ## 概要
 
-`src/lib/apiClient.ts` に実装した新しいエラーハンドリング機構の使用方法を説明します。
+`src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。`src/lib/apiClient.ts` は、その再エクスポートの入口で、以降の例はそこから import します。
 
 ## エクスポートされた型とクラス
 
@@ -254,7 +254,6 @@ delay:      100ms 200ms 400ms
 ```typescript
 const RETRYABLE_STATUS_CODES = [
   408,  // Request Timeout
-  429,  // Too Many Requests (Rate Limit)
   500,  // Internal Server Error
   502,  // Bad Gateway
   503,  // Service Unavailable
@@ -263,6 +262,8 @@ const RETRYABLE_STATUS_CODES = [
 ```
 
 タイムアウト、ネットワークエラーもリトライ対象です。
+
+**429（レート制限）はリトライしません。** 上流が絞っているときに叩き直すと、呼び出しが増えるだけで、状況を悪くするためです（#317）。429 は `ApiErrorType.RATE_LIMITED`、`retryable: false` になります（`src/lib/api/errorHandler.ts`）。
 
 ### リトライしないエラー
 

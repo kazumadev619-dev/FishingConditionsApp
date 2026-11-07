@@ -76,14 +76,15 @@
 | 対象 | 未認証でのアクセス |
 |---|---|
 | `/login`、`/register` | 許可（`PUBLIC_PATHS`） |
-| `/auth/*` | 許可（メール検証リンクの着地ページ） |
+| `/auth/check-email`、`/auth/verify-email`、`/auth/verification-success`、`/auth/verification-error` | 許可（`PUBLIC_PATHS`。**完全一致**。メール確認まわりのページ） |
 | `/api/auth/*` | 許可（Auth.js 本体） |
 | `/healthz`、`/readyz`、`/_next/*` などの静的・メタデータ系 | `proxy.ts` の matcher で除外され、そもそもここへ来ない |
 | 上記以外の `/api/*` | **401 `{"error":"Unauthorized"}`** |
 | 上記以外のページ | `/login` へリダイレクト |
 
+- `/auth/` は前方一致にしません。前方一致にすると、あとから `src/app/auth/` にページを足したときに、意図せず公開されてしまい、「既定は認証必須なので、書き忘れが穴にならない」という方針が崩れるためです（#116）。
 - API だけリダイレクトではなく 401 を返すのは、`fetch` の呼び出し側がログインページの HTML を掴んでしまうのを避けるためです。
-- 認証済みのユーザーがログインページ (`/login`)、登録ページ (`/register`)、ルート (`/`) にアクセスすると、ダッシュボード (`/dashboard`) に自動的にリダイレクトされます。
+- 認証済みのユーザーがログインページ (`/login`)、登録ページ (`/register`)、確認メール送信ページ (`/auth/check-email`)、ルート (`/`) にアクセスすると、ダッシュボード (`/dashboard`) に自動的にリダイレクトされます。ただし、メール確認まわりの3ページ（`/auth/verify-email`、`/auth/verification-success`、`/auth/verification-error`）は転送しません。別のセッションが残っていても、確認を終えて、結果を見られるようにするためです。
 - `/api/auth/*` は `proxy.ts` の matcher で除外済みですが、allowlist にも重複して入れています。matcher を変更した拍子にここが 401 を返すと「ログインするためのエンドポイントにログインが必要」になり復旧できなくなるためです。
 
 > **Stage 2 の性能計測について**: 計測対象の `/api/weather`、`/api/scores`、`/api/conditions/tide`、`/api/locations/search` も認証必須です。k6 などの計測クライアントは `/api/auth/csrf` → `/api/auth/callback/credentials` でセッション Cookie を一度取得し、それを使い回してください。
