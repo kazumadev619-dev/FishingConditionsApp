@@ -32,16 +32,14 @@ export async function jwtCallback({
     } else {
       token.id = user.id;
     }
-  } else if (token.email && token.id) {
-    const tokenId = token.id as string;
-    if (!isValidUUID(tokenId)) {
-      const dbUser = await prisma.users.findUnique({
-        where: { email: (token.email as string).toLowerCase().trim() },
-        select: { id: true },
-      });
-      if (dbUser) {
-        token.id = dbUser.id;
-      }
+  } else if (token.email && !isValidUUID(token.id as string)) {
+    // id が無い・空・UUID でないトークンは、メールで users の id に引き直す（#375）
+    const dbUser = await prisma.users.findUnique({
+      where: { email: (token.email as string).toLowerCase().trim() },
+      select: { id: true },
+    });
+    if (dbUser) {
+      token.id = dbUser.id;
     }
   }
   return token;
