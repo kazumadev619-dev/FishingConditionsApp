@@ -89,3 +89,26 @@ it('DB に行が無いままのトークンは、id を直さずに返す（ロ�
 
   expect(result.id).toBe('');
 });
+
+// 守る状態: UUID の id を持つトークンは、更新で触らない（UUID でないときだけ引き直す。#375 の (b)、#69 の c67273b のコメント）。
+// DB の id と違う UUID を置いて、引き直したら値が変わるようにしている。
+it('UUID の id を持つトークンは、DB の id と違っても、更新で書き換えない', async () => {
+  const result = await jwtCallback({ token: { email: 'owner@example.com', id: AUTHJS_ID } as JWT });
+
+  expect(result.id).toBe(AUTHJS_ID);
+});
+
+// 守る状態: メールの無いトークンでは、DB を引かずにそのまま返す（引き直しはメールがあるときだけ。#375 の (b)）
+it('メールの無いトークンは、id が空でも例外を投げず、そのまま返す', async () => {
+  const result = await jwtCallback({ token: { id: '' } as JWT });
+
+  expect(result).toEqual({ id: '' });
+});
+
+// 守る状態: 更新でも、メールの前後の空白と大文字小文字は無視して users の行を引く（上の Google のログインと同じ。
+// トークンの email はログイン時の user.email をそのまま入れるので、空白が残りうる）
+it('前後に空白のあるメールのトークンでも、DB の id に直す', async () => {
+  const result = await jwtCallback({ token: { email: '  Owner@Example.com ', id: '' } as JWT });
+
+  expect(result.id).toBe(DB_ID);
+});
