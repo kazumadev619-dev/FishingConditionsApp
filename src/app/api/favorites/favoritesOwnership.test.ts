@@ -5,7 +5,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 // - POST は user_id をセッションから取る。本文に別のユーザーの id があっても使わない
 // - DELETE は自分の行だけを消す（where に user_id を入れる。外すと他人の同じ地点の行も消える）
 // - セッションの id が UUID でなければ、DB に書かずに 401 を返す
-//   （/api/* の未認証は 401。docs/reference/authentication.md の「上記以外の /api/*」）
+//   （/api/* の未認証は 401。docs/reference/authentication.md の「上記以外の /api/*」はミドルウェアの規定で、
+//   ハンドラ内の「id が UUID でない」への 401 は、そこからの類推。#362 が求めるのは、検証を外したら落ちること）
 // Prisma は暫定規則（testing-policy.md 5節）で、書き込みの引数を検証する
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
