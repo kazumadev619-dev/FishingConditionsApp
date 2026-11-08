@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/lib/scoring/`、`src/lib/scoringService.ts`、`src/app/api/scores/route.ts`
-> - **最終確認**: 未確認（実装と食い違っている。#367 で確定する）
+> - **最終確認**: 2026-11-08（天気スコアと潮の大きさ・潮汐データなしの節を、実装に合わせて書き直した。**承認待ち（#367）**。時間帯スコアと表示・解釈は未確認で、#370 で突合する）
 
 ## スコア算出概要
 
@@ -79,20 +79,18 @@ private calculateTideTimingScore(tide: TideData, currentTime: Date): number {
 
 ### 潮の大きさ評価
 
-```typescript
-private calculateTideSizeScore(tide: TideData): number {
-  // 潮位差を計算
-  const highestTide = Math.max(...tide.highTides.map(t => t.height));
-  const lowestTide = Math.min(...tide.lowTides.map(t => t.height));
-  const tideRange = highestTide - lowestTide;
+潮位差は、**現在時刻に最も近い満潮の高さ − 現在時刻に最も近い干潮の高さ**（m。潮汐データの cm を 100 で割る）。その日の最高満潮と最低干潮ではない。スコアは時間帯ごとに出すので、その時間帯の潮の動きを見る。どちらも、当日の潮汐データの中から選ぶ。
 
-  // 潮位差による評価
-  if (tideRange >= 1.5) return 15;      // 大潮
-  if (tideRange >= 1.0) return 12;      // 中潮
-  if (tideRange >= 0.5) return 8;       // 小潮
-  return 5;                             // 長潮・若潮
-}
-```
+| 潮位差 | スコア | 目安 |
+|---|---|---|
+| 1.5m 以上 | 15点 | 大潮 |
+| 1.0m 以上 1.5m 未満 | 12点 | 中潮 |
+| 0.5m 以上 1.0m 未満 | 8点 | 小潮 |
+| 0.5m 未満 | 5点 | 長潮・若潮 |
+
+### 潮汐データがないとき
+
+当日の潮汐データがない場合と、満潮か干潮のどちらかが当日にない場合は、潮汐スコアを 20点（満点 40点の中間）にする。
 
 ---
 
@@ -121,49 +119,32 @@ calculateWeatherScore(weather: WeatherData): number {
 
 ### 風速評価
 
-```typescript
-private calculateWindScore(windSpeed: number): number {
-  if (windSpeed <= 3) return 15;        // 微風: 最適
-  if (windSpeed <= 5) return 12;        // 軽風: 良好
-  if (windSpeed <= 8) return 8;         // 軟風: 普通
-  if (windSpeed <= 10) return 5;        // 和風: やや不利
-  return 0;                             // 疾風以上: 不適
-}
-```
+| 風速 | スコア | 説明 |
+|---|---|---|
+| 3m/s 以下 | 15点 | 最適 |
+| 3m/s を超え 6m/s 以下 | 12点 | 良好 |
+| 6m/s を超え 10m/s 以下 | 5点 | やや不利 |
+| 10m/s を超える | 0点 | 不適 |
 
 ### 天候評価
 
-```typescript
-private calculateConditionScore(condition: string): number {
-  const conditionScores = {
-    'Clear': 12,           // 晴れ: 最適
-    'Partly Cloudy': 10,   // 薄曇り: 良好
-    'Cloudy': 8,           // 曇り: 普通
-    'Light Rain': 5,       // 小雨: やや不利
-    'Rain': 2,             // 雨: 不利
-    'Heavy Rain': 0,       // 大雨: 不適
-    'Thunderstorm': 0,     // 雷雨: 不適
-    'Snow': 0              // 雪: 不適
-  };
+天候の分類（`weather.main`）で決める。日本語の表記（括弧内）も同じ点数にする。
 
-  return conditionScores[condition] || 5;
-}
-```
+| 天候 | スコア | 説明 |
+|---|---|---|
+| Clear、Sunny（晴れ） | 12点 | 最適 |
+| Clouds（曇り） | 8点 | 普通 |
+| Drizzle、Mist（小雨） | 4点 | やや不利 |
+| Rain（雨） | 2点 | 不利 |
+| Thunderstorm、Snow（嵐、雪） | 0点 | 不適 |
+| 上記以外 | 5点 | 判定できない分類の中間値 |
 
 ### 気圧評価
 
-```typescript
-private calculatePressureScore(pressure: number): number {
-  // 標準気圧 1013hPa を基準とした安定性評価
-  const deviation = Math.abs(pressure - 1013);
-
-  if (deviation <= 5) return 8;         // 非常に安定
-  if (deviation <= 10) return 6;        // 安定
-  if (deviation <= 20) return 4;        // やや不安定
-  if (deviation <= 30) return 2;        // 不安定
-  return 0;                             // 非常に不安定
-}
-```
+| 気圧 | スコア | 説明 |
+|---|---|---|
+| 990hPa 以上 1030hPa 以下 | 8点 | 安定 |
+| 990hPa 未満、または 1030hPa を超える | 4点 | 不安定 |
 
 ---
 
