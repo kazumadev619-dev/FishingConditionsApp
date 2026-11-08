@@ -72,3 +72,20 @@ it('UUID でない id のトークンは、メールで DB の id に直す', as
 
   expect(token.id).toBe(DB_ID);
 });
+
+// 守る状態（#375）: id が空のトークンは、次の更新でメールから users の id に直る。
+// 空のまま残ると、ログインしているのに、お気に入りの登録・削除が 401 になる状態が、トークンの期限（7日）まで続く。
+it.each([
+  ['id が空文字', { email: 'Owner@Example.com', id: '' }],
+  ['id が無い', { email: 'Owner@Example.com' }],
+])('%sのトークンは、メールで DB の id に直す', async (_case, token) => {
+  const result = await jwtCallback({ token: token as JWT });
+
+  expect(result.id).toBe(DB_ID);
+});
+
+it('DB に行が無いままのトークンは、id を直さずに返す（ログインは失敗させない）', async () => {
+  const result = await jwtCallback({ token: { email: 'stranger@example.com', id: '' } as JWT });
+
+  expect(result.id).toBe('');
+});
