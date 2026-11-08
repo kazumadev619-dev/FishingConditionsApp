@@ -47,6 +47,15 @@ describe('authenticate', () => {
     });
   });
 
+  // 守る状態: 障害を、パスワードの誤りに見せない。AuthError 以外の例外は、メッセージにせず、そのまま投げる。
+  // 期待値: docs/reference/authentication.md「2. ログイン」の5
+  it('認証の失敗ではない例外は、ログイン失敗のメッセージにせず、そのまま投げる', async () => {
+    const outage = new Error('db down');
+    vi.mocked(signIn).mockRejectedValue(outage);
+
+    await expect(authenticate(undefined, new FormData())).rejects.toBe(outage);
+  });
+
   it('未確認ならメールの確認を案内する', async () => {
     vi.mocked(signIn).mockRejectedValue(new EmailNotVerifiedError());
 
