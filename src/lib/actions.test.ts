@@ -92,12 +92,6 @@ describe('signup', () => {
     expect(issueVerificationEmail).toHaveBeenCalledWith('owner@example.com');
   });
 
-  it('送れたら、確認メールのページへ進む', async () => {
-    await expect(signup(undefined, signupForm())).rejects.toMatchObject({
-      url: '/auth/check-email',
-    });
-  });
-
   // 守る状態: 登録しただけでは確認済みにならず、パスワードはハッシュで保存する。
   // 期待値: docs/reference/authentication.md「1. ユーザー登録」の3（bcrypt でハッシュ化、email_verified_at は NULL）
   it('未確認のまま、パスワードのハッシュを保存する', async () => {

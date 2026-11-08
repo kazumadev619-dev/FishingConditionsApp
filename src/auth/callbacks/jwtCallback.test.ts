@@ -28,6 +28,17 @@ it('Google のログインでは DB の id をトークンに入れる', async (
   expect(token.id).toBe(DB_ID);
 });
 
+// 守る状態: メールの前後の空白と大文字小文字は無視して、users の行を引く
+it('Google のログインでは、前後に空白のあるメールでも DB の id を引ける', async () => {
+  const token = await jwtCallback({
+    token: {} as JWT,
+    user: { id: AUTHJS_ID, email: '  Owner@Example.com ' } as User,
+    account: { provider: 'google' } as Account,
+  });
+
+  expect(token.id).toBe(DB_ID);
+});
+
 // 守る状態: users に無い id をセッションに載せない（お気に入りの登録が外部キー違反になる。#69 の c67273b）
 it('Google のログインで DB に行が無ければ、Auth.js の id をトークンに入れない', async () => {
   const token = await jwtCallback({
@@ -36,7 +47,9 @@ it('Google のログインで DB に行が無ければ、Auth.js の id をト�
     account: { provider: 'google' } as Account,
   });
 
+  // 値は問わない（空でも undefined でもよい）。users の id（UUID）が載らず、Auth.js の id も載らないこと
   expect(token.id).not.toBe(AUTHJS_ID);
+  expect(token.id).not.toBe(DB_ID);
 });
 
 // 守る状態: パスワードのログインでも、セッションに users の id が載る。
