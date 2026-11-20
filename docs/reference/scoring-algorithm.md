@@ -222,6 +222,10 @@ calculateTimeScore(weatherData: FormattedWeatherData, currentTime: Date): number
 
 3つの要素を足した合計は、四捨五入して 0〜100 に収める（`src/lib/scoring/index.ts`）。`components` の各値は丸めない。
 
+### 説明文の風の注意
+
+風速が 6m/s を超えるとき（風の点が 0 点になる境目と同じ）、説明文に「風が強いため注意が必要です。」を足す。6m/s ちょうどでは足さない。実装は `src/lib/scoring/explanationGenerator.ts`。
+
 ### スコア内訳表示
 
 ```typescript

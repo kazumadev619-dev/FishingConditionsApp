@@ -54,7 +54,7 @@ export function generateExplanation(
     explanation += `\n本日は${tideName}です（月齢：${parseFloat(moonAge).toFixed(1)}）。`;
   }
 
-  if (weatherData.windSpeed > 10) {
+  if (weatherData.windSpeed > 6) {
     explanation += '\n風が強いため注意が必要です。';
   }
 
