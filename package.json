@@ -88,7 +88,7 @@
     "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.8",
+    "@biomejs/biome": "^2.6.8",
     "@commitlint/cli": "^21.2.3",
     "@eslint/js": "^10.0.1",
     "@next/eslint-plugin-next": "^16.4.6",
