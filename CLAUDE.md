@@ -14,6 +14,22 @@
 - 関連が薄く見えるエラーの放置禁止（対処するか、理由を明示して記録する）
 - テストを通すためだけのテスト改変禁止（実装の誤りを疑う）
 
+## 開発の工程と使う skill
+
+詳細は各 skill と docs/guides にある。ここには複製しない。
+
+| 工程 | 使うもの | 必須か推奨か | 誰が |
+|---|---|---|---|
+| 要件・設計 | `grilling`（必要なら `domain-modeling` / `codebase-design`）で詰める。issue の前提は `issue-delivery` のステップ0で疑う | 推奨。不明点はエージェントが決めず、ユーザーに確認する | 実装者 |
+| 実装 | `mattpocock-skills:tdd`（テスト先行）。不具合は `diagnosing-bugs` で調べる。書き方は `docs/guides/testing-policy.md` | 推奨。高リスク箇所（同 7節）は必須 | 実装者 |
+| 実装の完了後 | `ponytail:ponytail-review`（差分）、`ponytail:ponytail-audit`（リポジトリ全体）、`ponytail:ponytail-debt`（`ponytail:` コメントの台帳化） | 推奨。報告のみで、修正は適用しない | 実装者 |
+| 実証 | `mutation-test`、`run-app-locally`、`updating-dependencies`（依存の更新）。高リスク箇所は `docs/guides/testing-policy.md` 7節の追加要件 | 高リスク箇所は必須。それ以外は変更に応じて | 実装者 |
+| レビュー | `mattpocock-skills:code-review` と OCR delegate（上の「コードレビュー」）の併用、`pr-verifier`、`test-review`。手順は `issue-delivery` のステップ4 | 必須。投稿は明示承認のあと | 実装者とは別のエージェント |
+| PR とマージ | `github-push-pr`（コミット・push・PR）。`develop` 向けは `Refs #N`、`Closes #N` は `main` への昇格 PR で付ける | 必須。マージはオーナーの指示を待つ | 実装者（マージはオーナー） |
+| 昇格・デプロイ後の確認 | `issue-delivery` のステップ6（`main` への昇格、本番での確認） | 必須 | オーナーの指示のもとで実装者 |
+
+文章を書くときは `yomiyasu` を使う。表の skill のうち `grilling`、`mattpocock-skills:*`、`ponytail:*`、`yomiyasu` はオーナーの全体設定にある。無い環境では、同じ目的を満たす手順（要件を質問して詰める、失敗するテストを先に書く、など）を実装者が自分で行う。無い skill を理由に止まらない。
+
 ## テスト
 
 テストを書く・直す前に `docs/guides/testing-policy.md` を読む。要点:
