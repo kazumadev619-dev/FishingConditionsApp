@@ -74,5 +74,4 @@ Qiita の記事は、守る条件をプロンプトだけに置かず、CI の R
 - CI に Postgres と Redis が入り、暫定規則を解除したとき（[#354](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/354)）。
 - CI で強制できる条件が見つかったとき（[#355](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/355)）。
 - AI factory（ADR-007）がマージされたとき。ガイドと ADR にある「まだマージされていない」の記述を直す。
-- Codex 向けの写し（`.agents/skills/`）をやめたことは [ADR-011](./011-remove-codex-factory.md) に記録した。この ADR の「両方に置く」は、それ以前の決定である。
 - 高リスク箇所の4つの役割を持つファイルを、一覧の外に新しく作ったとき。

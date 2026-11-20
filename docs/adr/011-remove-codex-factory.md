@@ -8,20 +8,20 @@
 Codex 版の AI factory（`scripts/ai-factory/` の Watcher）と、Codex 向けの写し（`.agents/skills/`、`.codex/`）を削除する。削除は 2 本の PR に分ける。
 
 - **写しの削除**: `.agents/skills/` と `.codex/` を消す。`.claude/skills/` は実体のまま残す。`AGENTS.md` はプロジェクト内に残し、Codex の記述だけ削る（`CLAUDE.md` も同じ）。
-- **Watcher 本体の削除**: `scripts/ai-factory/`、運用ガイドと現行仕様の文書、`package.json` の `factory:*`、`vitest.config.ts` の対象指定を消す。この PR は別 PR で、写しの削除とは互いに依存しない。
+- **Watcher 本体の削除**: `scripts/ai-factory/`、運用ガイドと現行仕様の文書、`package.json` の `factory:*`、`vitest.config.ts` の対象指定を消す。写しの削除とは別の PR で行い、互いに依存しない。
 - **ADR-007 の削除順序を変える**: ADR-007（Claude 版 factory）は「Claude 版が実 Issue で動いた後に Codex 資産を削除する」と定めている。これを改め、Claude 版の実運用を待たず、先に削除する。
 - **`agent:*` ラベルは残す**: Claude 版（ADR-007）が同じラベルを使う。削除の対象にしない。
-- **復元方法**: 削除前の develop の先頭にタグ `codex-factory-last` を打った。戻すときは `git checkout codex-factory-last -- <path>` を使う。
+- **復元方法**: 削除前の develop の先頭にタグ `codex-factory-last` を打った。戻すときは `git checkout codex-factory-last -- <path>` を使う。ただし、`package.json` の `factory:*` 5 件、`vitest.config.ts` の include の 1 行、`docs/README.md` の 2 行は、ほかの変更と混ざるので、丸ごとは戻さず、Watcher 削除 PR の差分を参照して手で戻す。`watcher.test.ts` には `.codex/agents/pr-verifier.toml` を読むテストが 1 件あるので、写しの削除 PR で消した `.codex` も一緒に戻す。
 - **他のエージェント向けの対応は、必要になったときに別途行う**: Codex 以外のエージェントが `.claude/skills/` と同じ内容を必要とした場合の対応（リンク化など）は、今回は決めない。
 
 ## 理由
 
 - Codex は未契約で、Watcher も写しも動かして確かめられない。
-- Watcher は約 12,000 行（テストを含む）で、テスト 195 件とともに format、lint、vitest、doc-links の対象に残り続ける。Watcher と写しを合わせると、削除するのは約 17,000 行である。
+- Watcher は約 12,000 行（テストを含む）で、テスト 240 件（`npx vitest run` の件数）とともに format、lint、vitest、doc-links の対象に残り続ける。Watcher と写しを合わせると、削除するのは約 17,000 行である。
 - 写しは、skill・hook・`pr-verifier` を直すたびに二重に更新する必要がある。同期を確かめる仕組みがなく、内容がすでにずれていた（#404）。
 - Watcher は 2026-10-17 以降、変更されていない。
 
-## 検討した選択肢
+## 代替案
 
 ### Claude 版の実運用を待ってから Watcher を消す（不採用）
 
@@ -43,7 +43,9 @@ Claude Code はディレクトリのリンクを辿れると確かめた。た�
   - GitHub のラベル `agent:recovery` と `agent:test` の削除（Claude 版は使わない。任意）
 - Claude 版 factory（ローカルの `feat/claude-ai-factory`）は、この ADR の対象外で、変更していない。ADR-007 にある「旧 Watcher を止める」の記述は、Claude 版の昇格時に直す。
 
-## 補足: この決定を見直すべきタイミング
+## 補足: 番号と、この決定を見直すべきタイミング
+
+- ADR の番号は、007 を AI factory（Claude 版）、008 を signup のレート制限に予約している。009・010 は使用済みなので、この ADR は 011 とした。
 
 - Codex を契約し、factory として使いたくなったとき。`codex-factory-last` から復元できる。
 - Codex 以外のエージェントが、`.agents/skills/` などの置き場所を必要としたとき。
