@@ -1,6 +1,6 @@
 ---
 name: test-review
-description: 書かれたテストが信頼できるかを、実装者とは別の目で検証するときに使う。PR のテストのレビュー、「このテストは信頼できるか」「マージしてよいか」、mutation-test を流したあとの見逃しの洗い出し、PR 本文の変異テストの結果の裏取り、といった場面。コードは直さず、報告だけを返す。
+description: 書かれたテストや CI のガード（ワークフローの run:）が信頼できるかを、実装者とは別の目で検証するときに使う。PR のテストのレビュー、「このテストは信頼できるか」「マージしてよいか」、mutation-test を流したあとの見逃しの洗い出し、PR 本文の変異テストの結果の裏取り、といった場面。コードは直さず、報告だけを返す。
 ---
 
 # test-review
@@ -24,6 +24,7 @@ git merge --no-edit origin/develop   # PR 上の CI は古い develop の上で�
 npx vitest run <関連ディレクトリ> --reporter=verbose && npm run type-check
 ```
 
+CI のガード（ワークフローの `run:`）は、[`mutation-test`](../mutation-test/SKILL.md) の「CI のガードを試す」で抜き出して流す。
 PR で足したテストの名前が、出力にすべてあることを確かめる（`it.skip` や include 外のファイルは、緑でも何も検証していない）。
 
 ### 2. 何を保証するテストか

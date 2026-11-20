@@ -4,14 +4,18 @@
 
 このプロジェクトでは、GitHub Actionsを使用したCI/CDパイプラインを構築しています。コード品質の自動チェック、ビルド検証を実施し、高品質なコードベースを維持します。
 
+> **照合の範囲**: 2026-11-20 に現状と照合したのは、CI のジョブ構成、トリガー、ブランチ保護、Phase 2 と Phase 4 の状態、ローカルでの実行の節。**「ESLint設定の最適化」「Huskyによる自動整形」「CI失敗時の対処法」「Phase 3」「Phase 5」の各節は未照合**（Phase 5 の依存更新だけは Renovate に合わせた）。
+
 ## 🔄 CI/CDフロー
 
 ```
 PR作成/push → GitHub Actions CI起動
-  ├─ Code Quality Check (並列実行)
+  ├─ Code Quality Check
   │   ├─ ESLint
   │   ├─ Biome Format Check
-  │   └─ TypeScript Type Check
+  │   ├─ TypeScript Type Check
+  │   ├─ Vitest（ユニットテスト）
+  │   └─ actionlint（ワークフローの検査）
   │
   ├─ Build Verification（Quality Check 通過後）
   │   ├─ Prisma Client生成
@@ -23,8 +27,9 @@ PR作成/push → GitHub Actions CI起動
   │   ├─ Secret が描画されていないことの確認
   │   └─ secret.enc.yaml が暗号化されていることの確認
   │
-  └─ CI Summary
-      └─ 結果サマリー表示
+  ├─ Docker Images（migrator と runner のイメージをビルド。Quality Check とは独立に並列実行）
+  │
+  └─ CI Summary（上の4ジョブすべての結果を集約。ブランチ保護の必須チェック）
 ```
 
 ## 🚀 実装済みCI
@@ -33,16 +38,16 @@ PR作成/push → GitHub Actions CI起動
 
 **トリガー条件:**
 - `main`, `develop` ブランチへの `push`
-- `main`, `develop` ブランチへの `pull_request`
+- すべての `pull_request`（PR を積み重ねても走らせるため、base ブランチを限定しない）
 
 **実行環境:**
 - OS: `ubuntu-26.04`（`ubuntu-latest` にはしない。Docker Images ジョブは `ubuntu-26.04-arm`）
 - Node.js: `26.x`
-- タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分
+- タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分 / Docker Images 30分
 
 #### ジョブ1: Code Quality Check
 
-コード品質を担保するための4つのチェックを並列実行します。
+コード品質を担保するためのチェックを、1つのジョブ内で順に実行します。
 
 | チェック項目 | コマンド | 目的 |
 |------------|---------|------|
@@ -50,6 +55,7 @@ PR作成/push → GitHub Actions CI起動
 | **Biome** | `npm run format:check` | コードフォーマットの統一性確認 |
 | **TypeScript** | `npm run type-check` | 型安全性の検証 |
 | **Vitest** | `npm run test` | ユニットテストの実行 |
+| **actionlint** | （ワークフローの検査） | `.github/workflows/` の構文・式の誤りの検出 |
 
 **注意点:**
 - フォーマットチェックは **チェックのみ** で自動修正はしません
@@ -62,10 +68,9 @@ PR作成/push → GitHub Actions CI起動
 
 ```yaml
 steps:
-  1. Prisma Client生成
-     - DATABASE_URLはダミー値を使用（スキーマ検証のみ）
-  2. Next.js Production Build
-     - SKIP_ENV_VALIDATION=true で環境変数チェックをスキップ
+  1. .env.example を .env にコピー（DATABASE_URL などはダミー値）
+  2. Prisma Client生成（npx prisma generate）
+  3. Next.js Production Build（npm run build）
 ```
 
 **このジョブの意義:**
@@ -93,16 +98,24 @@ steps:
        secret.enc.yaml に平文が入る事故はここでしか止められない
 ```
 
-#### ジョブ4: CI Summary
+#### ジョブ4: Docker Images
 
-全ジョブの結果をGitHub Actions Summaryに表示します。
+`ubuntu-26.04-arm` で migrator と runner の2つのイメージをビルドし、Dockerfile の退行を PR の時点で検出します（push はしません）。Quality Check には従属させず、並列で走ります。
+
+#### ジョブ5: CI Summary
+
+Quality Check、Build、Manifests、Docker Images の結果を集約し、GitHub Actions Summaryに表示します。失敗したジョブがあれば、このジョブも失敗します。
 
 ```
 ✅ 成功時: "🟢 All checks passed!"
 ❌ 失敗時: 各ジョブの結果を個別表示
 ```
 
-### 2. Concurrency制御
+### 2. ブランチ保護
+
+`develop` と `main` のどちらも、**`CI Summary` を必須のステータスチェック**にしています（`strict: false`）。CI が落ちた PR は通常マージできません（`enforce_admins` が無効なので、管理者は飛ばせます）。レビュー承認も必須にしていません。
+
+### 3. Concurrency制御
 
 同じPRで複数のpushがあった場合、古いワークフローを自動キャンセルします。
 
@@ -154,10 +167,10 @@ TypeScriptルール(`@typescript-eslint/*`)が全ファイル(`.js`含む)に適
 ### コミット前の推奨チェック
 
 ```bash
-# 全チェックを一括実行（CIと同等）
-npm run lint && npm run format:check && npm run type-check && npm run build
+# 全チェックを一括実行（CI の Quality Check と Build 相当）
+npm run lint && npm run format:check && npm run type-check && npm run test && npm run build
 
-# またはCLAUDE.mdに記載の簡潔版
+# 最小限
 npm run type-check && npm run lint && npm run build
 ```
 
@@ -228,10 +241,11 @@ npm run prisma:generate
 ## 🔮 今後の拡張予定
 
 ### Phase 2: テスト自動化
-- [ ] Vitestセットアップ
-- [ ] ユニットテスト実行CI追加
-- [ ] コードカバレッジ計測
+- [x] Vitestセットアップ
+- [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
+- ~~コードカバレッジ計測~~（不採用。[testing-policy.md](./testing-policy.md) の8節）
 - [ ] E2Eテスト（Playwright）
+- [ ] 実 DB（PostgreSQL・Redis）を使うテスト（CI にサービスコンテナが無い。#354）
 
 ### Phase 3: Prismaマイグレーション検証
 - [ ] `prisma-check.yml` ワークフロー作成
@@ -240,29 +254,19 @@ npm run prisma:generate
 - [ ] PRで `prisma/schema.prisma` 変更時に自動実行
 
 ### Phase 4: 自動デプロイ
-- [ ] k3s への自動デプロイ設定（Raspberry Pi 5 / arm64）
-- [ ] イメージのビルドとレジストリへの push
-- [ ] main統合時の本番デプロイ
+- [x] k3s への自動デプロイ設定（Raspberry Pi 5 / arm64）
+- [x] イメージのビルドとレジストリへの push
+- [x] main統合時の本番デプロイ（[deploy.yml](../../.github/workflows/deploy.yml)）
 - [ ] Slack通知連携
 
 ### Phase 5: PR自動化
 - [ ] PRラベル自動付与（変更ファイルパスベース）
 - [ ] コミットメッセージ検証（commitlint）
-- [ ] 依存関係自動更新（Dependabot）
+- [x] 依存関係自動更新（Dependabot ではなく Renovate。[renovate.md](./renovate.md)）
 
 ## 🔐 Secrets/Variables管理
 
-### 現在必要なSecrets: なし
-
-Phase 1では外部APIキーや認証情報は不要です。
-
-### 将来的に必要になるSecrets
-
-| Secret名 | 用途 | 必要時期 |
-|---------|------|---------|
-| `DATABASE_URL` | 本番DB接続 | CD実装時 |
-| `KUBE_CONFIG` | k3s クラスタへの接続 | CD実装時 |
-| `SLACK_WEBHOOK_URL` | 通知連携 | Phase 4 |
+CI（`ci.yml`）は Secrets を使いません。デプロイ（`deploy.yml`）が使う Secrets は、GitHub の Settings（Secrets and variables）で名前を確認してください。値はこの文書に書きません。
 
 ## 📚 参考リソース
 
@@ -279,10 +283,10 @@ CI構築完了の確認:
 - [x] ESLint設定最適化（ファイルタイプ別）
 - [x] ローカルで全チェック成功
 - [x] CI/CDドキュメント作成
-- [ ] PRでCIが正常動作することを確認
-- [ ] mainマージ前にCIが必須チェックとなることを設定
+- [x] PRでCIが正常動作することを確認
+- [x] mainマージ前にCIが必須チェックとなることを設定（`develop` と `main` に `CI Summary`）
 
 ---
 
-**Last Updated**: 2026-01-06
+**Last Updated**: 2026-11-20
 **Maintained by**: @kazumadev619-dev
