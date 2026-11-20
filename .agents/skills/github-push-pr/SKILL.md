@@ -61,7 +61,7 @@ git log --oneline -10
 - **絵文字の直後は半角スペース**。`📝 docs: ...` は OK だが `📝:docs:` は NG（`:docs:` が gitmoji コードと誤認され `start-with-gitmoji` エラーになる）。
 - 先頭は**有効な gitmoji**（実在する絵文字/コード）であること。
 - **ヘッダー（1行目）は 100 文字以内**（`header-max-length`）。長い説明は本文に回す。
-- 迷ったら、メッセージをファイルに書き、`npx --no-install commitlint < msg.txt` でコミット前に検証する。`echo "<msg>" | npx commitlint` は 1 行に潰れるので、本文の落とし穴を検出できない（詳細は `issue-delivery` の「commitlint の落とし穴」）。
+- 迷ったら、メッセージをファイルに書き、`npx --no-install commitlint < msg.txt` でコミット前に検証する。`echo "<1行>"` ではヘッダーしか検証されず、引用符なしの `echo $(cat …)` は改行が消えて空行の検査が誤って通るので、本文の落とし穴を検出できない（詳細は `issue-delivery` の「commitlint の落とし穴」）。
 
 ### コミット例
 

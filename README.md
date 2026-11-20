@@ -195,16 +195,11 @@ npm run type-check && npm run lint && npm run format:check
 📝 docs: Update setup instructions in README
 ```
 
-コミット前に、メッセージをファイルに書き、`npx --no-install commitlint < msg.txt` で検証する（`echo` で流すと 1 行に潰れ、本文の落とし穴を検出できない）。
+コミット前に、メッセージをファイルに書き、`npx --no-install commitlint < msg.txt` で検証する（`echo "<1行>"` ではヘッダーしか検証されない。詳しくは `github-push-pr` スキル）。
 
 ### 開発フロー
 
-1. `develop` ブランチから新しい `<type>/<short-desc>` ブランチを作成
-2. 機能実装・テスト
-3. `npm run type-check` と `npm run lint` でコード品質確認
-4. コミット（上記規約に従う）
-5. `develop` ブランチへプルリクエスト
-6. レビュー後マージ
+手順は [docs/guides/development.md](docs/guides/development.md) の「開発フロー」を見る。
 
 ---
 

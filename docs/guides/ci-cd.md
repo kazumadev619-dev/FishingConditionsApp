@@ -4,6 +4,8 @@
 
 このプロジェクトでは、GitHub Actionsを使用したCI/CDパイプラインを構築しています。コード品質の自動チェック、ビルド検証を実施し、高品質なコードベースを維持します。
 
+> **照合の範囲**: 2026-11-20 に現状と照合したのは、CI のジョブ構成、トリガー、ブランチ保護、Phase 2 と Phase 4 の状態、ローカルでの実行の節。**「ESLint設定の最適化」「Huskyによる自動整形」「CI失敗時の対処法」「Phase 3」「Phase 5」の各節は未照合**（Phase 5 の依存更新だけは Renovate に合わせた）。
+
 ## 🔄 CI/CDフロー
 
 ```
@@ -36,7 +38,7 @@ PR作成/push → GitHub Actions CI起動
 
 **トリガー条件:**
 - `main`, `develop` ブランチへの `push`
-- `main`, `develop` ブランチへの `pull_request`
+- すべての `pull_request`（PR を積み重ねても走らせるため、base ブランチを限定しない）
 
 **実行環境:**
 - OS: `ubuntu-26.04`（`ubuntu-latest` にはしない。Docker Images ジョブは `ubuntu-26.04-arm`）
@@ -112,7 +114,7 @@ Quality Check、Build、Manifests、Docker Images の結果を集約し、GitHub
 
 ### 2. ブランチ保護
 
-`develop` と `main` のどちらも、**`CI Summary` を必須のステータスチェック**にしています（`strict: false`）。CI が落ちた PR はマージできません。レビュー承認の必須化と、管理者への適用（`enforce_admins`）は有効にしていません。
+`develop` と `main` のどちらも、**`CI Summary` を必須のステータスチェック**にしています（`strict: false`）。CI が落ちた PR は通常マージできません（`enforce_admins` が無効なので、管理者は飛ばせます）。レビュー承認の必須化と、管理者への適用（`enforce_admins`）は有効にしていません。
 
 ### 3. Concurrency制御
 
@@ -166,10 +168,10 @@ TypeScriptルール(`@typescript-eslint/*`)が全ファイル(`.js`含む)に適
 ### コミット前の推奨チェック
 
 ```bash
-# 全チェックを一括実行（CIと同等）
-npm run lint && npm run format:check && npm run type-check && npm run build
+# 全チェックを一括実行（CI の Quality Check と Build 相当）
+npm run lint && npm run format:check && npm run type-check && npm run test && npm run build
 
-# またはCLAUDE.mdに記載の簡潔版
+# 最小限
 npm run type-check && npm run lint && npm run build
 ```
 
@@ -242,7 +244,7 @@ npm run prisma:generate
 ### Phase 2: テスト自動化
 - [x] Vitestセットアップ
 - [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
-- [ ] コードカバレッジ計測（測らない方針。[testing-policy.md](./testing-policy.md) の8節）
+- ~~コードカバレッジ計測~~（不採用。[testing-policy.md](./testing-policy.md) の8節）
 - [ ] E2Eテスト（Playwright）
 - [ ] 実 DB（PostgreSQL・Redis）を使うテスト（CI にサービスコンテナが無い。#354）
 
@@ -261,21 +263,11 @@ npm run prisma:generate
 ### Phase 5: PR自動化
 - [ ] PRラベル自動付与（変更ファイルパスベース）
 - [ ] コミットメッセージ検証（commitlint）
-- [ ] 依存関係自動更新（Dependabot）
+- [x] 依存関係自動更新（Dependabot ではなく Renovate。[renovate.md](./renovate.md)）
 
 ## 🔐 Secrets/Variables管理
 
-### 現在必要なSecrets: なし
-
-Phase 1では外部APIキーや認証情報は不要です。
-
-### 将来的に必要になるSecrets
-
-| Secret名 | 用途 | 必要時期 |
-|---------|------|---------|
-| `DATABASE_URL` | 本番DB接続 | CD実装時 |
-| `KUBE_CONFIG` | k3s クラスタへの接続 | CD実装時 |
-| `SLACK_WEBHOOK_URL` | 通知連携 | Phase 4 |
+CI（`ci.yml`）は Secrets を使いません。デプロイ（`deploy.yml`）が使う Secrets は、GitHub の Settings（Secrets and variables）で名前を確認してください。値はこの文書に書きません。
 
 ## 📚 参考リソース
 
@@ -292,7 +284,7 @@ CI構築完了の確認:
 - [x] ESLint設定最適化（ファイルタイプ別）
 - [x] ローカルで全チェック成功
 - [x] CI/CDドキュメント作成
-- [ ] PRでCIが正常動作することを確認
+- [x] PRでCIが正常動作することを確認
 - [x] mainマージ前にCIが必須チェックとなることを設定（`develop` と `main` に `CI Summary`）
 
 ---
