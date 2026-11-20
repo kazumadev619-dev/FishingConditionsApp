@@ -1,5 +1,9 @@
 # 🔌 外部API統合ガイド
 
+> - **状態**: 仕様（正）
+> - **対応する実装**: `src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/api/client.ts`
+> - **最終確認**: 未確認（#370 で突合する。「使用予定 API」の見出しで始まるので、仕様として使えるかも確かめる）
+
 ## 使用予定API一覧
 
 ### 🌤️ 気象データ - OpenWeatherMap API

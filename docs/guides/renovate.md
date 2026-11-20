@@ -30,7 +30,7 @@ FOO_VERSION: v1.2.3
 - パッチとマイナーは `all non-major dependencies` の1本にまとまる
 - メジャーとパッケージの置き換えは、**Dependency Dashboard の issue でチェックを入れたものだけ** PR になる。TypeScript 7 のように保留しているものは、チェックを入れなければ PR は作られない
 - 脆弱性の修正は OSV のデータで検知し、スケジュールを待たずに PR になる（リポジトリの Dependabot alerts は無効のため）
-- Dockerfile の Node は `node:26.12.1-alpine` のように版まで固定している。Node のセキュリティリリースは、月曜の実行と3日の待ちを経て Renovate の PR になる（OSV の即時 PR が Node 本体のベースイメージに効くかは確かめていない）。急ぐときは Dockerfile の4か所を手で上げる
+- Dockerfile の Node は `node:26.13.1-alpine` のように版まで固定している。Node のセキュリティリリースは、月曜の実行と3日の待ちを経て Renovate の PR になる（OSV の即時 PR が Node 本体のベースイメージに効くかは確かめていない）。急ぐときは Dockerfile の4か所を手で上げる
 - 同時に開く PR は5本まで。ベースは `develop`
 - コミットと PR タイトルは `⬆️ package: Update ...` の形になる（commitlint の規則に合わせてある）
 

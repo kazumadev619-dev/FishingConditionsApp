@@ -1,5 +1,9 @@
 # Google Maps API 連携
 
+> - **状態**: 説明（参考）
+> - **対応する実装**: `src/lib/googleMapsClient.ts`
+> - **最終確認**: 未確認
+
 このドキュメントは、このプロジェクトで Google Maps API を統合し、利用する方法について概説します。
 
 ## 概要

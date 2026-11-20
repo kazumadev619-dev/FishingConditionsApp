@@ -73,4 +73,29 @@ describe('credentials の authorize', () => {
     await expect(authorize(credentials)).resolves.toBeNull();
     expect(hasActiveVerificationToken).not.toHaveBeenCalled();
   });
+
+  // 守る状態: Google だけで登録した行（password_hash が NULL）にパスワードでは入れない。
+  // 期待値: docs/reference/authentication.md（Google の新規ユーザーは password_hash が NULL、パスワードのログインは一致したときだけ通す）
+  it('password_hash の無い行には、パスワードでログインできない', async () => {
+    givenUser(new Date(), true);
+    vi.mocked(getUser).mockResolvedValue({
+      email: credentials.email,
+      password_hash: null,
+      email_verified_at: new Date(),
+    } as never);
+
+    await expect(authorize(credentials)).resolves.toBeNull();
+  });
+
+  // 守る状態: 形の誤った入力では、ログインさせず、bcrypt も計算しない
+  // （testing-policy.md 5節の回数の例外「入力の誤りでは bcrypt を計算しない」）
+  it.each([
+    ['8文字未満のパスワード', { email: credentials.email, password: 'Pw0rd!x' }],
+    ['メールアドレスでないメール', { email: 'owner', password: credentials.password }],
+  ])('%sは拒否し、bcrypt を計算しない', async (_case, input) => {
+    givenUser(new Date(), true);
+
+    await expect(authorize(input)).resolves.toBeNull();
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+  });
 });

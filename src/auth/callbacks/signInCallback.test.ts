@@ -136,3 +136,16 @@ describe('signInCallback の Google ログイン', () => {
     },
   );
 });
+
+describe('signInCallback のメールとパスワードのログイン', () => {
+  // 守る状態: authorize が通したユーザーを、ここで拒否しない（拒否すると全員ログインできない）。
+  // 期待値: docs/reference/authentication.md「2. ログイン」（authorize が返せばセッションを作る）
+  it('authorize が通したユーザーはログインできる', async () => {
+    await expect(
+      signInCallback({
+        user: { id: 'user-1', email: 'owner@example.com' } as User,
+        account: { provider: 'credentials', type: 'credentials' } as Account,
+      }),
+    ).resolves.toBe(true);
+  });
+});

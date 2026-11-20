@@ -113,36 +113,13 @@ git push origin <branch-name>
 
 ### PRテンプレート
 
+PR 本文は、`.github/pull_request_template.md` を読んで、各節を埋める（「仕様と文書」の節も、該当するほうにチェックを付ける）。
+
 ```bash
 gh pr create \
   --base develop \
   --title "<emoji> <type>: <説明> #<TaskNo>" \
-  --body "$(cat <<'EOF'
-## 概要
-
-<!-- 変更の概要を記述 -->
-
-## 変更内容
-
-- <!-- 変更点1 -->
-- <!-- 変更点2 -->
-
-## 関連Issue
-
-closes #<TaskNo>
-
-## テスト計画
-
-- [ ] 型チェック: `npm run type-check`
-- [ ] Lint: `npm run lint`
-- [ ] ビルド: `npm run build`
-- [ ] 手動動作確認
-
-## スクリーンショット（UIの変更がある場合）
-
-<!-- スクリーンショットを貼り付け -->
-EOF
-)"
+  --body-file <埋めた本文>
 ```
 
 ### PR本文の書き方
@@ -150,6 +127,7 @@ EOF
 - **概要**: 何を変更したか、なぜ変更したかを1〜3文で説明
 - **変更内容**: 具体的な変更点をリストアップ
 - **関連Issue**: 対応するIssue番号をcloses #XXX形式で記載
+- **仕様と文書**: `docs/reference/` の「仕様（正）」の文書にある挙動を変えたかを書く。変えたなら、同じ PR で文書とテストの期待値も更新する（ADR-010）
 - **テスト計画**: 実行したまたは実行すべきテストのチェックリスト
 
 ## 注意事項

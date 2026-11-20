@@ -31,6 +31,11 @@ function VerificationErrorContent() {
   const searchParams = useSearchParams();
   const errorType = searchParams.get('error') || 'server_error';
   const errorInfo = ERROR_MESSAGES[errorType] || ERROR_MESSAGES.server_error;
+  // リンクが無効・期限切れになるのは登録済みの人。新規登録を押すと「既に使用されています」になる
+  const loginFirst = errorType === 'invalid_token' || errorType === 'missing_token';
+  const login = { href: '/login', label: 'ログインページへ' };
+  const register = { href: '/register', label: '新規登録ページへ' };
+  const [primary, secondary] = loginFirst ? [login, register] : [register, login];
 
   return (
     <Card className="mx-auto max-w-md">
@@ -43,10 +48,10 @@ function VerificationErrorContent() {
       </CardHeader>
       <CardContent className="space-y-4">
         <Button asChild className="w-full">
-          <Link href="/register">新規登録ページへ</Link>
+          <Link href={primary.href}>{primary.label}</Link>
         </Button>
         <Button asChild variant="outline" className="w-full">
-          <Link href="/login">ログインページへ</Link>
+          <Link href={secondary.href}>{secondary.label}</Link>
         </Button>
       </CardContent>
     </Card>

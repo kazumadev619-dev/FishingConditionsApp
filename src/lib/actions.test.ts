@@ -1,10 +1,11 @@
 import bcrypt from 'bcrypt';
+import { redirect } from 'next/navigation';
 import { AuthError } from 'next-auth';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signIn } from '@/auth';
 import { EmailNotVerifiedError } from '@/auth/providers/credentials';
 import { issueVerificationEmail } from '@/lib/email';
-import { logger, maskEmail } from '@/lib/logger';
+import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { isSignupRateLimited } from '@/lib/rateLimit';
 import { authenticate, signup } from './actions';
@@ -22,16 +23,60 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 vi.mock('@/lib/rateLimit', () => ({ isSignupRateLimited: vi.fn() }));
-vi.mock('bcrypt', () => ({ default: { hash: vi.fn(async () => 'hashed') } }));
+vi.mock('bcrypt', async (importOriginal) => {
+  const real = (await importOriginal<{ default: typeof import('bcrypt') }>()).default;
+  return { default: { ...real, hash: vi.fn(real.hash) } };
+});
 vi.mock('next/navigation', () => ({
-  redirect: vi.fn(() => {
-    throw new Error('NEXT_REDIRECT');
+  redirect: vi.fn((url: string) => {
+    throw Object.assign(new Error('NEXT_REDIRECT'), { url });
   }),
 }));
 
 afterEach(() => vi.clearAllMocks());
 
 describe('authenticate', () => {
+  // 守る状態: ログインに成功したら遷移する。next-auth の signIn は成功すると、redirect コールバックの
+  // 遷移先（src/auth/config.ts の /dashboard）へ redirect() の例外を投げて遷移する。それを握りつぶさない。
+  // 期待値: docs/reference/authentication.md「2. ログイン」の4（成功すると /dashboard へ）
+  it('ログインに成功したら、ダッシュボードへ遷移する', async () => {
+    vi.mocked(signIn).mockImplementation(async () => redirect('http://localhost:3000/dashboard'));
+
+    await expect(authenticate(undefined, new FormData())).rejects.toMatchObject({
+      url: 'http://localhost:3000/dashboard',
+    });
+  });
+
+  // 守る状態: 障害を、パスワードの誤りに見せない。authorize の障害は、Auth.js が CallbackRouteError に包んで届ける
+  // （@auth/core の lib/actions/callback/index.js）。
+  // 期待値: docs/reference/authentication.md「2. ログイン」の5
+  it('authorize の中の障害は、パスワードの誤りと別の文言で返す', async () => {
+    const error = new AuthError();
+    error.type = 'CallbackRouteError';
+    vi.mocked(signIn).mockRejectedValue(error);
+
+    await expect(authenticate(undefined, new FormData())).resolves.toBe(
+      'ログイン処理中にエラーが発生しました。',
+    );
+  });
+
+  // 期待値: 同上の5（AuthError 以外の例外は、メッセージにせずそのまま投げる。NEXT_REDIRECT もこの経路）
+  it('AuthError 以外の例外は、メッセージにせず、そのまま投げる', async () => {
+    const outage = new Error('db down');
+    vi.mocked(signIn).mockRejectedValue(outage);
+
+    await expect(authenticate(undefined, new FormData())).rejects.toBe(outage);
+  });
+
+  // 守る状態: Error でない値が届いても、そのまま投げず、メッセージにする（actions.ts の型ガード）
+  it('Error でない値が届いたら、予期しないエラーとして返す', async () => {
+    vi.mocked(signIn).mockRejectedValue('boom');
+
+    await expect(authenticate(undefined, new FormData())).resolves.toBe(
+      '予期しないエラーが発生しました。',
+    );
+  });
+
   it('未確認ならメールの確認を案内する', async () => {
     vi.mocked(signIn).mockRejectedValue(new EmailNotVerifiedError());
 
@@ -64,14 +109,61 @@ describe('signup', () => {
     vi.mocked(isSignupRateLimited).mockResolvedValue(false);
     vi.mocked(prisma.users.deleteMany).mockResolvedValue({ count: 0 });
     vi.mocked(prisma.verification_tokens.deleteMany).mockResolvedValue({ count: 0 });
+    vi.mocked(issueVerificationEmail).mockResolvedValue(true);
   });
 
   afterEach(() => vi.useRealTimers());
 
   it('登録したら確認メールを送る', async () => {
-    await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
+    await expect(signup(undefined, signupForm())).rejects.toMatchObject({
+      url: '/auth/check-email',
+    });
 
     expect(issueVerificationEmail).toHaveBeenCalledWith('owner@example.com');
+  });
+
+  // 守る状態: 登録しただけでは確認済みにならず、パスワードはハッシュで保存する。
+  // 期待値: docs/reference/authentication.md「1. ユーザー登録」の3（bcrypt でハッシュ化、email_verified_at は NULL）
+  it('未確認のまま、パスワードのハッシュを保存する', async () => {
+    await expect(signup(undefined, signupForm())).rejects.toMatchObject({
+      url: '/auth/check-email',
+    });
+
+    const { data } = vi.mocked(prisma.users.create).mock.calls[0][0];
+    expect(data.email_verified_at ?? null).toBeNull();
+    await expect(bcrypt.compare('Passw0rd!', data.password_hash as string)).resolves.toBe(true);
+  });
+
+  it.each([
+    ['false を返したとき', () => vi.mocked(issueVerificationEmail).mockResolvedValue(false)],
+    [
+      '例外を投げたとき',
+      () => vi.mocked(issueVerificationEmail).mockRejectedValue(new Error('smtp')),
+    ],
+  ])(
+    'メールの送信が%s、送れなかったことを伝えるページへ進む（登録は残す）',
+    async (_case, arrange) => {
+      vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+      arrange();
+
+      await expect(signup(undefined, signupForm())).rejects.toMatchObject({
+        url: '/auth/check-email?sent=0',
+      });
+
+      expect(prisma.users.create).toHaveBeenCalled();
+    },
+  );
+
+  it('DB への登録に失敗したら、遷移せずエラーを返し、確認メールも送らない', async () => {
+    vi.spyOn(logger, 'error').mockImplementation(() => undefined);
+    vi.mocked(prisma.users.create).mockRejectedValueOnce(new Error('db down'));
+
+    await expect(signup(undefined, signupForm())).resolves.toBe(
+      'ユーザーの作成に失敗しました。時間をおいて再度お試しください。',
+    );
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(issueVerificationEmail).not.toHaveBeenCalled();
   });
 
   it('上限を超えたらハッシュも DB もメールも動かさず、再試行を案内する', async () => {
@@ -83,21 +175,20 @@ describe('signup', () => {
     );
 
     expect(isSignupRateLimited).toHaveBeenCalledWith('owner@example.com');
+    expect(redirect).not.toHaveBeenCalled();
     expect(bcrypt.hash).not.toHaveBeenCalled();
     expect(prisma.users.create).not.toHaveBeenCalled();
     expect(prisma.users.deleteMany).not.toHaveBeenCalled();
     expect(prisma.verification_tokens.deleteMany).not.toHaveBeenCalled();
     expect(issueVerificationEmail).not.toHaveBeenCalled();
-    expect(warn).toHaveBeenCalledWith(
-      { email: maskEmail('owner@example.com') },
-      'Signup rate limit exceeded',
-    );
+    expect(warn).toHaveBeenCalledWith({ email: 'ow***@example.com' }, 'Signup rate limit exceeded');
   });
 
   it('入力の誤りは回数に数えない', async () => {
     await expect(signup(undefined, signupForm('short'))).resolves.toEqual(expect.any(String));
 
     expect(isSignupRateLimited).not.toHaveBeenCalled();
+    expect(redirect).not.toHaveBeenCalled();
   });
 
   it('確認の必須化より後に作られ、7日を超えたパスワード登録の未確認の行と、期限切れのトークンを消す', async () => {
@@ -106,7 +197,7 @@ describe('signup', () => {
 
     await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
 
-    expect(prisma.users.deleteMany).toHaveBeenCalledExactlyOnceWith({
+    expect(prisma.users.deleteMany).toHaveBeenCalledWith({
       where: {
         email_verified_at: null,
         password_hash: { not: null },
@@ -118,7 +209,7 @@ describe('signup', () => {
         },
       },
     });
-    expect(prisma.verification_tokens.deleteMany).toHaveBeenCalledExactlyOnceWith({
+    expect(prisma.verification_tokens.deleteMany).toHaveBeenCalledWith({
       where: { expires_at: { lt: now } },
     });
   });
@@ -134,7 +225,7 @@ describe('signup', () => {
 
     resolve({ count: 0 });
     await expect(result).rejects.toThrow('NEXT_REDIRECT');
-    expect(prisma.users.create).toHaveBeenCalledOnce();
+    expect(prisma.users.create).toHaveBeenCalled();
   });
 
   it.each([
@@ -147,7 +238,7 @@ describe('signup', () => {
 
     await expect(signup(undefined, signupForm())).rejects.toThrow('NEXT_REDIRECT');
 
-    expect(prisma.users.create).toHaveBeenCalledOnce();
+    expect(prisma.users.create).toHaveBeenCalled();
     expect(error).toHaveBeenCalledWith({ err: failure }, 'Failed to purge stale signups');
   });
 });
