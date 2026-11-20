@@ -68,10 +68,9 @@ PR作成/push → GitHub Actions CI起動
 
 ```yaml
 steps:
-  1. Prisma Client生成
-     - DATABASE_URLはダミー値を使用（スキーマ検証のみ）
-  2. Next.js Production Build
-     - SKIP_ENV_VALIDATION=true で環境変数チェックをスキップ
+  1. .env.example を .env にコピー（DATABASE_URL などはダミー値）
+  2. Prisma Client生成（npx prisma generate）
+  3. Next.js Production Build（npm run build）
 ```
 
 **このジョブの意義:**
@@ -114,7 +113,7 @@ Quality Check、Build、Manifests、Docker Images の結果を集約し、GitHub
 
 ### 2. ブランチ保護
 
-`develop` と `main` のどちらも、**`CI Summary` を必須のステータスチェック**にしています（`strict: false`）。CI が落ちた PR は通常マージできません（`enforce_admins` が無効なので、管理者は飛ばせます）。レビュー承認の必須化と、管理者への適用（`enforce_admins`）は有効にしていません。
+`develop` と `main` のどちらも、**`CI Summary` を必須のステータスチェック**にしています（`strict: false`）。CI が落ちた PR は通常マージできません（`enforce_admins` が無効なので、管理者は飛ばせます）。レビュー承認も必須にしていません。
 
 ### 3. Concurrency制御
 
