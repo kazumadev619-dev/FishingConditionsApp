@@ -18,7 +18,6 @@
 | TypeScript | `^6.0.3` | 6.0.3 |
 | TypeScript 7 (type-check) | `npm:typescript@^7.0.2` | 7.0.2 |
 | Tailwind CSS | `^4.1.17` | 4.3.3 |
-| Zustand | `^5.0.15` | 5.0.15 |
 | Auth.js | `^5.0.0-beta.30` | 5.0.0-beta.32 |
 | Prisma | `^7.9.1` | 7.10.0 |
 | ioredis | `^6.0.0` | 6.0.0 |
