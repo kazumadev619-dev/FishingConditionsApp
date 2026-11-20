@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/auth/`、`src/proxy.ts`、`src/lib/actions.ts`
-> - **最終確認**: 未確認（#370 で突合する。2026-11-07 に `/auth/*` の許可だけ #368 で直した）
+> - **最終確認**: 2026-11-20（2026-11-07 に `/auth/*` の許可を #368 で直した。ログイン・環境変数まわりは #388 で実装と突き合わせて直した）
 
 このプロジェクトでは、`next-auth` (Auth.js) v5 を使用して認証システムを構築しています。
 
@@ -24,7 +24,7 @@
 
 - `src/auth/config.ts`: **共通設定**。session戦略、pages設定など、Edge/Node両方で使用可能な設定のみを定義。
 - `src/auth/edge.ts`: **Edge Runtime用**。`authorized`コールバック（アクセス制御）を含む。`proxy.ts`から使用。
-- `src/auth/index.ts`: **Node Runtime用**。Prismaを使用したDB操作、`Credentials`/`Google`プロバイダー、`signIn`コールバックを定義。
+- `src/auth/index.ts`: **Node Runtime用**。`Credentials`/`Google`プロバイダーと、`signIn`・`jwt`・`session` コールバックを組み立てる。プロバイダーは `src/auth/providers/`（`credentials.ts` に `authorize`、`google.ts`）、コールバックは `src/auth/callbacks/` にある。
 - `src/proxy.ts`: Next.js 16のProxy（旧middleware）。`edge.ts`の`auth`を使用してアクセス制御を実行。
 
 ### メール検証関連
@@ -64,11 +64,11 @@
 
 1.  ユーザーがログインページ (`/login`) でメールアドレスとパスワードを入力します。
 2.  `authenticate` サーバーアクションが呼び出され、内部で `next-auth` の `signIn` 関数を `credentials` プロバイダーで実行します。
-3.  `src/auth.ts` の `authorize` 関数が実行されます。
+3.  `src/auth/providers/credentials.ts` の `authorize` 関数が実行されます。
     1.  提供されたメールアドレスでユーザーをデータベースから検索します。
     2.  ユーザーが存在し、パスワードが `bcrypt.compare` によって一致し、メールが確認済みの場合、ユーザーオブジェクトを返します。
     3.  パスワードが一致してもメールが未確認なら拒否します。有効なトークンが無ければ確認メールを送り直します（1時間に1通まで）。
-    4.  パスワードが一致しない場合はエラーがスローされます。
+    4.  パスワードが一致しない場合（ユーザーが無い場合、入力の形が不正な場合も）は、エラーをスローせず `null` を返します。Auth.js がこれを `CredentialsSignin` にします。
 4.  認証が成功すると、セッションが作成され、ユーザーはダッシュボード (`/dashboard`) にリダイレクトされます。
 5.  `authorize` の中で起きた障害（データベースやネットワークなど）は、Auth.js が `CallbackRouteError` に包んで返すので、「ログイン処理中にエラーが発生しました。」と表示します。パスワードの誤り（「メールアドレスまたはパスワードが正しくありません。」）とは文言を分け、障害を「パスワードが違う」と見せないためです。障害の内容は Auth.js がサーバーのログに出します。`AuthError` 以外の例外（成功時の遷移の `NEXT_REDIRECT` など）は、メッセージにせず、そのまま投げます。
 
@@ -176,8 +176,11 @@ AUTH_GOOGLE_SECRET="your_google_client_secret"
 
 # Auth.js基本設定
 AUTH_SECRET="npx auth secretで生成"
-NEXTAUTH_URL="http://localhost:3000"  # 本番環境では実際のURL
+AUTH_URL="http://localhost:3000"      # 本番環境では実際のURL。Auth.js が読む
+NEXTAUTH_URL="http://localhost:3000"  # 確認メールのリンクの組み立てだけに使う（src/lib/email.ts）
 ```
+
+`AUTH_URL` は Auth.js が自分の URL とスキームを決めるのに使う。本番では TLS を Cloudflare で終端するため、消すと Cookie の `Secure` と `__Host-` が外れる（`k8s/config.env`、`k8s/README.md`）。`NEXTAUTH_URL` は Auth.js からは使われない。両方に同じ値を入れる。
 
 ### メール検証設定
 

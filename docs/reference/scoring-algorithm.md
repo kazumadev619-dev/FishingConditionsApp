@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/lib/scoring/`、`src/lib/scoringService.ts`、`src/app/api/scores/route.ts`
-> - **最終確認**: 2026-11-08（天気スコアと潮の大きさ・潮汐データなしの節は、実装に合わせて書き直し、ユーザーが承認した。風速はユーザーの指示で 2/4/6m/s の段階に変え、実装も合わせた。時間帯スコアと表示・解釈は未確認で、#370 で突合する）
+> - **最終確認**: 2026-11-20（天気スコアと潮の大きさ・潮汐データなしの節は 2026-11-08 に実装に合わせて書き直し、ユーザーが承認した。風速はユーザーの指示で 2/4/6m/s の段階に変え、実装も合わせた。時間帯スコアと表示・解釈は、#388 で実装と突き合わせて直した）
 
 ## スコア算出概要
 
@@ -208,15 +208,19 @@ calculateTimeScore(weatherData: FormattedWeatherData, currentTime: Date): number
 
 ### スコア範囲と評価
 
-```typescript
-export const ScoreInterpretation = {
-  excellent: { min: 80, max: 100, label: '絶好調', color: '#22c55e' },
-  good: { min: 60, max: 79, label: '良好', color: '#3b82f6' },
-  fair: { min: 40, max: 59, label: '普通', color: '#f59e0b' },
-  poor: { min: 20, max: 39, label: 'やや不利', color: '#f97316' },
-  bad: { min: 0, max: 19, label: '不適', color: '#ef4444' },
-};
-```
+閾値は `src/lib/utils/scoreRank.ts` の `getScoreRank`、ラベルは `src/lib/utils/dashboardUtils.ts` の `getRankLabel` にある。`ScoreInterpretation` という定数は無い。色は `src/app/globals.css` の CSS 変数 `--score-<rank>`（oklch。ライト・ダークで別の値）で、`getRankColor` が `var(--score-<rank>)` を返す。
+
+| ランク | 範囲 | ラベル | CSS 変数 |
+|---|---|---|---|
+| `excellent` | 80〜100 | 絶好調 | `--score-excellent` |
+| `good` | 60〜79 | 良好 | `--score-good` |
+| `fair` | 40〜59 | 普通 | `--score-fair` |
+| `poor` | 20〜39 | やや不利 | `--score-poor` |
+| `bad` | 0〜19 | 不適 | `--score-bad` |
+
+### 合計の丸め
+
+3つの要素を足した合計は、四捨五入して 0〜100 に収める（`src/lib/scoring/index.ts`）。`components` の各値は丸めない。
 
 ### スコア内訳表示
 
@@ -234,6 +238,8 @@ interface FishingScore {
   explanation: string;
   bestComponent: 'tide' | 'weather' | 'time';
   worstComponent: 'tide' | 'weather' | 'time';
+  tideName?: string; // 潮の種類（大潮・中潮など。当日の tide736 の moon.title）
+  moonAge?: string; // 月齢（当日の tide736 の moon.age）
   calculatedAt: Date;
 }
 ```
