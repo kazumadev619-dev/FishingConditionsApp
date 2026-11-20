@@ -109,7 +109,7 @@ PR の作り方は `github-push-pr` スキルに従う。加えて:
 
 GitHub が自動クローズするのは**デフォルトブランチ（main）にマージされたとき**だけ。`develop` 向け PR に `Closes #N` と書いても何も起きない。
 
-- **develop 向け PR**: `github-push-pr` の PR テンプレートは `## 関連Issue` に `closes #N` を書かせるが、develop 向けでは効かないので `Refs #N` にして、本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する。issue の一部だけを扱う PR なら「この PR では閉じない」と書く（ステップ6で `Closes` と `Refs` を分けるときの手がかりになる）
+- **develop 向け PR**: PR テンプレートの `## 関連Issue` は `Refs #N` で書く。本文に「次の main 昇格 PR で `Closes #N` を付ける」と明記する。issue の一部だけを扱う PR なら「この PR では閉じない」と書く（ステップ6で `Closes` と `Refs` を分けるときの手がかりになる）
 - **main 昇格 PR**: ステップ6の手順で書く
 
 ### まず OCR（delegate モード）で diff を一通り読む
@@ -151,6 +151,15 @@ git worktree remove --force "$W"
 本体の `node_modules` をリンクして `npm ci` を省く手もあるが、**lock ファイルが同じでも本体の `node_modules` が古いことがある**（別ブランチで `npm ci` したまま切り替えていた。lock は prisma 7.10.0 なのに 7.9.1 が入っていた）。リンクするなら先に本体で `npm ci` を流す。
 
 エージェントが走っている間、**同じファイルを触らない**。別 issue を進めるか、衝突しない調査をする。
+
+### テストを足した・変えた PR は `test-review` をかける
+
+順番は、実装者が `mutation-test`（ステップ3）→ `pr-verifier` →（下の条件のとき）`test-review`。`pr-verifier` の指摘を直してテストが変わりうるので、`test-review` はその後に回す。
+
+- **必須**: テストを足した・変えた PR。高リスク箇所（`docs/guides/testing-policy.md` の7節）のパスを変えた PR
+- **省いてよい**: 実行時の挙動もテストも変わらない PR（文書だけ、コメントだけ、など）。省いたら PR 本文に理由を書く
+- **誰がやるか**: 実装者とも `pr-verifier` とも別の新しいエージェントにやらせる（`orca-cli` で Claude、または仕様と差分だけを渡した新しいエージェント。fork には頼まない）。結果を共有せず、`test-review` の「注意」に従って頼む。報告は全文をチャットに出す
+- **受け持ち**（ADR-009）: `pr-verifier` は PR 本文の主張を実行して裏取りする。`test-review` はテストが退行を検知するかを、変異と見逃しで調べる。報告の形は別々なので統合せず、そのまま並べる。`test-review` をかける PR では、`pr-verifier` にテストの信頼性の裏取りを重ねて頼まない
 
 ## ステップ5: 指摘への対応
 

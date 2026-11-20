@@ -195,7 +195,7 @@ npm run type-check && npm run lint && npm run format:check
 📝 docs: Update setup instructions in README
 ```
 
-コミット前に `echo "<msg>" | npx commitlint` で検証できる。
+コミット前に、メッセージをファイルに書き、`npx --no-install commitlint < msg.txt` で検証する（`echo` で流すと 1 行に潰れ、本文の落とし穴を検出できない）。
 
 ### 開発フロー
 

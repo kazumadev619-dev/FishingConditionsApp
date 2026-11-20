@@ -9,7 +9,8 @@
 
 ## 関連Issue
 
-closes #<TaskNo>
+<!-- develop 向けは Refs。Closes は main 昇格 PR で付ける（issue-delivery のステップ4・6） -->
+Refs #<TaskNo>
 
 ## 仕様と文書
 

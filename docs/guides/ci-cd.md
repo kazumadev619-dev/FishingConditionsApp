@@ -8,10 +8,12 @@
 
 ```
 PR作成/push → GitHub Actions CI起動
-  ├─ Code Quality Check (並列実行)
+  ├─ Code Quality Check
   │   ├─ ESLint
   │   ├─ Biome Format Check
-  │   └─ TypeScript Type Check
+  │   ├─ TypeScript Type Check
+  │   ├─ Vitest（ユニットテスト）
+  │   └─ actionlint（ワークフローの検査）
   │
   ├─ Build Verification（Quality Check 通過後）
   │   ├─ Prisma Client生成
@@ -23,8 +25,9 @@ PR作成/push → GitHub Actions CI起動
   │   ├─ Secret が描画されていないことの確認
   │   └─ secret.enc.yaml が暗号化されていることの確認
   │
-  └─ CI Summary
-      └─ 結果サマリー表示
+  ├─ Docker Images（migrator と runner のイメージをビルド。Quality Check とは独立に並列実行）
+  │
+  └─ CI Summary（上の4ジョブすべての結果を集約。ブランチ保護の必須チェック）
 ```
 
 ## 🚀 実装済みCI
@@ -38,11 +41,11 @@ PR作成/push → GitHub Actions CI起動
 **実行環境:**
 - OS: `ubuntu-26.04`（`ubuntu-latest` にはしない。Docker Images ジョブは `ubuntu-26.04-arm`）
 - Node.js: `26.x`
-- タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分
+- タイムアウト: Quality Check 10分 / Build 15分 / Manifests 5分 / Docker Images 30分
 
 #### ジョブ1: Code Quality Check
 
-コード品質を担保するための4つのチェックを並列実行します。
+コード品質を担保するためのチェックを、1つのジョブ内で順に実行します。
 
 | チェック項目 | コマンド | 目的 |
 |------------|---------|------|
@@ -50,6 +53,7 @@ PR作成/push → GitHub Actions CI起動
 | **Biome** | `npm run format:check` | コードフォーマットの統一性確認 |
 | **TypeScript** | `npm run type-check` | 型安全性の検証 |
 | **Vitest** | `npm run test` | ユニットテストの実行 |
+| **actionlint** | （ワークフローの検査） | `.github/workflows/` の構文・式の誤りの検出 |
 
 **注意点:**
 - フォーマットチェックは **チェックのみ** で自動修正はしません
@@ -93,16 +97,24 @@ steps:
        secret.enc.yaml に平文が入る事故はここでしか止められない
 ```
 
-#### ジョブ4: CI Summary
+#### ジョブ4: Docker Images
 
-全ジョブの結果をGitHub Actions Summaryに表示します。
+`ubuntu-26.04-arm` で migrator と runner の2つのイメージをビルドし、Dockerfile の退行を PR の時点で検出します（push はしません）。Quality Check には従属させず、並列で走ります。
+
+#### ジョブ5: CI Summary
+
+Quality Check、Build、Manifests、Docker Images の結果を集約し、GitHub Actions Summaryに表示します。失敗したジョブがあれば、このジョブも失敗します。
 
 ```
 ✅ 成功時: "🟢 All checks passed!"
 ❌ 失敗時: 各ジョブの結果を個別表示
 ```
 
-### 2. Concurrency制御
+### 2. ブランチ保護
+
+`develop` と `main` のどちらも、**`CI Summary` を必須のステータスチェック**にしています（`strict: false`）。CI が落ちた PR はマージできません。レビュー承認の必須化と、管理者への適用（`enforce_admins`）は有効にしていません。
+
+### 3. Concurrency制御
 
 同じPRで複数のpushがあった場合、古いワークフローを自動キャンセルします。
 
@@ -228,10 +240,11 @@ npm run prisma:generate
 ## 🔮 今後の拡張予定
 
 ### Phase 2: テスト自動化
-- [ ] Vitestセットアップ
-- [ ] ユニットテスト実行CI追加
-- [ ] コードカバレッジ計測
+- [x] Vitestセットアップ
+- [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
+- [ ] コードカバレッジ計測（測らない方針。[testing-policy.md](./testing-policy.md) の8節）
 - [ ] E2Eテスト（Playwright）
+- [ ] 実 DB（PostgreSQL・Redis）を使うテスト（CI にサービスコンテナが無い。#354）
 
 ### Phase 3: Prismaマイグレーション検証
 - [ ] `prisma-check.yml` ワークフロー作成
@@ -240,9 +253,9 @@ npm run prisma:generate
 - [ ] PRで `prisma/schema.prisma` 変更時に自動実行
 
 ### Phase 4: 自動デプロイ
-- [ ] k3s への自動デプロイ設定（Raspberry Pi 5 / arm64）
-- [ ] イメージのビルドとレジストリへの push
-- [ ] main統合時の本番デプロイ
+- [x] k3s への自動デプロイ設定（Raspberry Pi 5 / arm64）
+- [x] イメージのビルドとレジストリへの push
+- [x] main統合時の本番デプロイ（[deploy.yml](../../.github/workflows/deploy.yml)）
 - [ ] Slack通知連携
 
 ### Phase 5: PR自動化
@@ -280,9 +293,9 @@ CI構築完了の確認:
 - [x] ローカルで全チェック成功
 - [x] CI/CDドキュメント作成
 - [ ] PRでCIが正常動作することを確認
-- [ ] mainマージ前にCIが必須チェックとなることを設定
+- [x] mainマージ前にCIが必須チェックとなることを設定（`develop` と `main` に `CI Summary`）
 
 ---
 
-**Last Updated**: 2026-01-06
+**Last Updated**: 2026-11-20
 **Maintained by**: @kazumadev619-dev
