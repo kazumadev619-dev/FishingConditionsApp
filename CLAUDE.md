@@ -14,6 +14,22 @@
 - 関連が薄く見えるエラーの放置禁止（対処するか、理由を明示して記録する）
 - テストを通すためだけのテスト改変禁止（実装の誤りを疑う）
 
+## 開発の工程と使う skill
+
+詳細は各 skill と docs/guides にある。ここには複製しない。
+
+| 工程 | 使うもの | 必須か推奨か | 誰が |
+|---|---|---|---|
+| 要件・設計 | `grilling`（必要なら `domain-modeling` / `codebase-design`）で詰める。issue の前提は `issue-delivery` のステップ0で疑う | 推奨。不明点はエージェントが決めず、ユーザーに確認する | 実装者 |
+| 実装 | `mattpocock-skills:tdd`（テスト先行）。不具合は `diagnosing-bugs` で調べる。書き方は `docs/guides/testing-policy.md` | 推奨。高リスク箇所（同 7節）は必須 | 実装者 |
+| 実装の完了後 | `ponytail:ponytail-review`（差分）、`ponytail:ponytail-audit`（リポジトリ全体）、`ponytail:ponytail-debt`（`ponytail:` コメントの台帳化） | 推奨。報告のみで、修正は適用しない | 実装者 |
+| 実証 | `mutation-test`、`run-app-locally`、`updating-dependencies`（依存の更新）。手順は `issue-delivery` のステップ3 | テストや CI のガードを書いたら `mutation-test` は必須。高リスク箇所は testing-policy 7節の追加要件も必須 | 実装者 |
+| レビュー | OCR delegate（上の「コードレビュー」）と `mattpocock-skills:code-review` は実装者が自分で。`pr-verifier` と `test-review` は別のエージェント。手順は `issue-delivery` のステップ4 | 必須。`test-review` は条件つき（ステップ4）。投稿は明示承認のあと | 実装者と別のエージェント |
+| PR とマージ | `github-push-pr`（コミット・push・PR。`Refs`/`Closes` の書き方もここ）。PR はレビューの前に作る | 必須。マージはオーナーの指示を待つ | 実装者（マージはオーナー） |
+| 昇格・デプロイ後の確認 | `issue-delivery` のステップ6（`main` への昇格、本番での確認） | 必須 | オーナーの指示のもとで実装者 |
+
+文章を書くときは `yomiyasu` を使う。表の skill のうち `grilling`、`mattpocock-skills:*`、`ponytail:*`、`yomiyasu` はオーナーの全体設定にある。無い環境では、同じ目的を満たす手順（要件を質問して詰める、失敗するテストを先に書く、など）を実装者が自分で行う。無い skill を理由に止まらない。
+
 ## テスト
 
 テストを書く・直す前に `docs/guides/testing-policy.md` を読む。要点:
@@ -43,7 +59,7 @@ git commit -m "🐛 fix: バグ修正の説明 #123"
 
 コードレビューは open-code-review (OCR) の **delegate モード**で行う（月額プランで API キーが無いため、OCR 自体に LLM を呼ばせない）。
 
-- Claude Code: `open-code-review:delegate-review` スキル / Codex: Open Code Review プラグインの delegate スキル
+- Claude Code: `open-code-review:delegate-review` スキル
 - 手順: `ocr delegate preview --format json [--from develop --to HEAD]` → `ocr delegate rule --format json <paths>` → git diff を読んで自分でレビュー
 - `ocr review`（API キー必須の既定モード）は使わない
 

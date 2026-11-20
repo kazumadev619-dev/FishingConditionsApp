@@ -18,7 +18,6 @@
 | TypeScript | `^6.0.3` | 6.0.3 |
 | TypeScript 7 (type-check) | `npm:typescript@^7.0.2` | 7.0.2 |
 | Tailwind CSS | `^4.1.17` | 4.3.3 |
-| Zustand | `^5.0.15` | 5.0.15 |
 | Auth.js | `^5.0.0-beta.30` | 5.0.0-beta.32 |
 | Prisma | `^7.9.1` | 7.10.0 |
 | ioredis | `^6.0.0` | 6.0.0 |
@@ -61,7 +60,6 @@ fishing-conditions-app/
 ├── package.json
 ├── vitest.config.ts               # テスト設定（テスト本体は実装の隣に置く）
 ├── next.config.mjs
-├── tailwind.config.js
 ├── tsconfig.json
 └── README.md
 ```
@@ -114,13 +112,18 @@ git commit -m "📝 docs: 開発ガイドを更新"
 
 ### 1. 機能開発の流れ
 
-1. **Issue作成**: GitHub Issuesでタスクを作成
-2. **ブランチ作成**: `develop` から `<type>/<short-desc>` 形式で切る（例: `docs/repo-tidy`、`refactor/#13`）
-3. **開発**: ローカル環境で実装
-4. **テスト**: 単体テスト・統合テスト実行
-5. **PR作成**: `develop` 向けに Pull Request を作成・レビュー依頼
-6. **レビュー**: コードレビュー・修正
-7. **マージ**: developブランチにマージ
+流れは、issue を選ぶ → 前提を疑う → 実装 → 実証 → レビュー → `develop` にマージ → `main` へ昇格 → 本番で確認、の順。各工程の手順は skill に書いてあり、ここには複製しない。
+
+| 工程 | 見るもの |
+|---|---|
+| issue の選択から本番の確認まで | [`issue-delivery`](../../.claude/skills/issue-delivery/SKILL.md) |
+| ブランチ・コミット・push・PR | [`github-push-pr`](../../.claude/skills/github-push-pr/SKILL.md)、[PR テンプレート](../../.github/pull_request_template.md) |
+| テストの書き方 | [testing-policy.md](./testing-policy.md) |
+| 変異テスト、テストのレビュー | [`mutation-test`](../../.claude/skills/mutation-test/SKILL.md)、[`test-review`](../../.claude/skills/test-review/SKILL.md) |
+| 依存の更新 | [`updating-dependencies`](../../.claude/skills/updating-dependencies/SKILL.md) |
+| ローカル起動・実 DB での確認 | [`run-app-locally`](../../.claude/skills/run-app-locally/SKILL.md) |
+
+`develop` 向けの PR は `Refs #N` で書き、`Closes #N` は `main` 昇格 PR で付ける。`develop` と `main` は `CI Summary` が必須のチェックで、通らない PR は通常マージできない（`enforce_admins` が無効なので、管理者は飛ばせる。[ci-cd.md](./ci-cd.md)）。
 
 ### 2. 品質保証
 
