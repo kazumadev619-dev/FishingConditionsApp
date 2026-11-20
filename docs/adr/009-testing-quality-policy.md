@@ -45,9 +45,13 @@ Qiita の記事は、守る条件をプロンプトだけに置かず、CI の R
 
 `paths:` で `*.test.ts` を指定した rules は、対象のファイルを Read、Write、Edit した時点で読み込まれる。新しいテストファイルの最初の Write は、rules を見ないまま書かれる。さらに、GitHub Actions 版の AI factory（ADR-007。まだマージされていない）は実行前に `.claude` を消して動くので、移行後は rules を読まない。`CLAUDE.md` と `AGENTS.md` に直接書けば、Claude、Codex、factory のすべてが読む。
 
-### `reviewing-tests` skill を作る（今回は見送り）
+### `reviewing-tests` skill を作る（2026-11-07 は見送り、のちに `test-review` として追加）
 
-中身が `pr-verifier` と `mutation-test` にほぼ重なり、保守が二重になる。この2つで足りない場面が出てから作る。
+当初は、中身が `pr-verifier` と `mutation-test` にほぼ重なるとして見送った。#377・#387 の検証で、変異の観点、見逃しの洗い出し、モックと実物の経路のずれの確認が、この2つでは足りないと分かったため、`test-review` skill として追加した（PR #403）。二重保守を避けるため、文書ごとの受け持ちを次のように分け、重なる記述は `test-review` に書かず参照にする。
+
+- `pr-verifier`: 検証役の約束（コミットも push もしない、シークレットを出さない、など）と、PR の取り込み手順
+- `mutation-test`: 変異の入れ方と spec の仕様
+- `test-review`: 変異の観点、見逃し、等価の根拠、モックと実物のずれ、独立した検証、出力の形
 
 ### `issue-delivery` を緩め、高リスク箇所だけ `mutation-test` を必須にする（不採用）
 

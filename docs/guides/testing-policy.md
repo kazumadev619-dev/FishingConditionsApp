@@ -153,4 +153,5 @@ PR で次を行う。
 - [ADR-003: テスト基盤の選定](../adr/003-testing-strategy.md)（ランナーの選定）
 - [development.md のテスト戦略](./development.md#テスト戦略)（置き場所、コマンド）
 - [`mutation-test` skill](../../.claude/skills/mutation-test/SKILL.md)（壊して落ちることの確かめ）
+- [`test-review` skill](../../.claude/skills/test-review/SKILL.md)（書かれたテストが信頼できるかの検証手順）
 - [`pr-verifier`](../../.claude/agents/pr-verifier.md)（実行して確かめるレビュー）
