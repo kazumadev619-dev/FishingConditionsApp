@@ -47,6 +47,36 @@ describe('authenticate', () => {
     });
   });
 
+  // 守る状態: 障害を、パスワードの誤りに見せない。authorize の障害は、Auth.js が CallbackRouteError に包んで届ける
+  // （@auth/core の lib/actions/callback/index.js）。
+  // 期待値: docs/reference/authentication.md「2. ログイン」の5
+  it('authorize の中の障害は、パスワードの誤りと別の文言で返す', async () => {
+    const error = new AuthError();
+    error.type = 'CallbackRouteError';
+    vi.mocked(signIn).mockRejectedValue(error);
+
+    await expect(authenticate(undefined, new FormData())).resolves.toBe(
+      'ログイン処理中にエラーが発生しました。',
+    );
+  });
+
+  // 期待値: 同上の5（AuthError 以外の例外は、メッセージにせずそのまま投げる。NEXT_REDIRECT もこの経路）
+  it('AuthError 以外の例外は、メッセージにせず、そのまま投げる', async () => {
+    const outage = new Error('db down');
+    vi.mocked(signIn).mockRejectedValue(outage);
+
+    await expect(authenticate(undefined, new FormData())).rejects.toBe(outage);
+  });
+
+  // 守る状態: Error でない値が届いても、そのまま投げず、メッセージにする（actions.ts の型ガード）
+  it('Error でない値が届いたら、予期しないエラーとして返す', async () => {
+    vi.mocked(signIn).mockRejectedValue('boom');
+
+    await expect(authenticate(undefined, new FormData())).resolves.toBe(
+      '予期しないエラーが発生しました。',
+    );
+  });
+
   it('未確認ならメールの確認を案内する', async () => {
     vi.mocked(signIn).mockRejectedValue(new EmailNotVerifiedError());
 
