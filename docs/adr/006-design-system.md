@@ -5,7 +5,7 @@
 
 ## 決定
 
-画面の見た目を改修するにあたり、Claude Design でデザインシステム（色、文字、余白、部品）を作る。それをデザイントークンとして、shadcn の CSS 変数と `@theme`（どちらも `src/app/globals.css`）に反映する。Tailwind v4 は JS 設定を読まないため、`tailwind.config.ts` は使わない。
+画面の見た目を改修するにあたり、Claude Design でデザインシステム（色、文字、余白、部品）を作る。それをデザイントークンとして、shadcn の CSS 変数と `@theme`（どちらも `src/app/globals.css`）に反映する。Tailwind v4 は `@config` で指定しない限り JS 設定を読まず、`globals.css` にも `@config` は無いため、`tailwind.config.ts` は使わない。
 
 | 項目 | 決定 |
 |------|------|
