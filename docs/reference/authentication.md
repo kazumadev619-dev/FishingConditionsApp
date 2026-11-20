@@ -177,10 +177,10 @@ AUTH_GOOGLE_SECRET="your_google_client_secret"
 # Auth.js基本設定
 AUTH_SECRET="npx auth secretで生成"
 AUTH_URL="http://localhost:3000"      # 本番環境では実際のURL。Auth.js が読む
-NEXTAUTH_URL="http://localhost:3000"  # 確認メールのリンクの組み立てだけに使う（src/lib/email.ts）
+NEXTAUTH_URL="http://localhost:3000"  # AUTH_URL が無いときの代わり。確認メールのリンクにも使う（src/lib/email.ts）
 ```
 
-`AUTH_URL` は Auth.js が自分の URL とスキームを決めるのに使う。本番では TLS を Cloudflare で終端するため、消すと Cookie の `Secure` と `__Host-` が外れる（`k8s/config.env`、`k8s/README.md`）。`NEXTAUTH_URL` は Auth.js からは使われない。両方に同じ値を入れる。
+Auth.js は `AUTH_URL` を優先し、無いときだけ `NEXTAUTH_URL` を読む（`AUTH_URL ?? NEXTAUTH_URL`）。本番では TLS を Cloudflare で終端するので、Auth.js が使う URL が `http://` になる、または両方とも無いと、Cookie の `Secure` と `__Secure-`（セッション）・`__Host-`（CSRF）の接頭辞が外れる（`k8s/config.env`、`k8s/README.md`）。`NEXTAUTH_URL` は確認メールのリンクにも使う（`src/lib/email.ts`）。両方に同じ値を入れる。
 
 ### メール検証設定
 

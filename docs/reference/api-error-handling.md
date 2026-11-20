@@ -234,7 +234,7 @@ const NON_RETRYABLE_STATUS_CODES = [
 
 | 契機 | メッセージ | 項目 |
 |---|---|---|
-| 5xx などの応答 | `Retrying API request` | `endpoint`、`attempt`、`maxRetries`、`delayMs` |
+| リトライ対象のステータス（上の一覧）の応答 | `Retrying API request` | `endpoint`、`attempt`、`maxRetries`、`delayMs` |
 | タイムアウト | `Retrying API request after timeout` | 上と同じ + `reason: 'timeout'` |
 | ネットワークエラー | `Retrying API request after network error` | 上と同じ + `reason: 'network_error'` |
 

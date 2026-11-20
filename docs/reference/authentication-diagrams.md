@@ -422,7 +422,7 @@ flowchart TD
 
 ```
 
-> Cookie 名は Auth.js v5 の既定（v4 の `next-auth.session-token` ではない）。HTTPS のときの `__Secure-` 付きの名前は `src/proxy.test.ts` が使っている。ブラウザで実際の名前を見る確認は、まだしていない。
+> Cookie 名は Auth.js v5 の既定（v4 の `next-auth.session-token` ではない）。HTTPS のときの `__Secure-` 付きの名前は `src/proxy.test.ts` が使っている。`@auth/core` の `lib/utils/cookie.js` で確認済み（HTTPS では `__Secure-authjs.session-token`。CSRF の Cookie は `__Host-` 付き）。ブラウザでは未確認。
 
 ---
 

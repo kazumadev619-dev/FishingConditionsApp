@@ -55,7 +55,7 @@ graph TB
 | フロントエンド | Next.js + React + TypeScript | 16.4.6 + 19.3.1 + 6.0.3   | SSR/SSG対応、PWA化、型安全性             |
 | バックエンド   | Next.js API Routes           | 16.4.6                    | 迅速な開発、フルスタック統合             |
 | スタイリング   | Tailwind CSS + shadcn/ui     | 4.3.5 + -                 | モバイルファースト、コンポーネント再利用 |
-| 状態管理       | React の state・hooks・Context | -                       | 画面ごとの状態は hooks に閉じる。`zustand` は `package.json` にあるが `src/` では使っていない。React Query は入っていない |
+| 状態管理       | React の state・hooks・Context | -                       | 画面ごとの状態は hooks に閉じる。Zustand は使っていない（依存は #409 で削除）。React Query は入っていない |
 | 認証           | Auth.js                      | 5.0.0-beta.32             | 多様な認証プロバイダー対応               |
 | データベース   | PostgreSQL (Neon)            | 17                        | マネージドクラウド、Prisma ORM（7.10.1） |
 | キャッシュ     | Redis (k3s Pod)              | 7.x                       | 外部API結果のキャッシュ、レート制限      |
@@ -110,7 +110,7 @@ src/
 
 ### 状態管理
 
-状態は React の state と hooks、Context で持つ。`stores/` は無く、Zustand は `src/` で使っていない。React Query も入っていない。
+状態は React の state と hooks、Context で持つ。`stores/` は無く、Zustand は使っていない。React Query も入っていない。
 
 ```
 src/
@@ -334,8 +334,9 @@ erDiagram
 ##### **user_settings** テーブル
 
 - **用途**: ユーザーの個人設定・プリファレンス
+- **現状**: 列はあるが、アプリからは読み書きしていない（将来の設定用）。`theme` などを使う画面・処理は無い
 - **特徴**: `user_id` はユニークキー（ユーザー1人に1件のみ）
-- **使い方**:
+- **使い方（想定）**: 以下は想定する中身で、実装にはまだ無い。
   ```json
   {
     "user_id": "uuid",
@@ -388,7 +389,7 @@ erDiagram
 
 | 項目         | 天気                           | 潮汐                           | 場所検索              | スコア（`/api/scores`）        |
 | ------------ | ------------------------------ | ------------------------------ | --------------------- | ------------------------------ |
-| **キー**     | `weather:lang:ja:lat:<緯度>:lon:<経度>:units:metric`（座標は小数2桁に丸める） | `tide:day:<日>:month:<月>:port:<港>:prefecture:<県>:range:<範囲>:year:<年>` | `location:limit:<件数>:query:<検索語>` | `score:date:<日付>:lat:<緯度>:lon:<経度>:port:<港>:prefecture:<県>`（今日は `slot:HH:mm` が付く。座標は小数2桁） |
+| **キー**     | `weather:lang:ja:lat:<緯度>:lon:<経度>:units:metric`（座標は小数2桁に丸める）。予報（`/forecast`）は `weather:forecast:lang:ja:lat:<緯度>:lon:<経度>:units:metric` | `tide:day:<日>:month:<月>:port:<港>:prefecture:<県>:range:<範囲>:year:<年>` | `location:limit:<件数>:query:<日本に絞った検索語>` | `score:date:<日付>:lat:<緯度>:lon:<経度>:port:<港>:prefecture:<県>`（今日は `slot:HH:mm` が付く。座標は小数2桁） |
 | **TTL**      | 30分                           | 6時間                          | 1時間                 | 30分                           |
 | **実装**     | `src/lib/openWeatherService.ts` | `src/lib/tideService.ts`      | `src/lib/locationService.ts` | `src/app/api/scores/route.ts` |
 
