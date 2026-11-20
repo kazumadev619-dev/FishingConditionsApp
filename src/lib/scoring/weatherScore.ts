@@ -2,11 +2,11 @@ import type { FormattedWeatherData } from '../openWeatherService';
 
 export function calculateWeatherScore(weatherData: FormattedWeatherData): number {
   let windScore: number;
-  if (weatherData.windSpeed <= 3) {
+  if (weatherData.windSpeed <= 2) {
     windScore = 15;
+  } else if (weatherData.windSpeed <= 4) {
+    windScore = 10;
   } else if (weatherData.windSpeed <= 6) {
-    windScore = 12;
-  } else if (weatherData.windSpeed <= 10) {
     windScore = 5;
   } else {
     windScore = 0;
