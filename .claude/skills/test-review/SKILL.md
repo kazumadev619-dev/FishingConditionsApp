@@ -8,7 +8,7 @@ description: 書かれたテストや CI のガード（ワークフローの ru
 `docs/guides/testing-policy.md` は、テストを**書くとき**の方針である。この skill は、書かれたあとのテストを**別のエージェントや人が検証する**手順を定める。Green は正しさの証明ではないので、実装を壊して落ちることと、守ると言った状態に穴がないことを、実行して確かめる。
 
 何をどの文書が持つか（ADR-009）:
-- 検証役の約束（コミットも push もしない、シークレットを出さない、など）と PR の取り込み手順は、`pr-verifier`（`.claude/agents/pr-verifier.md`、Codex は `.codex/agents/pr-verifier.toml`）に従う。ここには書かない
+- 検証役の約束（コミットも push もしない、シークレットを出さない、など）と PR の取り込み手順は、`pr-verifier`（`.claude/agents/pr-verifier.md`）に従う。ここには書かない
 - 変異の入れ方と spec の仕様は、[`mutation-test`](../mutation-test/SKILL.md) に従う
 - 兆候・期待値・モックの基準は `docs/guides/testing-policy.md`（3〜5節）。高リスク箇所の追加要件は 7節。網羅率は根拠にしない（8節）
 

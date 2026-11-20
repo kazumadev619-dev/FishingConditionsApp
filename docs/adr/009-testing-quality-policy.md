@@ -43,7 +43,7 @@ Qiita の記事は、守る条件をプロンプトだけに置かず、CI の R
 
 ### rules ファイル（`.claude/rules/testing.md`）に要点を書く（不採用）
 
-`paths:` で `*.test.ts` を指定した rules は、対象のファイルを Read、Write、Edit した時点で読み込まれる。新しいテストファイルの最初の Write は、rules を見ないまま書かれる。さらに、GitHub Actions 版の AI factory（ADR-007。まだマージされていない）は実行前に `.claude` を消して動くので、移行後は rules を読まない。`CLAUDE.md` と `AGENTS.md` に直接書けば、Claude、Codex、factory のすべてが読む。
+`paths:` で `*.test.ts` を指定した rules は、対象のファイルを Read、Write、Edit した時点で読み込まれる。新しいテストファイルの最初の Write は、rules を見ないまま書かれる。さらに、GitHub Actions 版の AI factory（ADR-007。まだマージされていない）は実行前に `.claude` を消して動くので、移行後は rules を読まない。`CLAUDE.md` と `AGENTS.md` に直接書けば、Claude、Codex、factory のすべてが読む。（のちに Codex を使わなくなり、Codex 用の写しをやめた。[ADR-011](./011-remove-codex-factory.md)）
 
 ### `reviewing-tests` skill を作る（2026-11-07 は見送り、のちに `test-review` として追加）
 
@@ -65,7 +65,7 @@ Qiita の記事は、守る条件をプロンプトだけに置かず、CI の R
 
 - [`docs/guides/testing-policy.md`](../guides/testing-policy.md) が、テストの方針の本体になる。
 - `CLAUDE.md` と `AGENTS.md` に要点とリンクを置く。`docs/README.md` の「テストを書きたい」の行と、`docs/guides/development.md` のテスト戦略の節を、このポリシーに合わせて更新する。
-- `github-push-pr` の PR テンプレートの「テスト計画」と、`issue-delivery` のレビューの手順に、高リスク箇所の要件を足す（`.claude/skills/` と、Codex 用の写し `.agents/skills/` の両方）。
+- `github-push-pr` の PR テンプレートの「テスト計画」と、`issue-delivery` のレビューの手順に、高リスク箇所の要件を足す（`.claude/skills/`。Codex 用の写し `.agents/skills/` は、当時は両方に置く決定だったが、のちにやめた。[ADR-011](./011-remove-codex-factory.md)）。
 - 既存テストの見直し（[#353](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/353)）、実DB基盤と暫定規則の解除（[#354](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/354)）、CI での強制（[#355](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/355)）は、別の issue で扱う。
 
 ## 補足: 番号と、この決定を見直すべきタイミング
