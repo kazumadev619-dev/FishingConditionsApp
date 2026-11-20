@@ -33,6 +33,7 @@ describe('generateExplanation の風の注意', () => {
 describe('generateExplanation の風の注意は、風の点が 0 点になる境目と一致する', () => {
   const rainy = (windSpeed: number) =>
     ({ windSpeed, pressure: 1013, weather: { main: 'Rain' } }) as FormattedWeatherData;
+  // リテラルの境界（6 と 6 超）は上の describe が持つ。ここは weatherScore との一致だけを見る。
   const windPointIsZero = (windSpeed: number) =>
     calculateWeatherScore(rainy(windSpeed)) === calculateWeatherScore(rainy(100));
 
@@ -68,9 +69,5 @@ describe('generateExplanation の風の注意と、ほかの文の組み合わ�
     const explanation = at(7);
     expect(explanation.split(WIND_WARNING)).toHaveLength(2);
     expect(explanation).toContain('大潮');
-  });
-
-  it('6m/s ちょうどでは、潮名の文があっても注意を足さない', () => {
-    expect(at(6)).not.toContain(WIND_WARNING);
   });
 });
