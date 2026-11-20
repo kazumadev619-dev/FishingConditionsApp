@@ -61,7 +61,6 @@ fishing-conditions-app/
 ├── package.json
 ├── vitest.config.ts               # テスト設定（テスト本体は実装の隣に置く）
 ├── next.config.mjs
-├── tailwind.config.js
 ├── tsconfig.json
 └── README.md
 ```
