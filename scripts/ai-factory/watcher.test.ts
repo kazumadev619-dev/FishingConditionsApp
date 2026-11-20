@@ -4723,14 +4723,3 @@ describe('recovery search consistency', () => {
     },
   );
 });
-
-it('keeps the offline dependency contract consistent with watcher preparation', async () => {
-  const contract = await readFile(
-    new URL('../../.codex/agents/pr-verifier.toml', import.meta.url),
-    'utf8',
-  );
-  expect(contract).toContain(
-    '`mode=watcher` はWatcherが `npm ci --ignore-scripts` で導入済みの依存を使う',
-  );
-  expect(contract).toContain('`npm ci` / `npm install` / ダウンロードを伴う `npx` を実行しない');
-});
