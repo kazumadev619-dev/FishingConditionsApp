@@ -2,6 +2,7 @@ import type { FormattedWeatherData } from '../openWeatherService';
 import type { FormattedTideData } from '../tideService';
 import { formatDateInJapan } from '../utils/dateUtils';
 import { getScoreRank } from '../utils/scoreRank';
+import { WIND_ZERO_POINT_ABOVE } from './weatherScore';
 
 function getComponentLabel(component: 'tide' | 'weather' | 'time'): string {
   switch (component) {
@@ -54,7 +55,7 @@ export function generateExplanation(
     explanation += `\n本日は${tideName}です（月齢：${parseFloat(moonAge).toFixed(1)}）。`;
   }
 
-  if (weatherData.windSpeed > 10) {
+  if (weatherData.windSpeed > WIND_ZERO_POINT_ABOVE) {
     explanation += '\n風が強いため注意が必要です。';
   }
 

@@ -1,12 +1,15 @@
 import type { FormattedWeatherData } from '../openWeatherService';
 
+/** 風速がこれを超えると、風の点は 0 点（説明文の風の注意もこの境目で出す）。 */
+export const WIND_ZERO_POINT_ABOVE = 6;
+
 export function calculateWeatherScore(weatherData: FormattedWeatherData): number {
   let windScore: number;
   if (weatherData.windSpeed <= 2) {
     windScore = 15;
   } else if (weatherData.windSpeed <= 4) {
     windScore = 10;
-  } else if (weatherData.windSpeed <= 6) {
+  } else if (weatherData.windSpeed <= WIND_ZERO_POINT_ABOVE) {
     windScore = 5;
   } else {
     windScore = 0;
