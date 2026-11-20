@@ -205,5 +205,6 @@ export async function authenticate(_prevState: string | undefined, formData: For
     }
     throw error;
   }
-  redirect('/dashboard');
+  // 成功時は、signIn が自分で遷移の例外を投げる（遷移先は src/auth/config.ts の redirect コールバック）。
+  // ここへは届かないので、遷移を書き足さない（ローカルで、この位置の遷移先を変えても、成功時の遷移が変わらないことを確かめた）
 }
