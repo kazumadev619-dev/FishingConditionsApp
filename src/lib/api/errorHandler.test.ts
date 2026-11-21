@@ -25,6 +25,7 @@ describe('createApiError の分類', () => {
     [405, ApiErrorType.CLIENT_ERROR, false],
     [409, ApiErrorType.CLIENT_ERROR, false],
     [422, ApiErrorType.CLIENT_ERROR, false],
+    [499, ApiErrorType.CLIENT_ERROR, false],
     [408, ApiErrorType.CLIENT_ERROR, true],
     [500, ApiErrorType.SERVER_ERROR, true],
     [502, ApiErrorType.SERVER_ERROR, true],
