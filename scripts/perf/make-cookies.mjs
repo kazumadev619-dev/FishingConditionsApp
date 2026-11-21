@@ -6,8 +6,10 @@
 // なるので、k6 は要求ごとに別のユーザーの Cookie を使う。id が UUID のトークンは DB を引かずに
 // 通る（src/auth/callbacks/jwtCallback.ts）ので、ユーザーは DB に作らない。
 // 測定用の AUTH_SECRET は docker-compose.yml のものと同じ。本番・ローカル開発の値は使わない。
+import console from 'node:console';
 import { randomUUID } from 'node:crypto';
 import { writeFileSync } from 'node:fs';
+import process from 'node:process';
 import { encode } from 'next-auth/jwt';
 
 const [out, count = '2000'] = process.argv.slice(2);

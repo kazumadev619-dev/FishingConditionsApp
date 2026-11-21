@@ -2,6 +2,8 @@
 // 応答の形は実物に合わせた最小限（アプリの整形が読む項目だけ）。遅延は /__delay?ms=N で変える。
 // 呼び出し回数は /__stats で読める（キャッシュなしの測定で上流が何回呼ばれたかを確かめる）。
 import { createServer } from 'node:http';
+import { setTimeout } from 'node:timers';
+import { URL } from 'node:url';
 
 let delayMs = 0;
 const calls = { openweather: 0, tide736: 0, geocode: 0 };
@@ -35,7 +37,15 @@ function tideResponse(q) {
         midline: '11:27',
         set: '16:31',
       },
-      moon: { brightness: '91.3', age: '12.8', title: '大潮', rise: '14:28', midline: '21:25', set: '04:33', name: null },
+      moon: {
+        brightness: '91.3',
+        age: '12.8',
+        title: '大潮',
+        rise: '14:28',
+        midline: '21:25',
+        set: '04:33',
+        name: null,
+      },
       tide,
       flood: [ev(120, 190.1), ev(870, 185.4)],
       edd: [ev(520, 40.2), ev(1180, 35.7)],

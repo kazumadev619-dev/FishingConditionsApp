@@ -10,6 +10,7 @@
 //
 // 結果は標準出力に 1 行（PERF_RESULT {...}）と /perf/out/result-<TARGET>-<MODE>.json に出す。
 // 200 以外（429 など）は応答時間の集計に入れず、件数だけ数える。
+/* global __ENV, open, console -- k6 の実行環境が与えるグローバル */
 import { Counter, Trend } from 'k6/metrics';
 import exec from 'k6/execution';
 import http from 'k6/http';
@@ -37,7 +38,12 @@ const count = (status) => (statuses[status] ?? otherStatus).add(1);
 export const options = {
   scenarios: {
     load: __ENV.ITERATIONS
-      ? { executor: 'shared-iterations', vus: VUS, iterations: Number(__ENV.ITERATIONS), maxDuration: '10m' }
+      ? {
+          executor: 'shared-iterations',
+          vus: VUS,
+          iterations: Number(__ENV.ITERATIONS),
+          maxDuration: '10m',
+        }
       : { executor: 'constant-vus', vus: VUS, duration: __ENV.DURATION || '30s' },
   },
   // 組み込みの http_req_* は setup の要求も含むので使わない
@@ -72,7 +78,10 @@ export function setup() {
   http.get(`${STUB}/__reset`);
   if (MODE === 'cached' && TARGET !== 'floor' && __ENV.WARMUP !== '0') {
     // キャッシュに載せる 1 回目。測定には入れない（カスタム指標にだけ記録する）
-    const res = http.get(`${APP}${path(0)}`, { headers: { Cookie: cookies[0] }, jar: new http.CookieJar() });
+    const res = http.get(`${APP}${path(0)}`, {
+      headers: { Cookie: cookies[0] },
+      jar: new http.CookieJar(),
+    });
     if (res.status !== 200) throw new Error(`warm-up failed: ${res.status}`);
   }
 }
@@ -102,7 +111,17 @@ export function handleSummary(data) {
   const m = data.metrics;
   const t = (name) => {
     const v = m[name]?.values;
-    return v && { n: m[name].values.count ?? undefined, avg: v.avg, med: v.med, p90: v['p(90)'], p95: v['p(95)'], p99: v['p(99)'], max: v.max };
+    return (
+      v && {
+        n: m[name].values.count ?? undefined,
+        avg: v.avg,
+        med: v.med,
+        p90: v['p(90)'],
+        p95: v['p(95)'],
+        p99: v['p(99)'],
+        max: v.max,
+      }
+    );
   };
   const status = {};
   for (const [k, v] of Object.entries(m)) {
@@ -119,7 +138,7 @@ export function handleSummary(data) {
     reqMs: t('req_ms'),
     serverMs: t('server_ms'),
   };
-  const ok = (status[TARGET === 'floor' ? 400 : 200] ?? 0);
+  const ok = status[TARGET === 'floor' ? 400 : 200] ?? 0;
   result.rps = ok / result.seconds;
   const line = `PERF_RESULT ${JSON.stringify(result)}\n`;
   return {

@@ -2,6 +2,9 @@
 // アプリのコードは変えず、NODE_OPTIONS=--import で読み込む（scripts/perf/docker-compose.yml）。
 // 課金・クォータのある上流を呼ばないための仕組みなので、向け替え対象のホストは増やさず、
 // 対象外のホストは素通しにしない（外へ出る要求は測定の前提を壊すので、その場で失敗させる）。
+import process from 'node:process';
+import { URL } from 'node:url';
+
 const STUB = process.env.PERF_STUB_ORIGIN ?? 'http://stub:4000';
 const UPSTREAM_HOSTS = new Set(['api.openweathermap.org', 'tide736.net', 'maps.googleapis.com']);
 const originalFetch = globalThis.fetch;
