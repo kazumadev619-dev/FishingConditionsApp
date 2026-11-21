@@ -65,6 +65,17 @@ describe('calculateTideScore の潮の大きさ', () => {
     expect(calculateTideScore(tide, at('12:00'))).toBe(25 + size);
   });
 
+  // 「潮位差は、満潮の高さ − 干潮の高さ（m。潮汐データの cm を 100 で割る）」。差を cm で取ってから割る。
+  // cm を先に 100 で割って引くと 2.01 - 0.51 = 1.4999999999999998 になり、境目ちょうどの 1.5m が 12点に下がる。
+  it.each([
+    [201, 51, 15], // 差 150cm = 1.5m
+    [113, 13, 12], // 差 100cm = 1.0m
+    [57, 7, 8], // 差 50cm = 0.5m
+  ])('満潮 %scm・干潮 %scm（差がちょうど境目）のとき、潮の大きさは %s 点', (high, low, size) => {
+    const tide = tideOf([{ time: '12:00', cm: high }], [{ time: '00:00', cm: low }]);
+    expect(calculateTideScore(tide, at('12:00'))).toBe(25 + size);
+  });
+
   // 「現在時刻に最も近い満潮の高さ − 現在時刻に最も近い干潮の高さ。その日の最高満潮と最低干潮ではない」
   it('潮位差は、その日の最高・最低ではなく、現在時刻に最も近い満潮と干潮から作る', () => {
     const tide = tideOf(

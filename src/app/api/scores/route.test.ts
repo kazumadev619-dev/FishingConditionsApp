@@ -1,4 +1,4 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const cacheMock = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn() }));
@@ -11,7 +11,9 @@ vi.mock('@/lib/rateLimit', () => ({
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
 vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));
 vi.mock('@/lib/tideService', () => ({ getTideData: tideMock }));
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
+import { CACHE_TTL } from '@/lib/cache';
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
 import type { FormattedTideData } from '@/lib/tideService';
 import { GET } from './route';
@@ -112,5 +114,191 @@ describe('GET /api/scores の基準時刻（#301）', () => {
     expect(res.headers.get('X-From-Cache')).toBe('false');
     expect(body.score.calculatedAt).toBe('2026-10-12T08:45:00.000Z');
     expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+});
+
+// 以下は #364。スコア API のキャッシュと入力検証。期待値の出どころは各 describe に書く。
+const BASE = 'lat=35.6789&lon=139.7654&prefectureCode=13&portCode=1';
+const get = (query: string) => GET(new NextRequest(`http://localhost/api/scores?${query}`));
+
+// 守る状態: 応答は共有キャッシュ（CDN・中間プロキシ）に保存されない。
+// 期待値: docs/reference/architecture.md「キャッシュの層」（`/api/scores` は `private, max-age=1800`（30分）。
+// 認証必須の API なので `public` にして共有キャッシュに載せない）。skipCache の no-store は同文書に記述がない
+// （route.ts の挙動。キャッシュを使わない指定の応答は保存させない、という解釈）。
+describe('GET /api/scores の Cache-Control', () => {
+  it('キャッシュ経由の応答は private で、max-age はスコアの TTL（30分）', async () => {
+    const res = await get(BASE);
+
+    const control = res.headers.get('Cache-Control') ?? '';
+    expect(control.split(/,\s*/)).toContain('private');
+    expect(control).not.toMatch(/public|s-maxage/);
+    expect(control).toContain(`max-age=${CACHE_TTL.SCORE}`);
+  });
+
+  it('キャッシュヒットの応答も private', async () => {
+    cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody() });
+    const res = await get(BASE);
+
+    expect(res.headers.get('Cache-Control')?.split(/,\s*/)).toContain('private');
+  });
+
+  it('skipCache=true の応答は保存させない（no-store）', async () => {
+    const res = await get(`${BASE}&skipCache=true`);
+
+    expect(res.headers.get('Cache-Control')).toBe('no-store');
+  });
+});
+
+// キャッシュは JSON で往復するので、Date は ISO 文字列で戻る。Invalid Date は null に落ちる。
+const cachedBody = (calculatedAt: string | null = '2026-10-12T05:10:00.000Z') => ({
+  score: {
+    score: 70,
+    rank: 'good',
+    components: { tide: 30, weather: 20, time: 20 },
+    explanation: '',
+    bestComponent: 'tide',
+    worstComponent: 'weather',
+    calculatedAt,
+  },
+  fromCache: false,
+});
+
+// 守る状態: キャッシュヒット時は外部 API を呼ばず、calculatedAt を Date に戻し、壊れた日付は 200 で素通りさせない。
+// 期待値: docs/reference に記述なし。根拠は route.ts と reviveDate の注記（#364 の完了条件「キャッシュヒット時の Date 復元」）:
+// 「復元を怠るとキャッシュヒット時だけ実行時に壊れる」と
+// 「Invalid Date は null に落ち、new Date(null) は 1970-01-01 の正常な Date になる。ここで明示的に落とす」。
+describe('GET /api/scores のキャッシュヒット', () => {
+  it('外部 API を呼ばず、X-From-Cache: true で、calculatedAt を Date に戻して返す', async () => {
+    cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody() });
+    const json = vi.spyOn(NextResponse, 'json');
+
+    const res = await get(BASE);
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get('X-From-Cache')).toBe('true');
+    expect(weatherMock).not.toHaveBeenCalled();
+    expect(tideMock).not.toHaveBeenCalled();
+    const sent = json.mock.calls[0][0] as { score: { calculatedAt: unknown } };
+    expect(sent.score.calculatedAt).toBeInstanceOf(Date);
+    expect((sent.score.calculatedAt as Date).toISOString()).toBe('2026-10-12T05:10:00.000Z');
+    expect((await res.json()).score.calculatedAt).toBe('2026-10-12T05:10:00.000Z');
+  });
+
+  it.each([
+    ['null（Invalid Date が往復した）', null],
+    ['日付にならない文字列', 'not-a-date'],
+  ])('calculatedAt が %s ときは 500 を返し、1970 年などの値で返さない', async (_name, value) => {
+    cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody(value) });
+
+    const res = await get(BASE);
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Failed to calculate fishing score' });
+  });
+
+  it('ミスのときは X-From-Cache: false で、外部 API を呼び、結果をキャッシュに保存する', async () => {
+    const res = await get(BASE);
+
+    expect(res.headers.get('X-From-Cache')).toBe('false');
+    expect(weatherMock).toHaveBeenCalledOnce();
+    expect(tideMock).toHaveBeenCalledOnce();
+    expect(cacheMock.set).toHaveBeenCalledOnce();
+  });
+});
+
+// 守る状態: 本文の fromCache は、天気と潮汐の両方がキャッシュ由来のときだけ true（型の注記「キャッシュから取得したか」。
+// 片方でも外部 API を叩いていれば、キャッシュから取得したとは言えない）。
+describe('GET /api/scores の fromCache', () => {
+  it.each([
+    [false, false, false],
+    [true, false, false],
+    [false, true, false],
+    [true, true, true],
+  ])('天気 fromCache=%s・潮汐 fromCache=%s のとき %s', async (w, t, expected) => {
+    weatherMock.mockResolvedValue({ data: weather, fromCache: w });
+    tideMock.mockResolvedValue({ data: tide, fromCache: t });
+
+    const body = await (await get(BASE)).json();
+
+    expect(body.fromCache).toBe(expected);
+  });
+});
+
+// 守る状態: 検証していない値を Redis のキーや外部 API に流さない。
+// 期待値: route.ts の注記「検証していないパラメータをキャッシュキーに混ぜると、値を変えるだけで無制限に
+// 新しいキーを作れてしまう」。形式は validators（prefectureCode は数字 1〜2 桁、portCode は英数字）。
+describe('GET /api/scores の入力検証', () => {
+  const rejected = async (query: string, status: number, error: string) => {
+    const res = await get(query);
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ error });
+    expect(cacheMock.get).not.toHaveBeenCalled();
+    expect(weatherMock).not.toHaveBeenCalled();
+    expect(tideMock).not.toHaveBeenCalled();
+  };
+  const without = (name: string) =>
+    BASE.split('&')
+      .filter((p) => !p.startsWith(`${name}=`))
+      .join('&');
+
+  it.each(['a-b', 'a%20b', '..%2Fx', 'ab%0Acd', 'ポート', '1%3B2'])(
+    'portCode=%s は 400（キャッシュも外部 API も通さない）',
+    (port) =>
+      rejected(
+        `lat=35.6789&lon=139.7654&prefectureCode=13&portCode=${port}`,
+        400,
+        'Invalid portCode format',
+      ),
+  );
+
+  it.each(['abc', '123', '-1', '1.5', '1%20'])('prefectureCode=%s は 400', (pref) =>
+    rejected(
+      `lat=35.6789&lon=139.7654&prefectureCode=${pref}&portCode=1`,
+      400,
+      'Invalid prefectureCode format',
+    ),
+  );
+
+  it.each(['prefectureCode', 'portCode'])('%s が無いと 400', (name) =>
+    rejected(without(name), 400, 'Missing required parameters: prefectureCode, portCode'),
+  );
+
+  it('portCode が空でも 400', () =>
+    rejected(
+      'lat=35.6789&lon=139.7654&prefectureCode=13&portCode=',
+      400,
+      'Missing required parameters: prefectureCode, portCode',
+    ));
+
+  it.each(['2026-02-30', '2026-13-01', '20261012', 'yesterday'])('date=%s は 400', (date) =>
+    rejected(
+      `${BASE}&date=${date}`,
+      400,
+      'Invalid date. Use an existing date in YYYY-MM-DD format',
+    ),
+  );
+
+  it('緯度経度が範囲外なら 400', async () => {
+    const res = await get('lat=91&lon=139.7654&prefectureCode=13&portCode=1');
+
+    expect(res.status).toBe(400);
+    expect(cacheMock.get).not.toHaveBeenCalled();
+  });
+
+  it.each(['1', '13', 'ab12', 'ABC'])('形式が正しい portCode=%s は受け付ける', async (port) => {
+    const res = await get(`lat=35.6789&lon=139.7654&prefectureCode=13&portCode=${port}`);
+
+    expect(res.status).toBe(200);
+  });
+});
+
+describe('GET /api/scores の取得失敗', () => {
+  it('外部取得が失敗したら 500 と固定のメッセージを返す（内部のエラー文を出さない）', async () => {
+    weatherMock.mockRejectedValue(new Error('secret upstream detail'));
+
+    const res = await get(BASE);
+
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'Failed to calculate fishing score' });
   });
 });
