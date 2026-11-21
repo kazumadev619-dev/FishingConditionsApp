@@ -130,7 +130,6 @@ export async function fetchWeatherData(lat: number, lon: number) {
         lat: String(lat),
         lon: String(lon),
       },
-      timeout: 8000, // 8秒
     });
 
     return { success: true, data: weather };
@@ -275,16 +274,6 @@ if (error instanceof ApiError) {
 ### 3. エラーログを構造化する
 
 `logApiError(error, { endpoint: '/weather' })` を使う。`console.error` に書かない。
-
-### 4. カスタムタイムアウトを設定
-
-```typescript
-// 遅い API にはタイムアウトを長くする
-const tideData = await tide736Client.get('/get_tide.php', {
-  params: { pc: '13', hc: '1', yr: '2026', mn: '11', dy: '20', rg: 'day' },
-  timeout: 15000, // 15秒
-});
-```
 
 ## まとめ
 

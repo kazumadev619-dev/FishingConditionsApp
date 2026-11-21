@@ -115,6 +115,36 @@ describe('ApiClient のリトライ', () => {
     await promise;
   });
 
+  // develop の実装と同じ挙動を保つ（#379）。リトライ先の応答が不正な JSON なら、
+  // ApiError に包まず SyntaxError がそのまま届く。/api/weather では 500 になる。
+  it('503 のあとの応答が不正な JSON なら、SyntaxError がそのまま届く', async () => {
+    fetchMock
+      .mockResolvedValueOnce(httpError(503))
+      .mockResolvedValueOnce(
+        new Response('not json', { status: 200, headers: { 'content-type': 'text/html' } }),
+      );
+
+    const settled = newClient()
+      .get('/x')
+      .then(
+        () => 'resolved',
+        (e: unknown) => e,
+      );
+    await vi.runAllTimersAsync();
+
+    expect(await settled).toBeInstanceOf(SyntaxError);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('fetch が失敗しても、中断用のタイマーは残さない', async () => {
+    fetchMock.mockRejectedValue(new TypeError('Invalid URL'));
+
+    // リトライしない失敗なので、待ち時間の timer は無い。残るとすれば中断用の timer だけ
+    await expect(newClient().get('/x')).rejects.toBeInstanceOf(ApiError);
+
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('タイムアウトは 10 秒で打ち切り、リトライしたあと TIMEOUT を投げる', async () => {
     fetchMock.mockImplementation(
       (_url: string, init: RequestInit) =>
@@ -207,6 +237,7 @@ describe('ApiClient のリクエスト', () => {
     expect(new URL(fetchMock.mock.calls[0][0] as string).search).toBe('');
   });
 
+  // 根拠は実装の「未設定ならリクエストしない」ガード（docs/reference に記述は無い。残すかは #421 で確認中）
   it('キーが空で requireApiKey=true なら、fetch せずに CLIENT_ERROR を投げる', async () => {
     const client = new ApiClient('https://example.test/api', '', 'appid', true);
 
