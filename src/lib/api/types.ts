@@ -18,15 +18,8 @@ export class ApiError extends Error {
   }
 }
 
-export interface RequestOptions extends Omit<RequestInit, 'cache'> {
+export interface RequestOptions {
   params?: Record<string, string>;
-  timeout?: number;
-  retries?: number;
-  cache?: {
-    ttl: number;
-    key?: string;
-    prefix?: string;
-  };
 }
 
 // 429 は入れない。絞られている上流を叩き直すと呼び出しが増えるだけ
