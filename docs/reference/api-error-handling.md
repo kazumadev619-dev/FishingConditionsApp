@@ -248,6 +248,18 @@ const NON_RETRYABLE_STATUS_CODES = [
 
 `/api/weather` の Route Handler が `getErrorMessage` と `logApiError` を使っている。
 
+## 上流の応答が不正なとき
+
+OpenWeather が 200 を返しても、スコアに使う数値（風速）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
+
+| 入口 | 利用者に出るもの |
+|---|---|
+| `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
+| `/api/scores` | HTTP 500。`error` は「Failed to calculate fishing score」 |
+| `/` と `/dashboard` | `try/catch` が無いので、Next.js のエラー画面 |
+
+応答には、不正だった値も上流の本文も入れない（`message` はログにだけ残る）。点を付けられない値を 0 点として扱う案は採らない（点と説明文が食い違うため）。
+
 ## ベストプラクティス
 
 ### 1. エラー型ごとに異なる対応をする
