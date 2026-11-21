@@ -250,7 +250,7 @@ const NON_RETRYABLE_STATUS_CODES = [
 
 ## 上流の応答が不正なとき
 
-OpenWeather が 200 を返しても、スコアに使う数値（風速）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
+OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
 
 | 入口 | 利用者に出るもの |
 |---|---|

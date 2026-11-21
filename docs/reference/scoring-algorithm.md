@@ -126,7 +126,7 @@ calculateWeatherScore(weather: WeatherData): number {
 | 4m/s を超え 6m/s 以下 | 5点 | やや不利 |
 | 6m/s を超える | 0点 | 不適 |
 
-風速が有限の数値でないとき（欠損・`null`・`NaN`・文字列・無限大）は、点を付けない。OpenWeather の応答を受け取る時点（`src/lib/openWeatherService.ts`）で、不正な応答として弾く（#414）。0 点として扱うと、説明文の風の注意と食い違うため。弾いたときの応答は [api-error-handling.md](./api-error-handling.md#上流の応答が不正なとき) に書く。0m/s は欠損ではなく、有効な値（15点）。
+風速と気圧が有限の数値でないとき（欠損・`null`・`NaN`・文字列・無限大）は、点を付けない。OpenWeather の応答を受け取る時点（`src/lib/openWeatherService.ts`）で、不正な応答として弾く（#414）。風速を 0 点として扱うと説明文の風の注意と食い違い、気圧は比較が false になって満点（8点）になるため。弾いたときの応答は [api-error-handling.md](./api-error-handling.md#上流の応答が不正なとき) に書く。0m/s は欠損ではなく、有効な値（15点）。天候（`weather.main`）と日時の欠損は、この決定の対象外（別 issue）。
 
 ### 天候評価
 

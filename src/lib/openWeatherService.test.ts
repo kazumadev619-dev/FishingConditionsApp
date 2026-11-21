@@ -25,6 +25,10 @@ const rawWeather = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+const withPressure = (pressure: unknown) => ({
+  main: { temp: 20, feels_like: 19, humidity: 60, pressure },
+});
+
 const fetchWeather = () => getCurrentWeather(35, 139, { skipCache: true });
 
 beforeEach(() => vi.clearAllMocks());
@@ -64,5 +68,32 @@ describe('風速が有限の数値でない応答は弾く（#414）', () => {
     await expect(getCurrentWeather(35, 139)).rejects.toBeInstanceOf(ApiError);
 
     expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+});
+
+// 気圧が数値でないと、気圧の点の「<990 || >1030」が false になり、満点（8点）になる。
+describe('気圧が有限の数値でない応答は弾く（#414）', () => {
+  it.each([
+    ['pressure が無い', { main: { temp: 20, feels_like: 19, humidity: 60 } }],
+    ['pressure が null', withPressure(null)],
+    ['pressure が NaN', withPressure(Number.NaN)],
+    ['pressure が文字列', withPressure('1013')],
+    ['pressure が無限大', withPressure(Number.NEGATIVE_INFINITY)],
+    ['main 自体が無い', { main: undefined }],
+  ])('%s → 502 の ApiError（SERVER_ERROR）', async (_label, overrides) => {
+    apiMock.openWeatherMapClient.get.mockResolvedValue(rawWeather(overrides));
+
+    const error = await fetchWeather().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(ApiError);
+    expect(error).toMatchObject({ statusCode: 502, type: ApiErrorType.SERVER_ERROR });
+  });
+
+  it.each([0, 985, 1013, 1040])('気圧 %s は通す', async (pressure) => {
+    apiMock.openWeatherMapClient.get.mockResolvedValue(rawWeather(withPressure(pressure)));
+
+    const result = await fetchWeather();
+
+    expect(result.data.pressure).toBe(pressure);
   });
 });
