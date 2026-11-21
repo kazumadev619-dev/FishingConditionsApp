@@ -104,7 +104,7 @@ function roundCoordinates(lat: number, lon: number): { roundedLat: number; round
  * 通すと、風の点は 0 点なのに説明文の風の注意が出ない、気圧の点が満点になるなど、点と説明が食い違う。
  * 弾いた応答はキャッシュに書かれない。
  */
-function assertFiniteNumber(value: unknown, field: string): asserts value is number {
+function assertFiniteNumber(value: unknown, field: string): void {
   if (!Number.isFinite(value)) {
     throw createApiError(502, `OpenWeatherMap returned an invalid ${field}`);
   }
