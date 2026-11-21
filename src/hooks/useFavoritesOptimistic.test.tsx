@@ -1,7 +1,8 @@
 import type { SetStateAction } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FavoriteLocation } from '@/types/favorites';
+import { logger } from '@/lib/logger';
+import type { FavoriteLocation, FavoriteRequest } from '@/types/favorites';
 import { overlayPending, type PendingFavoriteOps } from './useFavoritesFetch';
 import { useFavoritesOptimistic } from './useFavoritesOptimistic';
 
@@ -75,6 +76,44 @@ afterEach(() => {
 });
 
 describe('useFavoritesOptimistic', () => {
+  describe('POST /api/favorites に送る本文（FavoriteRequest のまま）', () => {
+    const cases: Array<[string, FavoriteRequest]> = [
+      ['locationId', { locationId: 'L1' }],
+      ['portId', { portId: 'port-1' }],
+      ['座標', { coordinates: { lat: 35.1, lng: 139.2, name: '地点' } }],
+    ];
+
+    it.each(cases)('%s で追加すると、その形のまま送る', async (_label, request) => {
+      const store = createStore([]);
+      const pending = deferredFetch();
+
+      const add = renderHook(store).addFavorite(request);
+      pending[0](jsonResponse(200, { success: true, locationId: 'L1' }));
+      await add;
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/favorites');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual(request);
+    });
+
+    it('座標の追加が失敗しても、ログに name（地点名）は出さない', async () => {
+      const store = createStore([]);
+      const pending = deferredFetch();
+
+      const add = renderHook(store).addFavorite({
+        coordinates: { lat: 35.1, lng: 139.2, name: '地点' },
+      });
+      pending[0](jsonResponse(500, { error: 'boom' }));
+      await expect(add).rejects.toThrow('boom');
+
+      expect(vi.mocked(logger.error).mock.calls[0]?.[0]).toMatchObject({
+        coordinates: { lat: 35.1, lng: 139.2 },
+      });
+      expect(JSON.stringify(vi.mocked(logger.error).mock.calls[0]?.[0])).not.toContain('地点');
+    });
+  });
+
   it('削除の失敗は、その後に成功した別の削除を巻き戻さない', async () => {
     const store = createStore([fav('X'), fav('Y'), fav('Z')]);
     const pending = deferredFetch();

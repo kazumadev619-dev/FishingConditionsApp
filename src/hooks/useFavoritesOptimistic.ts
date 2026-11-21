@@ -90,7 +90,15 @@ export function useFavoritesOptimistic({
         await fetchFavorites();
         return data.locationId;
       } catch (err) {
-        logger.error({ err, ...request }, 'Failed to add favorite');
+        logger.error(
+          {
+            err,
+            locationId,
+            portId: request.portId,
+            coordinates: coordinates && { lat: coordinates.lat, lng: coordinates.lng },
+          },
+          'Failed to add favorite',
+        );
         pending.adds.delete(tempId);
         setFavorites((prev) => prev.filter((fav) => fav.id !== tempId));
         throw err;

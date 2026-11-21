@@ -50,4 +50,12 @@ describe('useDashboardFavorite の登録', () => {
 
     expect(addFavorite).toHaveBeenCalledWith({ locationId: 'existing' });
   });
+
+  it('既存の行が無い座標の画面は、座標で登録する', async () => {
+    const coordinates = { lat: 35, lng: 139, name: '地点' };
+
+    await toggle({ source: { type: 'coordinates', coordinates } });
+
+    expect(addFavorite).toHaveBeenCalledWith({ coordinates });
+  });
 });
