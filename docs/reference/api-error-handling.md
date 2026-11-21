@@ -98,6 +98,8 @@ try {
 
 タイムアウトは 10 秒、リトライは最大 3 回（最初の呼び出しと合わせて 4 回）で固定です。呼び出しごとには変えられません（#379 で、使っている呼び出しが無かった `timeout`・`retries` を削った）。遅延は 100ms・200ms・400ms です（`src/lib/api/retryStrategy.ts`）。
 
+API キーが必要なクライアントで、キーが未設定のときは、上流を呼ばず、`ApiErrorType.CLIENT_ERROR`（`retryable: false`）を投げます（`src/lib/api/client.ts`）。
+
 ### リトライ可能なエラーの判定
 
 ```typescript

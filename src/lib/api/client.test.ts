@@ -237,7 +237,7 @@ describe('ApiClient のリクエスト', () => {
     expect(new URL(fetchMock.mock.calls[0][0] as string).search).toBe('');
   });
 
-  // 根拠は実装の「未設定ならリクエストしない」ガード（docs/reference に記述は無い。残すかは #421 で確認中）
+  // 根拠: docs/reference/api-error-handling.md「タイムアウトとリトライの設定」の、キー未設定のときの記述
   it('キーが空で requireApiKey=true なら、fetch せずに CLIENT_ERROR を投げる', async () => {
     const client = new ApiClient('https://example.test/api', '', 'appid', true);
 
