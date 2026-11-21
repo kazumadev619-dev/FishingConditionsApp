@@ -24,11 +24,6 @@ export function getErrorMessage(error: ApiError): string {
   }
 }
 
-// リトライ可能かどうかを判定
-export function isRetryable(error: ApiError): boolean {
-  return error.retryable;
-}
-
 /**
  * エラーをログに記録（構造化ログ）
  */

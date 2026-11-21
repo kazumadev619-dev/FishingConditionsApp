@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/lib/api/`、`src/lib/apiClient.ts`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`
-> - **最終確認**: 2026-11-21（2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **最終確認**: 2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -94,18 +94,9 @@ try {
 }
 ```
 
-### タイムアウトと リトライの設定
+### タイムアウトとリトライの設定
 
-```typescript
-// デフォルト: タイムアウト 10秒、リトライ 3回
-
-// カスタム設定: タイムアウト 5秒、リトライ 1回
-const weather = await openWeatherMapClient.get('/weather', {
-  params: { lat: '35.6762', lon: '139.6503' },
-  timeout: 5000,  // 5秒
-  retries: 1,     // 1回リトライ
-});
-```
+タイムアウトは 10 秒、リトライは最大 3 回（最初の呼び出しと合わせて 4 回）で固定です。呼び出しごとには変えられません（#379 で、使っている呼び出しが無かった `timeout`・`retries` を削った）。遅延は 100ms・200ms・400ms です（`src/lib/api/retryStrategy.ts`）。
 
 ### リトライ可能なエラーの判定
 
@@ -207,7 +198,7 @@ const RETRYABLE_STATUS_CODES = [
 ];
 ```
 
-タイムアウトもリトライ対象です。ネットワークエラーは、`TypeError` で、メッセージに `fetch` を含むものだけがリトライ対象です（`src/lib/api/retryStrategy.ts` の `isRetryable`）。それ以外の `TypeError` は `NETWORK_ERROR` になりますが、リトライしません。
+タイムアウトもリトライ対象です。ネットワークエラーは、`TypeError` で、メッセージに `fetch` を含むものだけがリトライ対象です（`src/lib/api/client.ts`）。それ以外の `TypeError` は `NETWORK_ERROR` になりますが、リトライしません。
 
 **429（レート制限）はリトライしません。** 上流が絞っているときに叩き直すと、呼び出しが増えるだけで、状況を悪くするためです（#317）。429 は `ApiErrorType.RATE_LIMITED`、`retryable: false` になります（`src/lib/api/errorHandler.ts`）。
 
@@ -239,7 +230,6 @@ const RETRYABLE_STATUS_CODES = [
 
 - `getErrorMessage(error: ApiError): string`: `ApiErrorType` から、利用者向けの日本語のメッセージを返す。
 - `logApiError(error: ApiError, context?)`: `{ type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp, ...context }` を、メッセージ `API request failed` で `logger.error` に出す。
-- `isRetryable(error: ApiError): boolean`: `error.retryable` を返す。
 
 `/api/weather` の Route Handler が `getErrorMessage` と `logApiError` を使っている。
 
