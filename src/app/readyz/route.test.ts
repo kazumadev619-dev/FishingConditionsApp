@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import prisma from '@/lib/prisma';
 
-vi.mock('@/lib/cache', () => ({ cache: { isAvailable: () => true } }));
+vi.mock('@/lib/cache/client', () => ({ cache: { isAvailable: () => true } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('@/lib/prisma', () => ({ default: { $queryRaw: vi.fn() } }));
 

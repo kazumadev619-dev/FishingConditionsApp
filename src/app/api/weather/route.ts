@@ -4,7 +4,7 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import { ApiError } from '@/lib/apiClient';
+import { ApiError } from '@/lib/api/types';
 import { getErrorMessage, logApiError } from '@/lib/apiErrorUtils';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';

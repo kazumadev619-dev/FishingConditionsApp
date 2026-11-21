@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiError } from '@/lib/api/errorHandler';
-import { ApiError, ApiErrorType } from '@/lib/apiClient';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 import { searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
@@ -142,6 +142,13 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         'CLIENT_ERROR',
         createApiError(401, SECRET),
         401,
+        'リクエストが無効です。入力内容を確認してください。',
+        false,
+      ],
+      [
+        'CLIENT_ERROR',
+        createApiError(422, SECRET),
+        422,
         'リクエストが無効です。入力内容を確認してください。',
         false,
       ],

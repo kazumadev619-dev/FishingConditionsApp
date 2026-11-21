@@ -8,7 +8,7 @@ const apiMock = vi.hoisted(() => ({
 const geocodeMock = vi.hoisted(() => vi.fn());
 
 vi.mock('./client', () => ({ cache: cacheMock }));
-vi.mock('../apiClient', () => apiMock);
+vi.mock('../api/client', () => apiMock);
 vi.mock('../googleMapsClient', () => ({ geocode: geocodeMock }));
 
 import { searchLocations } from '../locationService';

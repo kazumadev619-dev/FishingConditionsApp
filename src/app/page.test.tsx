@@ -8,7 +8,7 @@ vi.mock('@/lib/openWeatherService', () => ({
   getCurrentWeather: vi.fn(async () => ({ data: { sunrise: new Date(), sunset: new Date() } })),
 }));
 vi.mock('@/lib/tideService', () => ({ getTideData: vi.fn(async () => ({ data: tideData })) }));
-vi.mock('@/lib/scoringService', () => ({
+vi.mock('@/lib/scoring', () => ({
   calculateFishingScore: vi.fn(() => ({ components: { time: 0 } })),
 }));
 vi.mock('./dashboard/resolveLocation', () => ({

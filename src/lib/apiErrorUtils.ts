@@ -1,4 +1,4 @@
-import { type ApiError, ApiErrorType } from './apiClient';
+import { type ApiError, ApiErrorType } from './api/types';
 import { logger } from './logger';
 
 // エラー型から日本語のメッセージを生成
@@ -22,11 +22,6 @@ export function getErrorMessage(error: ApiError): string {
     default:
       return 'エラーが発生しました。もう一度お試しください。';
   }
-}
-
-// リトライ可能かどうかを判定
-export function isRetryable(error: ApiError): boolean {
-  return error.retryable;
 }
 
 /**

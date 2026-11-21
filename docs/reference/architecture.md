@@ -143,10 +143,10 @@ src/
 │   └── favorites/     # お気に入り
 ├── lib/
 │   ├── openWeatherService.ts / tideService.ts / locationService.ts
-│   ├── portMappingService.ts / scoringService.ts   # サービス関数（クラスではない）
+│   ├── portMappingService.ts   # サービス関数（クラスではない）
 │   ├── scoring/       # スコア計算（潮汐・天気・時間帯）
 │   ├── api/           # 外部 API 用の HTTP クライアント（リトライ・タイムアウト）
-│   ├── cache/         # Redis クライアントとキャッシュのヘルパー（cache.ts は再 export のみ）
+│   ├── cache/         # Redis クライアントとキャッシュのヘルパー
 │   ├── validators/    # 入力検証
 │   ├── utils/         # 日付・スコアのランクなど
 │   └── prisma.ts      # Prisma クライアント
@@ -373,7 +373,7 @@ erDiagram
    - 期限切れ → tide736.net API呼び出し → Redisにキャッシュ保存
    ↓
 4. スコア計算
-   - scoringService（src/lib/scoring/）: 天気 + 潮汐 + 時間 → 0-100のスコア算出
+   - scoring（src/lib/scoring/）: 天気 + 潮汐 + 時間 → 0-100のスコア算出
    ↓
 5. UI表示
    - スコア、天気、潮汐情報をダッシュボードに表示
@@ -383,7 +383,7 @@ erDiagram
 
 ### キャッシュ戦略の重要ポイント
 
-> **NOTE**: 天気・潮汐・場所・スコアのキャッシュは Redis で管理する（`src/lib/cache/`。`src/lib/cache.ts` は再 export だけ）。TTL は `src/lib/cache/config.ts`。
+> **NOTE**: 天気・潮汐・場所・スコアのキャッシュは Redis で管理する（`src/lib/cache/`）。TTL は `src/lib/cache/config.ts`。
 
 キーは `<プレフィックス>:` のあとに、パラメータを**キー名の昇順**で `名:値` とつないだもの（`generateCacheKey`）。
 

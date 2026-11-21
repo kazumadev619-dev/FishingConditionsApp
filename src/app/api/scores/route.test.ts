@@ -11,6 +11,7 @@ vi.mock('@/lib/rateLimit', () => ({
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
 vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));
 vi.mock('@/lib/tideService', () => ({ getTideData: tideMock }));
+vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
 import type { FormattedTideData } from '@/lib/tideService';
@@ -112,5 +113,80 @@ describe('GET /api/scores の基準時刻（#301）', () => {
     expect(res.headers.get('X-From-Cache')).toBe('false');
     expect(body.score.calculatedAt).toBe('2026-10-12T08:45:00.000Z');
     expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+});
+
+// 以下は #364。スコア API のキャッシュ。期待値の出どころは各 describe に書く。
+
+// 守る状態: 応答は共有キャッシュ（CDN・中間プロキシ）に保存されない。
+// 期待値: docs/reference/architecture.md「キャッシュの層」（`/api/scores` は `private, max-age=1800`（30分）。
+// 認証必須の API なので `public` にして共有キャッシュに載せない）。
+describe('GET /api/scores の Cache-Control', () => {
+  it('キャッシュ経由の応答は private, max-age=1800', async () => {
+    const res = await GET(request());
+
+    const control = res.headers.get('Cache-Control') ?? '';
+    expect(control.split(/,\s*/)).toContain('private');
+    expect(control).not.toMatch(/public|s-maxage/);
+    expect(control).toContain('max-age=1800');
+  });
+
+  it('キャッシュヒットの応答も private', async () => {
+    cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody() });
+    const res = await GET(request());
+
+    expect(res.headers.get('Cache-Control')?.split(/,\s*/)).toContain('private');
+  });
+});
+
+const cachedBody = () => ({
+  score: {
+    score: 70,
+    rank: 'good',
+    components: { tide: 30, weather: 20, time: 20 },
+    explanation: '',
+    bestComponent: 'tide',
+    worstComponent: 'weather',
+    calculatedAt: '2026-10-12T05:10:00.000Z',
+  },
+  fromCache: false,
+});
+
+// 守る状態: キャッシュヒットでは外部 API を呼ばず、ミスでは呼んで結果を保存する。
+// 期待値: docs/reference/architecture.md「キャッシュの層」（Redis は外部 API の結果を保つ）。
+// 呼び出し回数を見るのは、回数が仕様（キャッシュ）のため（testing-policy 5節の例外）。
+// X-From-Cache の値、日付の復元・壊れた日付の扱いは仕様未定のため、ここでは固定しない（#420）。
+describe('GET /api/scores のキャッシュヒットとミス', () => {
+  it('ヒットのときは外部 API を呼ばない', async () => {
+    cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody() });
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(200);
+    expect(weatherMock).not.toHaveBeenCalled();
+    expect(tideMock).not.toHaveBeenCalled();
+  });
+
+  it('ミスのときは外部 API を呼び、結果をキャッシュに保存する', async () => {
+    await GET(request());
+
+    expect(weatherMock).toHaveBeenCalledOnce();
+    expect(tideMock).toHaveBeenCalledOnce();
+    expect(cacheMock.set).toHaveBeenCalledOnce();
+  });
+});
+
+// 取得に失敗したら 500 を返し、内部のエラー文は出さない。
+// 出典: docs/reference/api-error-handling.md には /api/scores の 500 の本文の文言の記述がない
+// （同文書「ユーザーに適切なメッセージを表示」は getErrorMessage を使うとだけ書く）。そのため文言そのものは固定せず、
+// ステータスと「内部のエラー文を含まない」ことだけを見る。文言の仕様は #420 で扱う。
+describe('GET /api/scores の取得失敗', () => {
+  it('外部取得が失敗したら 500 を返し、内部のエラー文を出さない', async () => {
+    weatherMock.mockRejectedValue(new Error('secret upstream detail'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain('secret upstream detail');
   });
 });
