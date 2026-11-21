@@ -1,29 +1,21 @@
-import { type Cacheable, generateCacheKey, withCache } from '../cache';
 import { logger } from '../logger';
 import { createApiError, parseErrorResponse } from './errorHandler';
-import { getBackoffDelay, isRetryable } from './retryStrategy';
+import { getBackoffDelay } from './retryStrategy';
 import { ApiError, ApiErrorType, type RequestOptions } from './types';
 
 class ApiClient {
   private baseUrl: string;
   private apiKey: string;
-  private keyLocation: 'query' | 'header';
   private keyName: string;
   private isConfigured: boolean = true;
 
-  private readonly DEFAULT_TIMEOUT_MS = 10000;
-  private readonly DEFAULT_RETRIES = 3;
+  private readonly TIMEOUT_MS = 10000;
+  private readonly MAX_RETRIES = 3;
 
-  constructor(
-    baseUrl: string,
-    apiKey: string,
-    keyLocation: 'query' | 'header' = 'header',
-    keyName: string = 'X-API-Key',
-    requireApiKey: boolean = true,
-  ) {
+  // API キーはクエリで渡す（3 つのクライアントすべてがそう使っている）
+  constructor(baseUrl: string, apiKey: string, keyName: string, requireApiKey: boolean = true) {
     this.baseUrl = baseUrl;
     this.apiKey = apiKey;
-    this.keyLocation = keyLocation;
     this.keyName = keyName;
 
     if (requireApiKey && !apiKey) {
@@ -36,9 +28,9 @@ class ApiClient {
     return this.isConfigured;
   }
 
-  private async request<T extends Cacheable>(
+  private async request<T>(
     endpoint: string,
-    options: RequestOptions = {},
+    params?: Record<string, string>,
     attempt: number = 0,
   ): Promise<T> {
     if (!this.isConfigured) {
@@ -50,32 +42,6 @@ class ApiClient {
       );
     }
 
-    const { cache: cacheOptions, ...restOptions } = options;
-
-    if (cacheOptions && attempt === 0) {
-      const cacheKey =
-        cacheOptions.key ||
-        generateCacheKey(cacheOptions.prefix || 'api', restOptions.params || {});
-
-      return (
-        await withCache<T>(
-          cacheKey,
-          cacheOptions.ttl,
-          () => this.request<T>(endpoint, restOptions, attempt),
-          // T は呼び出し側が主張する「API の JSON の形」で、キャッシュミス側も
-          // `response.json() as Promise<T>` で同じ主張をしている。値はどちらの経路でも
-          // JSON そのものなので、このキャストが足す穴は無い。T が汎用のままだと
-          // `Jsonified<T> extends T` を解決できず revive を省けないため、ここで明示する。
-          // `T extends Jsonified<T>` で縛る案は循環制約として tsc に拒否される。
-          (cached) => cached as T,
-        )
-      ).data;
-    }
-
-    const timeout = restOptions.timeout ?? this.DEFAULT_TIMEOUT_MS;
-    const maxRetries = restOptions.retries ?? this.DEFAULT_RETRIES;
-
-    const { params, headers, ...rest } = restOptions;
     const url = new URL(`${this.baseUrl}${endpoint}`);
 
     if (params) {
@@ -83,90 +49,80 @@ class ApiClient {
       Object.keys(params).forEach((key) => url.searchParams.append(key, params[key]));
     }
 
-    if (this.apiKey && this.keyLocation === 'query') {
+    if (this.apiKey) {
       url.searchParams.append(this.keyName, this.apiKey);
     }
 
-    const requestHeaders = new Headers(headers);
-    if (!requestHeaders.has('Content-Type')) {
-      requestHeaders.set('Content-Type', 'application/json');
-    }
-
-    if (this.apiKey && this.keyLocation === 'header') {
-      requestHeaders.set(this.keyName, this.apiKey);
-    }
+    // リトライできる失敗なら、遅延をログに出して待ち、同じ request をやり直す。
+    // できなければ error を投げる。
+    const retryOrThrow = async (
+      error: ApiError,
+      log: { reason?: string; message: string },
+    ): Promise<T> => {
+      if (!error.retryable || attempt >= this.MAX_RETRIES) {
+        throw error;
+      }
+      const delay = getBackoffDelay(attempt);
+      logger.warn(
+        {
+          endpoint,
+          attempt: attempt + 1,
+          maxRetries: this.MAX_RETRIES,
+          delayMs: delay,
+          ...(log.reason && { reason: log.reason }),
+        },
+        log.message,
+      );
+      await new Promise((resolve) => setTimeout(resolve, delay));
+      return this.request<T>(endpoint, params, attempt + 1);
+    };
 
     try {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeout);
+      const timeoutId = setTimeout(() => controller.abort(), this.TIMEOUT_MS);
 
-      const response = await fetch(url.toString(), {
-        headers: requestHeaders,
-        signal: controller.signal,
-        ...rest,
-      });
-
-      clearTimeout(timeoutId);
+      let response: Response;
+      try {
+        response = await fetch(url.toString(), {
+          method: 'GET',
+          headers: { 'Content-Type': 'application/json' },
+          signal: controller.signal,
+        });
+      } finally {
+        clearTimeout(timeoutId);
+      }
 
       if (!response.ok) {
         const errorMessage = await parseErrorResponse(response);
-        const error = createApiError(response.status, errorMessage);
-
-        if (error.retryable && attempt < maxRetries) {
-          const delay = getBackoffDelay(attempt);
-          logger.warn(
-            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay },
-            'Retrying API request',
-          );
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
-        }
-
-        throw error;
+        return retryOrThrow(createApiError(response.status, errorMessage), {
+          message: 'Retrying API request',
+        });
       }
 
       return response.json() as Promise<T>;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
-        const timeoutError = new ApiError(
-          `Request timeout after ${timeout}ms`,
-          ApiErrorType.TIMEOUT,
-          undefined,
-          true,
+        return retryOrThrow(
+          new ApiError(
+            `Request timeout after ${this.TIMEOUT_MS}ms`,
+            ApiErrorType.TIMEOUT,
+            undefined,
+            true,
+          ),
+          { reason: 'timeout', message: 'Retrying API request after timeout' },
         );
-
-        if (attempt < maxRetries) {
-          const delay = getBackoffDelay(attempt);
-          logger.warn(
-            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay, reason: 'timeout' },
-            'Retrying API request after timeout',
-          );
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
-        }
-
-        throw timeoutError;
       }
 
       if (error instanceof TypeError) {
-        const networkError = new ApiError(
-          `Network error: ${error.message}`,
-          ApiErrorType.NETWORK_ERROR,
-          undefined,
-          isRetryable(undefined, error),
+        return retryOrThrow(
+          new ApiError(
+            `Network error: ${error.message}`,
+            ApiErrorType.NETWORK_ERROR,
+            undefined,
+            error.message.includes('fetch'),
+          ),
+          { reason: 'network_error', message: 'Retrying API request after network error' },
         );
-
-        if (networkError.retryable && attempt < maxRetries) {
-          const delay = getBackoffDelay(attempt);
-          logger.warn(
-            { endpoint, attempt: attempt + 1, maxRetries, delayMs: delay, reason: 'network_error' },
-            'Retrying API request after network error',
-          );
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          return this.request<T>(endpoint, { ...restOptions, cache: cacheOptions }, attempt + 1);
-        }
-
-        throw networkError;
       }
 
       if (error instanceof ApiError) {
@@ -182,27 +138,14 @@ class ApiClient {
     }
   }
 
-  public get<T extends Cacheable>(endpoint: string, options?: RequestOptions): Promise<T> {
-    return this.request<T>(endpoint, { ...options, method: 'GET' });
-  }
-
-  public post<T extends Cacheable>(
-    endpoint: string,
-    data: Record<string, unknown> | unknown[],
-    options?: RequestOptions,
-  ): Promise<T> {
-    return this.request<T>(endpoint, {
-      ...options,
-      method: 'POST',
-      body: JSON.stringify(data),
-    });
+  public get<T>(endpoint: string, options?: RequestOptions): Promise<T> {
+    return this.request<T>(endpoint, options?.params);
   }
 }
 
 export const openWeatherMapClient = new ApiClient(
   'https://api.openweathermap.org/data/2.5',
   process.env.OPENWEATHERMAP_API_KEY || '',
-  'query',
   'appid',
   true,
 );
@@ -214,11 +157,10 @@ export const openWeatherMapClient = new ApiClient(
 export const googleMapsClient = new ApiClient(
   'https://maps.googleapis.com/maps/api',
   process.env.GOOGLE_MAPS_API_KEY || '',
-  'query',
   'key',
   true,
 );
 
-export const tide736Client = new ApiClient('https://tide736.net/api', '', 'query', '', false);
+export const tide736Client = new ApiClient('https://tide736.net/api', '', '', false);
 
 export { ApiClient };

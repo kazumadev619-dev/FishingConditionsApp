@@ -174,51 +174,6 @@ class CacheClient {
       return null;
     }
   }
-
-  /**
-   * キャッシュからデータを削除
-   * @param key キャッシュキー
-   */
-  public async delete(key: string): Promise<boolean> {
-    if (!this.isAvailable() || !this.client) {
-      return false;
-    }
-    try {
-      const result = await this.client.del(key);
-      return result > 0;
-    } catch (error) {
-      this.logCommandError({ key, error }, 'Failed to delete cache data');
-      return false;
-    }
-  }
-
-  /**
-   * パターンに一致するキーを削除（キャッシュ無効化）
-   * 本番環境でのKEYSコマンドの利用は避けるため、SCANを使用
-   * @param pattern キーパターン（例: "weather:*"）
-   */
-  public async deleteByPattern(pattern: string): Promise<number> {
-    if (!this.isAvailable() || !this.client) {
-      return 0;
-    }
-
-    let deletedCount = 0;
-    try {
-      const stream = this.client.scanStream({
-        match: pattern,
-        count: 100,
-      });
-
-      for await (const keys of stream) {
-        if (keys.length > 0) {
-          deletedCount += await this.client.del(keys);
-        }
-      }
-    } catch (error) {
-      this.logCommandError({ pattern, error }, 'Failed to delete cache data by pattern');
-    }
-    return deletedCount;
-  }
 }
 
 // next dev はこのモジュールを評価し直すので、使い回さないと接続が増え続ける。

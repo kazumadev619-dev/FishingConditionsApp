@@ -1,8 +1,8 @@
 # Google Maps API 連携
 
 > - **状態**: 説明（参考）
-> - **対応する実装**: `src/lib/googleMapsClient.ts`
-> - **最終確認**: 未確認
+> - **対応する実装**: `src/lib/googleMapsClient.ts`（サーバー側の Geocoding）、`src/components/molecules/FishingLocationMap.tsx`（ブラウザ側の地図。`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` を使う）
+> - **最終確認**: 2026-11-20（「対応する実装」を #388 で直した。そのほかは未確認）
 
 このドキュメントは、このプロジェクトで Google Maps API を統合し、利用する方法について概説します。
 

@@ -1,9 +1,4 @@
-import {
-  ApiError,
-  ApiErrorType,
-  NON_RETRYABLE_STATUS_CODES,
-  RETRYABLE_STATUS_CODES,
-} from './types';
+import { ApiError, ApiErrorType, RETRYABLE_STATUS_CODES } from './types';
 
 export async function parseErrorResponse(response: Response): Promise<string> {
   try {
@@ -18,23 +13,12 @@ export async function parseErrorResponse(response: Response): Promise<string> {
   }
 }
 
+// 種別は 4xx が CLIENT_ERROR・5xx が SERVER_ERROR（429 だけ RATE_LIMITED）。
+// リトライ可否は種別と独立で、RETRYABLE_STATUS_CODES（408 を含む）だけが対象。
 export function createApiError(statusCode: number, message: string): ApiError {
-  let type: ApiErrorType;
-  let retryable: boolean;
-
   if (statusCode === 429) {
-    type = ApiErrorType.RATE_LIMITED;
-    retryable = false;
-  } else if (RETRYABLE_STATUS_CODES.includes(statusCode)) {
-    type = ApiErrorType.SERVER_ERROR;
-    retryable = true;
-  } else if (NON_RETRYABLE_STATUS_CODES.includes(statusCode)) {
-    type = ApiErrorType.CLIENT_ERROR;
-    retryable = false;
-  } else {
-    type = ApiErrorType.SERVER_ERROR;
-    retryable = statusCode >= 500;
+    return new ApiError(message, ApiErrorType.RATE_LIMITED, statusCode, false);
   }
-
-  return new ApiError(message, type, statusCode, retryable);
+  const type = statusCode < 500 ? ApiErrorType.CLIENT_ERROR : ApiErrorType.SERVER_ERROR;
+  return new ApiError(message, type, statusCode, RETRYABLE_STATUS_CODES.includes(statusCode));
 }

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { cache } from '@/lib/cache';
+import { cache } from '@/lib/cache/client';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 

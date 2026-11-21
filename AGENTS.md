@@ -59,7 +59,7 @@ git commit -m "🐛 fix: バグ修正の説明 #123"
 
 コードレビューは open-code-review (OCR) の **delegate モード**で行う（月額プランで API キーが無いため、OCR 自体に LLM を呼ばせない）。
 
-- Claude Code: `open-code-review:delegate-review` スキル / Codex: Open Code Review プラグインの delegate スキル
+- Claude Code: `open-code-review:delegate-review` スキル
 - 手順: `ocr delegate preview --format json [--from develop --to HEAD]` → `ocr delegate rule --format json <paths>` → git diff を読んで自分でレビュー
 - `ocr review`（API キー必須の既定モード）は使わない
 

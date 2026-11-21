@@ -69,7 +69,6 @@
 | フロントエンド | Next.js + React + TypeScript | 16.0.10 + 19.2.3 + 5.9.3 | SSR/SSG対応、型安全性                                |
 | バックエンド   | Next.js API Routes           | 16.0.10                  | 迅速な開発、フルスタック統合（Phase 2 で Go へ分離） |
 | スタイリング   | Tailwind CSS + shadcn/ui     | 4.1.17 + latest          | モバイルファースト、コンポーネント再利用             |
-| 状態管理       | Zustand + React Query        | 5.0.8 + 5.90.7           | 軽量、外部API連携に最適                              |
 | 認証           | Auth.js                      | 5.0.0-beta.30            | 多様な認証プロバイダー対応                           |
 | ORM            | Prisma                       | 7.2.0                    | 型安全な DB アクセス                                 |
 | データベース   | PostgreSQL (Neon)            | 17                       | マネージドクラウド、Go バックエンドと共用            |
