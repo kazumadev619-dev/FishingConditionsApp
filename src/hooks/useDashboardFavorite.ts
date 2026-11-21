@@ -35,17 +35,11 @@ export function useDashboardFavorite(location: DashboardLocation) {
 
       // 港は location.id より先に見る。共有の行を港のデータに揃えるのは港の経路だけなので
       if (location.source?.type === 'port' && location.source.portId) {
-        newLocationId = await addFavorite(undefined, location.source.portId);
+        newLocationId = await addFavorite({ portId: location.source.portId });
       } else if (location.id) {
-        newLocationId = await addFavorite(location.id);
+        newLocationId = await addFavorite({ locationId: location.id });
       } else if (location.source?.type === 'coordinates' && location.source.coordinates) {
-        newLocationId = await addFavorite(
-          undefined,
-          undefined,
-          location.source.coordinates.lat,
-          location.source.coordinates.lng,
-          location.source.coordinates.name,
-        );
+        newLocationId = await addFavorite({ coordinates: location.source.coordinates });
       } else {
         return;
       }

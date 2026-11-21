@@ -1,17 +1,17 @@
 # 🔌 外部API統合ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/api/client.ts`
-> - **最終確認**: 未確認（#370 で突合する。「使用予定 API」の見出しで始まるので、仕様として使えるかも確かめる）
+> - **対応する実装**: `src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/portMappingService.ts`、`src/lib/googleMapsClient.ts`、`src/lib/api/client.ts`
+> - **最終確認**: 2026-11-20（#388 で、読んで実装と突き合わせて直した。状態を「仕様（正）」のままにするかは #392 で決める）
 
-## 使用予定API一覧
+## 使用しているAPI一覧
 
 ### 🌤️ 気象データ - OpenWeatherMap API
 
 - **URL**: https://openweathermap.org/api
 - **用途**: 気象データ（風・天気・気温・湿度・気圧）
 - **プラン**: 無料枠 1,000 calls/day
-- **エンドポイント**: `https://api.openweathermap.org/data/2.5/weather`
+- **エンドポイント**: `https://api.openweathermap.org/data/2.5` の `/weather`（現在の天気）と `/forecast`（予報）
 - **主要パラメータ**:
   - `lat`, `lon`: 緯度・経度（必須）
   - `appid`: APIキー（必須）
@@ -32,8 +32,8 @@
 
 - **URL**: https://tide736.net/
 - **用途**: 潮汐データ（満潮・干潮時刻・潮位）
-- **エンドポイント**: `https://api.tide736.net/get_tide.php`
-- **リクエスト方法**: GET or POST
+- **エンドポイント**: `https://tide736.net/api` + `/get_tide.php`
+- **リクエスト方法**: GET のみ
 - **主要パラメータ**:
   - `pc`: 都道府県コード (必須)
   - `hc`: 港コード (必須)
@@ -43,7 +43,7 @@
   - `rg`: 取得範囲 (`day`, `week`, `month`) (必須)
 - **注意点**:
   - APIは緯度・経度による検索をサポートしていません。都道府県コードと港コードが必要です。
-  - コード体系は[公式サイト](https://tide736.net/)からダウンロード可能なため、アプリ内にデータを保持し、緯度・経度から最も近い港を検索するロジックを実装する必要があります。
+  - コード体系は[公式サイト](https://tide736.net/)からダウンロード可能なため、アプリ内（`prisma/data/port-coordinates.csv` を seed した `ports` テーブル）にデータを保持し、緯度・経度から最も近い港を探します。実装済みで、`src/lib/portMappingService.ts` の `findNearestPort` です。
 - **レスポンス例**:
 
 ```json
@@ -52,11 +52,11 @@
   "message": "success",
   "tide": {
     "port": {
-      "prefecture_code": "13",
-      "harbor_code": "tk",
+      "prefecture_code": 13,
+      "harbor_code": 1,
       "harbor_namej": "東京",
-      "latitude": "35.38.25",
-      "longitude": "139.46.52"
+      "latitude": 35.4,
+      "longitude": 139.46
     },
     "chart": {
       "2025-11-22": {
@@ -65,16 +65,16 @@
           "set": "16:32"
         },
         "moon": {
-          "age": 1.2,
-          "title": "新月"
+          "age": "1.2",
+          "title": "大潮"
         },
         "flood": [
-          { "time": "04:53", "cm": "178" },
-          { "time": "16:18", "cm": "183" }
+          { "time": "04:53", "cm": 178 },
+          { "time": "16:18", "cm": 183 }
         ],
         "edd": [
-          { "time": "10:33", "cm": "84" },
-          { "time": "22:58", "cm": "96" }
+          { "time": "10:33", "cm": 84 },
+          { "time": "22:58", "cm": 96 }
         ]
       }
     }
@@ -85,8 +85,8 @@
 ### 🗺️ 地図・位置情報 - Google Maps API
 
 - **URL**: https://developers.google.com/maps
-- **用途**: 地名検索・ジオコーディング・現在位置
+- **用途**: 地名の座標変換（ジオコーディング）と地図の表示
 - **使用サービス**:
-  - Places API (地名検索)
-  - Geocoding API (座標変換)
-  - Geolocation API (現在位置)
+  - Geocoding API (座標変換。サーバーから呼ぶ。`src/lib/googleMapsClient.ts`)
+  - Maps JavaScript API (地図の表示。ブラウザから呼ぶ。`src/components/molecules/FishingLocationMap.tsx`)
+- **使っていないもの**: Places API、Geolocation API

@@ -2,7 +2,7 @@
 
 > - **状態**: 説明（参考）
 > - **対応する実装**: `src/auth/`
-> - **最終確認**: 未確認
+> - **最終確認**: 2026-11-20（#388 で、読んで実装と突き合わせて直した。実行はしていない）
 
 このドキュメントでは、Fishing Conditions Appの認証システムのフロー図とシーケンス図を提供します。
 
@@ -27,18 +27,18 @@ flowchart TD
     CredLogin --> CredAuth[Credentials認証処理]
     GoogleLogin --> GoogleAuth[Google OAuth処理]
 
-    CredRegister --> CreateCredUser[ユーザー作成<br/>auth_users + public_users]
+    CredRegister --> CreateCredUser[ユーザー作成<br/>users]
     GoogleRegister --> GoogleAuth
 
     GoogleAuth --> CheckExisting{既存ユーザー?}
     CheckExisting -->|連携済み| AuthSuccess
     CheckExisting -->|確認済みの別アカウント| ShowError
-    CheckExisting -->|未確認またはなし| CreateOAuthUser[ユーザー作成<br/>auth_users + public_users<br/>+ identities]
+    CheckExisting -->|未確認またはなし| CreateOAuthUser[ユーザー作成<br/>users + identities]
 
     CredAuth --> AuthSuccess{認証成功?}
-    CreateCredUser --> LoginRedirect[/loginへリダイレクト/]
+    CreateCredUser --> LoginRedirect["/auth/check-email へ<br/>送れなければ ?sent=0"]
     CreateOAuthUser --> AuthSuccess
-    LoginRedirect --> CredLogin
+    LoginRedirect -->|メールのリンクで確認後| CredLogin
 
     AuthSuccess -->|Success| CreateSession[セッション作成]
     AuthSuccess -->|Failure| ShowError[エラー表示]
@@ -112,8 +112,8 @@ sequenceDiagram
             Email-->>User: メール送信
 
             Action-->>UI: 登録成功
-            UI->>UI: /loginへリダイレクト
-            UI-->>User: ログインページ表示
+            UI->>UI: /auth/check-email へリダイレクト<br/>（メールを送れなければ ?sent=0）
+            UI-->>User: 確認メールの案内を表示
 
             User->>User: メール確認
             User->>User: 検証リンククリック
@@ -135,10 +135,11 @@ sequenceDiagram
     participant UI as /login
     participant Action as authenticate()
     participant NextAuth as signIn('credentials')
-    participant AuthTS as /src/auth.ts
+    participant AuthTS as src/auth/providers/credentials.ts<br/>（authorize）
+    participant JWT as src/auth/callbacks/jwtCallback.ts
     participant Bcrypt as bcrypt
     participant DB as Prisma + PostgreSQL
-    participant Session as セッション管理
+    participant Session as セッション（JWT の Cookie）
 
     User->>UI: メール、パスワード入力
     User->>UI: ログインボタンクリック
@@ -179,11 +180,11 @@ sequenceDiagram
                 UI-->>User: エラー表示
             else パスワード一致・メール確認済み
                 AuthTS-->>NextAuth: userオブジェクト
-                NextAuth->>AuthTS: jwt({ token, user })
-                AuthTS->>AuthTS: token.id = user.id
-                AuthTS-->>NextAuth: token
+                NextAuth->>JWT: jwt({ token, user, account })
+                JWT->>JWT: token.id = user.id
+                JWT-->>NextAuth: token
 
-                NextAuth->>Session: セッション作成
+                NextAuth->>Session: JWT を Cookie に保存
                 Session-->>NextAuth: 成功
 
                 NextAuth-->>Action: 成功
@@ -208,9 +209,10 @@ sequenceDiagram
     participant NextAuth as NextAuth Client
     participant Google as Google OAuth
     participant Callback as /api/auth/callback/google
-    participant AuthTS as /src/auth.ts signIn()
+    participant AuthTS as src/auth/callbacks/signInCallback.ts
+    participant JWT as src/auth/callbacks/jwtCallback.ts
     participant DB as Prisma + PostgreSQL
-    participant Session as セッション管理
+    participant Session as セッション（JWT の Cookie）
 
     User->>UI: "Googleでログイン"<br/>ボタンクリック
     UI->>NextAuth: signIn('google', {callbackUrl})
@@ -228,25 +230,26 @@ sequenceDiagram
         Callback->>Google: トークン交換
         Google-->>Callback: access_token, user info
 
-        Callback->>AuthTS: signIn({ user, account })
-        AuthTS->>AuthTS: provider === 'google'?
-        AuthTS->>DB: findUnique(email)
-        DB-->>AuthTS: null (新規ユーザー)
+        Callback->>AuthTS: signIn({ user, account, profile })
+        AuthTS->>AuthTS: provider === 'google'?<br/>profile.email_verified が true か確認
+        AuthTS->>DB: users をメールで検索、identities を sub で検索
+        DB-->>AuthTS: どちらも無し (新規ユーザー)
 
         AuthTS->>DB: トランザクション開始
         Note over AuthTS,DB: 新規ユーザー作成
-        AuthTS->>DB: auth_users作成<br/>(encrypted_password=NULL,<br/>is_sso_user=true)
-        AuthTS->>DB: public_users作成
+        AuthTS->>DB: users作成<br/>(password_hash=NULL,<br/>is_sso_user=true,<br/>email_verified_at=現在時刻)
         AuthTS->>DB: identities作成<br/>(provider='google',<br/>provider_id, identity_data)
         AuthTS->>DB: トランザクションコミット
         DB-->>AuthTS: 成功
 
         AuthTS-->>Callback: true
-        Callback->>AuthTS: jwt({ token, user })
-        AuthTS->>AuthTS: token.id = user.id
-        AuthTS-->>Callback: token
+        Callback->>JWT: jwt({ token, user, account })
+        JWT->>DB: users をメールで検索
+        DB-->>JWT: id
+        JWT->>JWT: token.id = users.id
+        JWT-->>Callback: token
 
-        Callback->>Session: セッション作成
+        Callback->>Session: JWT を Cookie に保存
         Session-->>Callback: 成功
 
         Callback-->>UI: リダイレクト
@@ -298,7 +301,7 @@ stateDiagram-v2
         [*] --> HasPassword
     }
     note right of HasPassword
-        encrypted_password: あり
+        password_hash: あり
         is_sso_user: false
         identities: なし
     end note
@@ -307,7 +310,7 @@ stateDiagram-v2
         [*] --> NoPassword
     }
     note right of NoPassword
-        encrypted_password: NULL
+        password_hash: NULL
         is_sso_user: true
         identities: Google
     end note
@@ -316,7 +319,7 @@ stateDiagram-v2
         [*] --> BothMethods
     }
     note right of BothMethods
-        encrypted_password: あり
+        password_hash: あり
         is_sso_user: true
         identities: Google
         ログイン方法: 両方可能
@@ -337,13 +340,10 @@ stateDiagram-v2
 
 ```mermaid
 flowchart LR
-    Start([トランザクション開始]) --> Step1[auth_users作成]
-    Step1 --> Step1Details{encrypted_password: NULL<br/>is_sso_user: true<br/>email_confirmed_at: NOW}
+    Start([トランザクション開始]) --> Step1[users作成]
+    Step1 --> Step1Details{password_hash: NULL<br/>is_sso_user: true<br/>email_verified_at: NOW<br/>name: Google名<br/>email: Googleメール}
 
-    Step1Details --> Step2[public_users作成]
-    Step2 --> Step2Details{同じUUID<br/>name: Google名<br/>email: Googleメール}
-
-    Step2Details --> Step3[identities作成]
+    Step1Details --> Step3[identities作成]
     Step3 --> Step3Details{provider: 'google'<br/>provider_id: GoogleアカウントID<br/>identity_data: JSON}
 
     Step3Details --> Commit{コミット成功?}
@@ -353,11 +353,10 @@ flowchart LR
     Rollback --> Error[エラーログ出力]
     Error --> End([ログイン失敗])
 
-    Success --> SessionCreate[セッション作成]
+    Success --> SessionCreate[JWT を Cookie に保存]
     SessionCreate --> Dashboard([/dashboardへ])
 
     style Step1 fill:#FFE4B5
-    style Step2 fill:#FFE4B5
     style Step3 fill:#FFE4B5
     style Success fill:#90EE90
     style Rollback fill:#FFB6C1
@@ -387,14 +386,13 @@ flowchart LR
 
 ## 🔐 セッション管理フロー
 
+セッション戦略は JWT（`src/auth/config.ts`）。`sessions` テーブルは無く、Redis にも持たない。セッションの実体は Cookie に入った JWT だけ。
+
 ```mermaid
 flowchart TD
     Login([ログイン成功]) --> CreateJWT[JWTトークン生成]
-    CreateJWT --> AddUserID[token.id = user.id]
-    AddUserID --> CreateSession[セッションレコード作成]
-
-    CreateSession --> SessionDB[(Database<br/>sessions テーブル)]
-    SessionDB --> SetCookie[Cookie設定<br/>next-auth.session-token]
+    CreateJWT --> AddUserID[token.id = users.id]
+    AddUserID --> SetCookie[Cookie設定<br/>authjs.session-token<br/>HTTPS では __Secure- 付き]
 
     SetCookie --> User([ユーザーへ返却])
 
@@ -415,75 +413,84 @@ flowchart TD
     UserAction -->|継続| Request
     UserAction -->|ログアウト| Logout[signOut]
 
-    Logout --> DeleteSession[セッション削除]
-    DeleteSession --> ClearCookie[Cookie削除]
+    Logout --> ClearCookie[Cookie削除]
     ClearCookie --> LoginPage([/loginへリダイレクト/])
 
-    style CreateSession fill:#87CEEB
+    style SetCookie fill:#87CEEB
     style AccessGranted fill:#90EE90
     style Redirect fill:#FFB6C1
 
 ```
 
+> Cookie 名は Auth.js v5 の既定（v4 の `next-auth.session-token` ではない）。HTTPS のときの `__Secure-` 付きの名前は `src/proxy.test.ts` が使っている。`@auth/core` の `lib/utils/cookie.js` で確認済み（HTTPS では `__Secure-authjs.session-token`。CSRF の Cookie は `__Host-` 付き）。ブラウザでは未確認。
+
 ---
 
-## 🛡️ アクセス制御フロー（Middleware）
+## 🛡️ アクセス制御フロー（Proxy）
+
+`src/proxy.ts`（Next.js 16 の Proxy）が `src/auth/edge.ts` の `authorized` を呼ぶ。**既定は拒否**で、公開するパスだけを列挙している。`/dashboard` だけを保護しているのではない。
 
 ```mermaid
 flowchart TD
-    Request([リクエスト受信]) --> CheckURL{URLパス確認}
+    Request([リクエスト受信]) --> Logged{ログイン済み?}
 
-    CheckURL -->|/dashboard/*| RequireAuth{認証済み?}
-    CheckURL -->|/login, /register| CheckLogged{ログイン済み?}
-    CheckURL -->|その他| AllowAccess([アクセス許可])
+    Logged -->|Yes| Verif{"メール確認まわりの3ページ?<br/>/auth/verify-email<br/>/auth/verification-success<br/>/auth/verification-error"}
+    Verif -->|Yes| AllowAccess([アクセス許可<br/>転送しない])
+    Verif -->|No| PublicOrRoot{"公開パス または /?"}
+    PublicOrRoot -->|Yes| RedirectDashboard[/dashboardへリダイレクト/]
+    PublicOrRoot -->|No| AllowAccess
 
-    RequireAuth -->|Yes| AllowAccess
-    RequireAuth -->|No| RedirectLogin[/loginへリダイレクト/]
-
-    CheckLogged -->|Yes| RedirectDashboard[/dashboardへリダイレクト/]
-    CheckLogged -->|No| AllowAccess
+    Logged -->|No| Public{"公開パス?<br/>/login, /register,<br/>/auth/check-email,<br/>メール確認の3ページ,<br/>/api/auth/*"}
+    Public -->|Yes| AllowAccess
+    Public -->|No| IsApi{"/api/* ?"}
+    IsApi -->|Yes| Unauthorized["401 JSON<br/>error: Unauthorized"]
+    IsApi -->|No| RedirectLogin[/loginへリダイレクト/]
 
     AllowAccess --> Response([レスポンス返却])
     RedirectLogin --> Response
     RedirectDashboard --> Response
+    Unauthorized --> Response
 
     style AllowAccess fill:#90EE90
     style RedirectLogin fill:#FFB6C1
+    style Unauthorized fill:#FFB6C1
     style RedirectDashboard fill:#87CEEB
 ```
+
+`/healthz`、`/readyz`、`/_next/*` などは `proxy.ts` の matcher で除外されるので、この判定に来ない。
 
 ---
 
 ## 📋 エラーハンドリングフロー
 
+`authenticate()`（`src/lib/actions.ts`）が、ログインの失敗を利用者向けの文言にする。
+
 ```mermaid
 flowchart TD
-    Start([認証処理開始]) --> TryCatch{try-catch}
+    Start([authenticate 開始]) --> SignIn[signIn credentials を実行]
 
-    TryCatch -->|Success| ProcessAuth[認証処理実行]
-    TryCatch -->|Error| CatchError[エラーキャッチ]
+    SignIn -->|成功| Redirect(["signIn が /dashboard への遷移を投げる<br/>catch せずそのまま投げ直す"])
+    SignIn -->|例外| Kind{例外の種類}
 
-    ProcessAuth --> AuthResult{認証結果}
+    Kind -->|Error ではない| Error0[予期しないエラーが<br/>発生しました。]
+    Kind -->|AuthError 以外の Error| Rethrow([そのまま投げる])
+    Kind -->|AuthError| Type{error.type}
 
-    AuthResult -->|Success| CreateSession([セッション作成])
-    AuthResult -->|CredentialsSignin| Error1[メールアドレスまたは<br/>パスワードが正しくありません]
-    AuthResult -->|OAuthSignin| Error2[OAuth認証に失敗しました]
-    AuthResult -->|CallbackRouteError| Error3[予期しないエラーが<br/>発生しました]
+    Type -->|CredentialsSignin| Unverified{EmailNotVerifiedError?}
+    Unverified -->|Yes| Error1[メールアドレスが確認できていません。<br/>確認メールのリンクを開いてください。]
+    Unverified -->|No| Error2[メールアドレスまたは<br/>パスワードが正しくありません。]
+    Type -->|CallbackRouteError| Error3[ログイン処理中に<br/>エラーが発生しました。]
+    Type -->|その他| Error0
 
-    CatchError --> LogError[console.error]
-    LogError --> Error4[エラーメッセージ生成]
-
-    Error1 --> DisplayError([UIにエラー表示])
+    Error0 --> DisplayError([UIにエラー表示])
+    Error1 --> DisplayError
     Error2 --> DisplayError
     Error3 --> DisplayError
-    Error4 --> DisplayError
 
-    DisplayError --> RetryPrompt([ユーザーに再試行促す])
-    CreateSession --> Dashboard([/dashboardへ])
-
-    style CreateSession fill:#90EE90
+    style Redirect fill:#90EE90
     style DisplayError fill:#FFB6C1
-    style LogError fill:#FFA500
 ```
+
+Google ログインの拒否は `authenticate()` を通らず、`/login?error=AccessDenied` に戻る。
 
 ---

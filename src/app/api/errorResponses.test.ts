@@ -146,6 +146,13 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         false,
       ],
       [
+        'CLIENT_ERROR',
+        createApiError(422, SECRET),
+        422,
+        'リクエストが無効です。入力内容を確認してください。',
+        false,
+      ],
+      [
         'RATE_LIMITED',
         createApiError(429, SECRET),
         429,

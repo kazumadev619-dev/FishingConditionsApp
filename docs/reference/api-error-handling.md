@@ -1,12 +1,14 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`
-> - **最終確認**: 未確認（#370 で突合する。2026-11-07 に 429 だけ #368 で直した）
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`
+> - **最終確認**: 2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
 `src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。クライアントは `@/lib/api/client`、`ApiError` と `ApiErrorType` は `@/lib/api/types` から import します。
+
+**この HTTP クライアントはサーバー専用です。** `openWeatherMapClient` と `googleMapsClient` のキーはサーバー専用で、`NEXT_PUBLIC_` を付けられません（#143）。`'use client'` のコンポーネントから呼ばず、Route Handler・Server Action・サーバーコンポーネントから使います。ブラウザには `/api/*` の応答だけを返します。
 
 ## エクスポートされた型とクラス
 
@@ -93,18 +95,11 @@ try {
 }
 ```
 
-### タイムアウトと リトライの設定
+### タイムアウトとリトライの設定
 
-```typescript
-// デフォルト: タイムアウト 10秒、リトライ 3回
+タイムアウトは 10 秒、リトライは最大 3 回（最初の呼び出しと合わせて 4 回）で固定です。呼び出しごとには変えられません（#379 で、使っている呼び出しが無かった `timeout`・`retries` を削った）。遅延は 100ms・200ms・400ms です（`src/lib/api/retryStrategy.ts`）。
 
-// カスタム設定: タイムアウト 5秒、リトライ 1回
-const weather = await openWeatherMapClient.get('/weather', {
-  params: { lat: '35.6762', lon: '139.6503' },
-  timeout: 5000,  // 5秒
-  retries: 1,     // 1回リトライ
-});
-```
+API キーが必要なクライアントで、キーが未設定のときは、上流を呼ばず、`ApiErrorType.CLIENT_ERROR`（`retryable: false`）を投げます（`src/lib/api/client.ts`）。
 
 ### リトライ可能なエラーの判定
 
@@ -122,64 +117,6 @@ try {
 }
 ```
 
-### React コンポーネントでの使用
-
-```typescript
-'use client';
-
-import { useState, useEffect } from 'react';
-import { openWeatherMapClient } from '@/lib/api/client';
-import { ApiError, ApiErrorType } from '@/lib/api/types';
-
-export function WeatherWidget() {
-  const [weather, setWeather] = useState(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-
-  useEffect(() => {
-    const fetchWeather = async () => {
-      setLoading(true);
-      setError(null);
-
-      try {
-        const data = await openWeatherMapClient.get('/weather', {
-          params: { lat: '35.6762', lon: '139.6503' },
-        });
-        setWeather(data);
-      } catch (err) {
-        if (err instanceof ApiError) {
-          switch (err.type) {
-            case ApiErrorType.TIMEOUT:
-              setError('通信がタイムアウトしました。もう一度お試しください。');
-              break;
-            case ApiErrorType.RATE_LIMITED:
-              setError('API の使用制限に達しました。しばらく後にお試しください。');
-              break;
-            case ApiErrorType.NETWORK_ERROR:
-              setError('ネットワーク接続を確認してください。');
-              break;
-            default:
-              setError('天気情報の取得に失敗しました。');
-          }
-        } else {
-          setError('予期しないエラーが発生しました。');
-        }
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchWeather();
-  }, []);
-
-  if (loading) return <div>読み込み中...</div>;
-  if (error) return <div className="error">{error}</div>;
-  if (!weather) return <div>天気情報なし</div>;
-
-  return <div>{weather.main.temp}°C</div>;
-}
-```
-
 ### Server Action での使用
 
 ```typescript
@@ -187,6 +124,8 @@ export function WeatherWidget() {
 
 import { openWeatherMapClient } from '@/lib/api/client';
 import { ApiError, ApiErrorType } from '@/lib/api/types';
+import { logApiError } from '@/lib/apiErrorUtils';
+import { logger } from '@/lib/logger';
 
 export async function fetchWeatherData(lat: number, lon: number) {
   try {
@@ -195,19 +134,13 @@ export async function fetchWeatherData(lat: number, lon: number) {
         lat: String(lat),
         lon: String(lon),
       },
-      timeout: 8000, // 8秒
     });
 
     return { success: true, data: weather };
   } catch (error) {
     if (error instanceof ApiError) {
-      // ログに記録（本番環境では構造化ログを使用）
-      console.error('[Weather API Error]', {
-        type: error.type,
-        statusCode: error.statusCode,
-        message: error.message,
-        retryable: error.retryable,
-      });
+      // 構造化ログに記録する（`src/lib/apiErrorUtils.ts`。詳細は後述）
+      logApiError(error, { operation: 'fetchWeatherData' });
 
       // ユーザーフレンドリーなメッセージを返す
       let userMessage = '天気情報の取得に失敗しました。';
@@ -226,7 +159,7 @@ export async function fetchWeatherData(lat: number, lon: number) {
     }
 
     // ApiError 以外のエラー
-    console.error('Unexpected error:', error);
+    logger.error({ error }, 'Unexpected error');
     return {
       success: false,
       error: '予期しないエラーが発生しました。',
@@ -268,43 +201,53 @@ const RETRYABLE_STATUS_CODES = [
 ];
 ```
 
-タイムアウト、ネットワークエラーもリトライ対象です。
+タイムアウトもリトライ対象です。ネットワークエラーは、`TypeError` で、メッセージに `fetch` を含むものだけがリトライ対象です（`src/lib/api/client.ts`）。それ以外の `TypeError` は `NETWORK_ERROR` になりますが、リトライしません。
 
 **429（レート制限）はリトライしません。** 上流が絞っているときに叩き直すと、呼び出しが増えるだけで、状況を悪くするためです（#317）。429 は `ApiErrorType.RATE_LIMITED`、`retryable: false` になります（`src/lib/api/errorHandler.ts`）。
 
 ### リトライしないエラー
 
-以下は自動リトライされません：
+上の一覧にないステータスコードは、自動リトライされません。501・505 などの 5xx も同じです。
 
-```typescript
-const NON_RETRYABLE_STATUS_CODES = [
-  400,  // Bad Request
-  401,  // Unauthorized
-  403,  // Forbidden
-  404,  // Not Found
-];
-```
+- 4xx は `ApiErrorType.CLIENT_ERROR`（400・401・403・404・405・409・422 など）。クライアント側の問題（不正なリクエスト、認証エラーなど）なので、リトライしても成功しません（408 を除く）。
+- 5xx は `ApiErrorType.SERVER_ERROR`。一覧（500・502・503・504）以外はリトライしません。
+- 408 は 4xx なので `CLIENT_ERROR` ですが、一覧にあるのでリトライします。
 
-これらはクライアント側の問題（不正なリクエスト、認証エラーなど）なため、リトライしても成功しません。
+種別（`type`）は、429 を除いてステータスコードで決まります。500 未満は `CLIENT_ERROR`、500 以上は `SERVER_ERROR` です。リトライするかどうか（`retryable`）は、種別ではなく一覧だけで決まります（`src/lib/api/errorHandler.ts`）。
 
 ## デバッグ方法
 
-### コンソールログの確認
+### ログの確認
 
-リトライが行われている場合、以下のログが出力されます：
+リトライするたびに、サーバーで pino の構造化ログ（warn）が出ます（`src/lib/api/client.ts`）。
 
-```
-[API] Retry attempt 1/3 for /weather after 100ms
-[API] Retry attempt 2/3 for /weather after 200ms
-```
+| 契機 | メッセージ | 項目 |
+|---|---|---|
+| リトライ対象のステータス（上の一覧）の応答 | `Retrying API request` | `endpoint`、`attempt`、`maxRetries`、`delayMs` |
+| タイムアウト | `Retrying API request after timeout` | 上と同じ + `reason: 'timeout'` |
+| ネットワークエラー | `Retrying API request after network error` | 上と同じ + `reason: 'network_error'` |
 
-### ネットワークタブでの確認
+呼び出しはサーバーで行うので、リトライはブラウザの DevTools には見えません。サーバーのログで確認します。
 
-ブラウザの DevTools > Network タブで：
+## エラー表示とログのヘルパー（`src/lib/apiErrorUtils.ts`）
 
-1. 最初のリクエストが失敗（例: 503）
-2. 100ms 後に 2番目のリクエスト
-3. 200ms 後に 3番目のリクエスト（成功）
+- `getErrorMessage(error: ApiError): string`: `ApiErrorType` から、利用者向けの日本語のメッセージを返す。
+- `logApiError(error: ApiError, context?)`: `{ type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp, ...context }` を、メッセージ `API request failed` で `logger.error` に出す。
+
+`/api/weather` の Route Handler が `getErrorMessage` と `logApiError` を使っている。
+
+## 上流の応答が不正なとき
+
+OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
+
+| 入口 | 利用者に出るもの |
+|---|---|
+| `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
+| `/api/scores` | HTTP 500。`error` は「Failed to calculate fishing score」 |
+| `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
+| `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
+
+応答には、不正だった値も上流の本文も入れない（`message` はログにだけ残る）。点を付けられない値を 0 点として扱う案は採らない（点と説明文が食い違うため）。
 
 ## ベストプラクティス
 
@@ -322,43 +265,19 @@ if (error instanceof ApiError) {
 
 ### 2. ユーザーに適切なメッセージを表示
 
+文言は自分で書かず、`getErrorMessage(error)`（`src/lib/apiErrorUtils.ts`）を使う。
+
 ```typescript
-const getUserFriendlyMessage = (error: ApiError): string => {
-  switch (error.type) {
-    case ApiErrorType.TIMEOUT:
-      return '通信がタイムアウトしました。インターネット接続を確認して、もう一度お試しください。';
-    case ApiErrorType.NETWORK_ERROR:
-      return 'インターネット接続がありません。接続を確認してください。';
-    case ApiErrorType.RATE_LIMITED:
-      return 'しばらくの間、リクエストが制限されています。数分後にお試しください。';
-    default:
-      return 'エラーが発生しました。もう一度お試しください。';
-  }
-};
+import { getErrorMessage } from '@/lib/apiErrorUtils';
+
+if (error instanceof ApiError) {
+  return getErrorMessage(error);
+}
 ```
 
 ### 3. エラーログを構造化する
 
-```typescript
-console.error('API Error', {
-  endpoint: '/weather',
-  type: error.type,
-  statusCode: error.statusCode,
-  message: error.message,
-  retryable: error.retryable,
-  timestamp: new Date().toISOString(),
-});
-```
-
-### 4. カスタムタイムアウトを設定
-
-```typescript
-// 遅い API にはタイムアウトを長くする
-const tideData = await tide736Client.get('/tides', {
-  params: { harbor: '12345' },
-  timeout: 15000, // 15秒
-});
-```
+`logApiError(error, { endpoint: '/weather' })` を使う。`console.error` に書かない。
 
 ## まとめ
 

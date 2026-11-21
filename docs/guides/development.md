@@ -18,7 +18,6 @@
 | TypeScript | `^6.0.3` | 6.0.3 |
 | TypeScript 7 (type-check) | `npm:typescript@^7.0.2` | 7.0.2 |
 | Tailwind CSS | `^4.1.17` | 4.3.3 |
-| Zustand | `^5.0.15` | 5.0.15 |
 | Auth.js | `^5.0.0-beta.30` | 5.0.0-beta.32 |
 | Prisma | `^7.9.1` | 7.10.0 |
 | ioredis | `^6.0.0` | 6.0.0 |
@@ -61,7 +60,6 @@ fishing-conditions-app/
 ├── package.json
 ├── vitest.config.ts               # テスト設定（テスト本体は実装の隣に置く）
 ├── next.config.mjs
-├── tailwind.config.js
 ├── tsconfig.json
 └── README.md
 ```
@@ -125,7 +123,7 @@ git commit -m "📝 docs: 開発ガイドを更新"
 | 依存の更新 | [`updating-dependencies`](../../.claude/skills/updating-dependencies/SKILL.md) |
 | ローカル起動・実 DB での確認 | [`run-app-locally`](../../.claude/skills/run-app-locally/SKILL.md) |
 
-`develop` 向けの PR は `Refs #N` で書き、`Closes #N` は `main` 昇格 PR で付ける。`develop` と `main` は `CI Summary` が必須のチェックで、通らない PR は通常マージできない（`enforce_admins` が無効なので、管理者は飛ばせる。[ci-cd.md](./ci-cd.md)）。Codex 向けの写しは `.agents/skills/`。
+`develop` 向けの PR は `Refs #N` で書き、`Closes #N` は `main` 昇格 PR で付ける。`develop` と `main` は `CI Summary` が必須のチェックで、通らない PR は通常マージできない（`enforce_admins` が無効なので、管理者は飛ばせる。[ci-cd.md](./ci-cd.md)）。
 
 ### 2. 品質保証
 

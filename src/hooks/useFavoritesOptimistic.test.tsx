@@ -1,7 +1,8 @@
 import type { SetStateAction } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { FavoriteLocation } from '@/types/favorites';
+import { logger } from '@/lib/logger';
+import type { FavoriteLocation, FavoriteRequest } from '@/types/favorites';
 import { overlayPending, type PendingFavoriteOps } from './useFavoritesFetch';
 import { useFavoritesOptimistic } from './useFavoritesOptimistic';
 
@@ -34,18 +35,23 @@ function createStore(initial: FavoriteLocation[]) {
  * フックを現在の state で1回描画して関数を取り出す。
  * 実アプリでも操作ごとに再描画された最新のクロージャで呼ばれるので、操作の直前に毎回呼ぶ。
  */
+type Hook = ReturnType<typeof useFavoritesOptimistic>;
+type HookProps = Parameters<typeof useFavoritesOptimistic>[0];
+
+function Probe({ hookProps, onResult }: { hookProps: HookProps; onResult: (r: Hook) => void }) {
+  onResult(useFavoritesOptimistic(hookProps));
+  return null;
+}
+
 function renderHook(store: ReturnType<typeof createStore>, fetchFavorites = async () => {}) {
-  let result!: ReturnType<typeof useFavoritesOptimistic>;
-  function Probe() {
-    result = useFavoritesOptimistic({
-      favorites: store.get(),
-      setFavorites: store.setFavorites,
-      fetchFavorites,
-      pending: store.pending,
-    });
-    return null;
-  }
-  renderToStaticMarkup(<Probe />);
+  let result!: Hook;
+  const hookProps: HookProps = {
+    favorites: store.get(),
+    setFavorites: store.setFavorites,
+    fetchFavorites,
+    pending: store.pending,
+  };
+  renderToStaticMarkup(<Probe hookProps={hookProps} onResult={(r) => (result = r)} />);
   return result;
 }
 
@@ -70,6 +76,44 @@ afterEach(() => {
 });
 
 describe('useFavoritesOptimistic', () => {
+  describe('POST /api/favorites に送る本文（FavoriteRequest のまま）', () => {
+    const cases: Array<[string, FavoriteRequest]> = [
+      ['locationId', { locationId: 'L1' }],
+      ['portId', { portId: 'port-1' }],
+      ['座標', { coordinates: { lat: 35.1, lng: 139.2, name: '地点' } }],
+    ];
+
+    it.each(cases)('%s で追加すると、その形のまま送る', async (_label, request) => {
+      const store = createStore([]);
+      const pending = deferredFetch();
+
+      const add = renderHook(store).addFavorite(request);
+      pending[0](jsonResponse(200, { success: true, locationId: 'L1' }));
+      await add;
+
+      const [url, init] = vi.mocked(fetch).mock.calls[0] as [string, RequestInit];
+      expect(url).toBe('/api/favorites');
+      expect(init.method).toBe('POST');
+      expect(JSON.parse(init.body as string)).toEqual(request);
+    });
+
+    it('座標の追加が失敗しても、ログに name（地点名）は出さない', async () => {
+      const store = createStore([]);
+      const pending = deferredFetch();
+
+      const add = renderHook(store).addFavorite({
+        coordinates: { lat: 35.1, lng: 139.2, name: '地点' },
+      });
+      pending[0](jsonResponse(500, { error: 'boom' }));
+      await expect(add).rejects.toThrow('boom');
+
+      expect(vi.mocked(logger.error).mock.calls[0]?.[0]).toMatchObject({
+        coordinates: { lat: 35.1, lng: 139.2 },
+      });
+      expect(JSON.stringify(vi.mocked(logger.error).mock.calls[0]?.[0])).not.toContain('地点');
+    });
+  });
+
   it('削除の失敗は、その後に成功した別の削除を巻き戻さない', async () => {
     const store = createStore([fav('X'), fav('Y'), fav('Z')]);
     const pending = deferredFetch();
@@ -163,8 +207,8 @@ describe('useFavoritesOptimistic', () => {
     const store = createStore([fav('X')]);
     const pending = deferredFetch();
 
-    const addA = renderHook(store).addFavorite(undefined, 'port-a');
-    const addB = renderHook(store).addFavorite(undefined, 'port-b');
+    const addA = renderHook(store).addFavorite({ portId: 'port-a' });
+    const addB = renderHook(store).addFavorite({ portId: 'port-b' });
 
     // id は React の key、locationId は FavoriteTab の削除中表示の判定に使われる
     const ids = store.get().map((f) => f.id);
@@ -196,8 +240,8 @@ describe('useFavoritesOptimistic', () => {
       const refetch = refetchWith(store, () => server);
       const pending = deferredFetch();
 
-      const addA = renderHook(store, refetch).addFavorite('A');
-      const addB = renderHook(store, refetch).addFavorite('B');
+      const addA = renderHook(store, refetch).addFavorite({ locationId: 'A' });
+      const addB = renderHook(store, refetch).addFavorite({ locationId: 'B' });
 
       server = [fav('A'), fav('X')];
       pending[0](jsonResponse(200, { success: true, locationId: 'A' }));
@@ -222,7 +266,7 @@ describe('useFavoritesOptimistic', () => {
       const pending = deferredFetch();
 
       const removeX = renderHook(store, refetch).removeFavorite('X');
-      const addA = renderHook(store, refetch).addFavorite('A');
+      const addA = renderHook(store, refetch).addFavorite({ locationId: 'A' });
 
       // X の DELETE はまだ返っていないので、サーバにはまだ X がある
       server = [fav('A'), fav('X'), fav('Y')];
@@ -242,7 +286,7 @@ describe('useFavoritesOptimistic', () => {
       const refetch = refetchWith(store, () => server);
       const pending = deferredFetch();
 
-      const addA = renderHook(store, refetch).addFavorite('A');
+      const addA = renderHook(store, refetch).addFavorite({ locationId: 'A' });
       const removeX = renderHook(store, refetch).removeFavorite('X');
       pending[0](jsonResponse(500, { error: 'boom' }));
       await expect(addA).rejects.toThrow('boom');
@@ -261,7 +305,7 @@ describe('useFavoritesOptimistic', () => {
         vi.fn(async () => Promise.reject(new TypeError('offline'))),
       );
 
-      await expect(renderHook(store).addFavorite('A')).rejects.toThrow('offline');
+      await expect(renderHook(store).addFavorite({ locationId: 'A' })).rejects.toThrow('offline');
 
       await refetchWith(store, () => server)();
       expect(store.get()).toEqual(server);
@@ -274,7 +318,7 @@ describe('useFavoritesOptimistic', () => {
       const pending = deferredFetch();
 
       const removeX = renderHook(store, refetch).removeFavorite('X');
-      const addX = renderHook(store, refetch).addFavorite('X');
+      const addX = renderHook(store, refetch).addFavorite({ locationId: 'X' });
 
       // DELETE → POST の順にサーバで処理され、POST の応答が先に返った
       server = [fav('X'), fav('Y')];
@@ -292,7 +336,7 @@ describe('useFavoritesOptimistic', () => {
       const refetch = refetchWith(store, () => [fav('X')]);
       const pending = deferredFetch();
 
-      const addA = renderHook(store, refetch).addFavorite('A');
+      const addA = renderHook(store, refetch).addFavorite({ locationId: 'A' });
       let resolveBody!: (body: unknown) => void;
       const slowBody = {
         ok: true,
@@ -318,7 +362,7 @@ describe('useFavoritesOptimistic', () => {
       const addA = renderHook(
         store,
         refetchWith(store, () => server),
-      ).addFavorite(undefined, 'port-a');
+      ).addFavorite({ portId: 'port-a' });
       pending[0](jsonResponse(200, { success: true, locationId: 'A' }));
       await expect(addA).resolves.toBe('A');
 
@@ -333,7 +377,7 @@ describe('useFavoritesOptimistic', () => {
       const addA = renderHook(
         store,
         refetchWith(store, () => server),
-      ).addFavorite(undefined, 'port-a');
+      ).addFavorite({ portId: 'port-a' });
       pending[0](jsonResponse(409, { error: 'dup', locationId: 'A' }));
       await expect(addA).resolves.toBe('A');
 
