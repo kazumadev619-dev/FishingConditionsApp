@@ -76,6 +76,28 @@ describe('calculateTideScore の潮の大きさ', () => {
     expect(calculateTideScore(tide, at('12:00'))).toBe(25 + size);
   });
 
+  // 同じ表を、最も近い極値が配列の先頭にある並びでも確かめる（遠い極値が後ろにあっても選ばない）。
+  it('最も近い満潮と干潮が先に並び、遠いものが後ろにあるときも、近いほうから潮位差を作る', () => {
+    const tide = tideOf(
+      [
+        { time: '12:00', cm: 120 }, // 最も近い満潮
+        { time: '20:00', cm: 200 },
+      ],
+      [
+        { time: '13:00', cm: 100 }, // 最も近い干潮
+        { time: '23:00', cm: 0 },
+      ],
+    );
+    // 潮位差 0.2m で 5点。遠いほうを使うと 2.0m で 15点
+    expect(calculateTideScore(tide, at('12:00'))).toBe(25 + 5);
+  });
+
+  // 「0.5m 未満 → 5点」の表。満潮が干潮より低い（差が負）ときも 0.5m 未満に入る。
+  it('満潮が干潮より低く、潮位差が負のとき、潮の大きさは 5点', () => {
+    const tide = tideOf([{ time: '12:00', cm: 0 }], [{ time: '00:00', cm: 50 }]);
+    expect(calculateTideScore(tide, at('12:00'))).toBe(25 + 5);
+  });
+
   // 「現在時刻に最も近い満潮の高さ − 現在時刻に最も近い干潮の高さ。その日の最高満潮と最低干潮ではない」
   it('潮位差は、その日の最高・最低ではなく、現在時刻に最も近い満潮と干潮から作る', () => {
     const tide = tideOf(
@@ -107,5 +129,23 @@ describe('calculateTideScore の潮汐データなし', () => {
 
   it('干潮が当日にないとき 20点', () => {
     expect(calculateTideScore(tideOf([{ time: '12:00', cm: 200 }], []), at('12:00'))).toBe(20);
+  });
+});
+
+// 守る状態: 潮汐データに複数の日があっても、当日（JST）の分だけで計算する。
+// 期待値: 「潮汐データがないとき」「潮の大きさ評価」の「どちらも、当日の潮汐データの中から選ぶ」。
+describe('calculateTideScore は当日の潮汐だけを使う', () => {
+  const day = (date: string, flood: Extreme, edd: Extreme) => ({
+    date,
+    daily: { flood: [{ ...flood, unix: 0 }], edd: [{ ...edd, unix: 0 }] },
+  });
+  // 前日は 12:00 に満潮で潮位差 2.0m（40点）、当日は 00:00・01:00 で潮位差 0.2m（12:00 からは遠く、5点）
+  const yesterday = day('2026-10-16', { time: '12:00', cm: 200 }, { time: '00:00', cm: 0 });
+  const today = day('2026-10-17', { time: '00:00', cm: 20 }, { time: '01:00', cm: 0 });
+  const tomorrow = day('2026-10-18', { time: '12:00', cm: 200 }, { time: '00:00', cm: 0 });
+
+  it('前日と翌日があっても、当日の潮汐を使う', () => {
+    const tide = { tides: [yesterday, today, tomorrow] } as unknown as FormattedTideData;
+    expect(calculateTideScore(tide, at('12:00'))).toBe(5);
   });
 });
