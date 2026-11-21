@@ -75,7 +75,6 @@ function path(i) {
 
 export function setup() {
   http.get(`${STUB}/__delay?ms=${DELAY_MS}`);
-  http.get(`${STUB}/__reset`);
   if (MODE === 'cached' && TARGET !== 'floor' && __ENV.WARMUP !== '0') {
     // キャッシュに載せる 1 回目。測定には入れない（カスタム指標にだけ記録する）
     const res = http.get(`${APP}${path(0)}`, {
@@ -113,7 +112,6 @@ export function handleSummary(data) {
     const v = m[name]?.values;
     return (
       v && {
-        n: m[name].values.count ?? undefined,
         avg: v.avg,
         med: v.med,
         p90: v['p(90)'],

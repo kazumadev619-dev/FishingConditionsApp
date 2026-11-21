@@ -25,6 +25,14 @@ fi
 env_len=(-e "DURATION=$LEN")
 case "$LEN" in ITERATIONS=*) env_len=(-e "$LEN") ;; esac
 
-"${COMPOSE[@]}" --profile tools run --rm -T --quiet-pull k6 run --quiet \
+# k6 が失敗したら（TARGET の綴り間違い、warm-up の失敗など）、終了コードも失敗にする
+log=$(mktemp)
+trap 'rm -f "$log"' EXIT
+if ! "${COMPOSE[@]}" --profile tools run --rm -T --quiet-pull k6 run --quiet \
   -e TARGET="$TARGET" -e MODE="$MODE" -e VUS="$VUS" -e DELAY_MS="$DELAY_MS" -e WARMUP="${WARMUP:-1}" "${env_len[@]}" /perf/k6.js \
-  | grep -E 'PERF_(RESULT|STUB)' || true
+  >"$log" 2>&1; then
+  tail -5 "$log" >&2
+  exit 1
+fi
+grep -E 'PERF_(RESULT|STUB)' "$log"
+grep -q 'PERF_RESULT' "$log" || { echo "PERF_RESULT が出ていない" >&2; exit 1; }

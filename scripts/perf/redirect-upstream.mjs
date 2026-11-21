@@ -11,9 +11,12 @@ const originalFetch = globalThis.fetch;
 
 globalThis.fetch = (input, init) => {
   const url = new URL(typeof input === 'string' || input instanceof URL ? input : input.url);
-  if (url.origin === STUB) return originalFetch(input, init);
+  // コンテナの HEALTHCHECK（node で localhost:3000/healthz を叩く）も、この fetch を通る
+  if (url.hostname === 'localhost') return originalFetch(input, init);
   if (!UPSTREAM_HOSTS.has(url.hostname)) {
-    throw new Error(`perf: 想定外の外部ホストへの fetch を止めた: ${url.hostname}`);
+    return Promise.reject(
+      new Error(`perf: 想定外の外部ホストへの fetch を止めた: ${url.hostname}`),
+    );
   }
   return originalFetch(`${STUB}/${url.hostname}${url.pathname}${url.search}`, init);
 };

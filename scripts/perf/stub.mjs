@@ -1,5 +1,5 @@
 // 性能測定用: OpenWeatherMap・tide736・Google Geocoding の代わりに答えるスタブ。
-// 応答の形は実物に合わせた最小限（アプリの整形が読む項目だけ）。遅延は /__delay?ms=N で変える。
+// 応答の形は実物に合わせた最小限（アプリの整形が読む項目だけ）。遅延と呼び出し回数のリセットは /__delay?ms=N。
 // 呼び出し回数は /__stats で読める（キャッシュなしの測定で上流が何回呼ばれたかを確かめる）。
 import { createServer } from 'node:http';
 import { setTimeout } from 'node:timers';
@@ -114,15 +114,13 @@ createServer((req, res) => {
     res.end(JSON.stringify(body));
   };
   if (url.pathname === '/__delay') {
+    // 遅延を変えるときに、呼び出し回数も 0 に戻す（測定の最初に 1 回呼ぶ）
     delayMs = Number(url.searchParams.get('ms') ?? 0);
+    for (const k of Object.keys(calls)) calls[k] = 0;
     return json({ delayMs });
   }
   if (url.pathname === '/__stats') {
     return json({ delayMs, calls });
-  }
-  if (url.pathname === '/__reset') {
-    for (const k of Object.keys(calls)) calls[k] = 0;
-    return json({ calls });
   }
   let body;
   if (url.pathname === '/api.openweathermap.org/data/2.5/weather') {
