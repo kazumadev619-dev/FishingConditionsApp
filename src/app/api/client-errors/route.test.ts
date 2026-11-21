@@ -1,14 +1,14 @@
 import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '@/auth';
-import { cache } from '@/lib/cache';
+import { cache } from '@/lib/cache/client';
 import { CLIENT_ERROR_LIMITS } from '@/lib/clientErrors';
 import { logger } from '@/lib/logger';
 import { POST } from './route';
 
 // 認証と回数の制限は実物の withUserRateLimit を通す。外へ出るのは Redis と auth() だけ
 vi.mock('@/auth', () => ({ auth: vi.fn() }));
-vi.mock('@/lib/cache', () => ({ cache: { increment: vi.fn() } }));
+vi.mock('@/lib/cache/client', () => ({ cache: { increment: vi.fn() } }));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn() } }));
 
 const valid = {
