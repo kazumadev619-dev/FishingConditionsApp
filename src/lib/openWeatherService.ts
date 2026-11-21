@@ -4,6 +4,7 @@
  */
 
 import type { CurrentWeatherData, ForecastData } from '@/types/weather';
+import { createApiError } from './api/errorHandler';
 import { openWeatherMapClient } from './apiClient';
 import {
   CACHE_PREFIX,
@@ -99,9 +100,22 @@ function roundCoordinates(lat: number, lon: number): { roundedLat: number; round
 }
 
 /**
+ * スコアに使う数値（風速・気圧）が有限の数値でない応答は、不正な応答として弾く（#414）。
+ * 通すと、風の点は 0 点なのに説明文の風の注意が出ない、気圧の点が満点になるなど、点と説明が食い違う。
+ * 弾いた応答はキャッシュに書かれない。
+ */
+function assertFiniteNumber(value: unknown, field: string): void {
+  if (!Number.isFinite(value)) {
+    throw createApiError(502, `OpenWeatherMap returned an invalid ${field}`);
+  }
+}
+
+/**
  * OpenWeatherMap APIからのレスポンスをアプリ用に整形
  */
 function formatWeatherData(raw: CurrentWeatherData): FormattedWeatherData {
+  assertFiniteNumber(raw.wind?.speed, 'wind.speed');
+  assertFiniteNumber(raw.main?.pressure, 'main.pressure');
   return {
     coordinates: {
       lat: raw.coord.lat,
