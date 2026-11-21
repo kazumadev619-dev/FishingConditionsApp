@@ -4,18 +4,12 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
-import {
-  CACHE_PREFIX,
-  CACHE_TTL,
-  generateCacheKey,
-  type Jsonified,
-  reviveDate,
-  withCache,
-} from '@/lib/cache';
+import { CACHE_PREFIX, CACHE_TTL } from '@/lib/cache/config';
+import { generateCacheKey, type Jsonified, reviveDate, withCache } from '@/lib/cache/helpers';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';
 import { withUserRateLimit } from '@/lib/rateLimit';
-import { calculateFishingScore } from '@/lib/scoringService';
+import { calculateFishingScore } from '@/lib/scoring';
 import { withServerTiming } from '@/lib/serverTiming';
 import { getTideData } from '@/lib/tideService';
 import { getJapanDateTimeParts } from '@/lib/utils/dateUtils';

@@ -1,4 +1,4 @@
-import { type Cacheable, generateCacheKey, withCache } from '../cache';
+import { type Cacheable, generateCacheKey, withCache } from '../cache/helpers';
 import { logger } from '../logger';
 import { createApiError, parseErrorResponse } from './errorHandler';
 import { getBackoffDelay, isRetryable } from './retryStrategy';

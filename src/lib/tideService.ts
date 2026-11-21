@@ -4,16 +4,15 @@
  */
 
 import type { DailyTide, TideApiResponse, TideEvent } from '@/types/tide';
-import { tide736Client } from './apiClient';
+import { tide736Client } from './api/client';
+import { CACHE_PREFIX, CACHE_TTL } from './cache/config';
 import {
-  CACHE_PREFIX,
-  CACHE_TTL,
   type CacheResponse,
   fetchWithOptionalCache,
   generateCacheKey,
   type Jsonified,
   reviveDate,
-} from './cache';
+} from './cache/helpers';
 
 // Re-export types for external use
 export type { DailyTide, TideEvent };

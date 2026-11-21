@@ -3,7 +3,7 @@ import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '@/auth';
-import { cache } from '@/lib/cache';
+import { cache } from '@/lib/cache/client';
 import {
   isRateLimited,
   isSignupRateLimited,
@@ -12,7 +12,7 @@ import {
 } from './rateLimit';
 
 vi.mock('@/auth', () => ({ auth: vi.fn() }));
-vi.mock('@/lib/cache', () => ({ cache: { increment: vi.fn() } }));
+vi.mock('@/lib/cache/client', () => ({ cache: { increment: vi.fn() } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('next/headers', () => ({ headers: vi.fn() }));
 

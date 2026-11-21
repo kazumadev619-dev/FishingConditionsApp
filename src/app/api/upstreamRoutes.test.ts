@@ -9,8 +9,8 @@ import { GET as locationSearch } from './locations/search/route';
 import { GET as scores } from './scores/route';
 import { GET as weather } from './weather/route';
 
-vi.mock('@/lib/cache', async (original) => ({
-  ...(await original<typeof import('@/lib/cache')>()),
+vi.mock('@/lib/cache/helpers', async (original) => ({
+  ...(await original<typeof import('@/lib/cache/helpers')>()),
   withCache: vi.fn(),
 }));
 vi.mock('@/lib/rateLimit', () => ({ withUserRateLimit: vi.fn() }));

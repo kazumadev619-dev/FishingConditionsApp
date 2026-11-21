@@ -318,7 +318,7 @@ erDiagram
     ↓
   ports.port_code を取得
     ↓
-  Redisキャッシュで潮汐データを検索（src/lib/cache.ts）
+  Redisキャッシュで潮汐データを検索（src/lib/cache/）
   ```
 
 ##### **locations** テーブル
@@ -400,7 +400,7 @@ erDiagram
 
 ### キャッシュ戦略の重要ポイント
 
-> **NOTE**: 天気・潮汐キャッシュはRedisで管理（`src/lib/cache.ts`参照）
+> **NOTE**: 天気・潮汐キャッシュはRedisで管理（`src/lib/cache/`参照）
 
 | 項目         | 天気キャッシュ（Redis）      | 潮汐キャッシュ（Redis）      |
 | ------------ | ---------------------------- | ---------------------------- |
@@ -453,7 +453,7 @@ WHERE l.id = ${locationId};
 |                  | `user_search_history` | 検索履歴                              |
 |                  | `user_settings`       | ユーザー設定                          |
 
-> **NOTE**: 天気・潮汐キャッシュはPostgreSQLテーブルではなくRedisで管理（`src/lib/cache.ts`）
+> **NOTE**: 天気・潮汐キャッシュはPostgreSQLテーブルではなくRedisで管理（`src/lib/cache/`）
 
 ---
 

@@ -1,12 +1,12 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiClient.ts`、`src/lib/apiErrorUtils.ts`
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`
 > - **最終確認**: 未確認（#370 で突合する。2026-11-07 に 429 だけ #368 で直した）
 
 ## 概要
 
-`src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。`src/lib/apiClient.ts` は、その再エクスポートの入口で、以降の例はそこから import します。
+`src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。クライアントは `@/lib/api/client`、`ApiError` と `ApiErrorType` は `@/lib/api/types` から import します。
 
 ## エクスポートされた型とクラス
 
@@ -46,7 +46,8 @@ export class ApiError extends Error {
 ### 基本的なエラーハンドリング
 
 ```typescript
-import { openWeatherMapClient, ApiError, ApiErrorType } from '@/lib/apiClient';
+import { openWeatherMapClient } from '@/lib/api/client';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 
 try {
   const weather = await openWeatherMapClient.get('/weather', {
@@ -127,7 +128,8 @@ try {
 'use client';
 
 import { useState, useEffect } from 'react';
-import { openWeatherMapClient, ApiError, ApiErrorType } from '@/lib/apiClient';
+import { openWeatherMapClient } from '@/lib/api/client';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 
 export function WeatherWidget() {
   const [weather, setWeather] = useState(null);
@@ -183,7 +185,8 @@ export function WeatherWidget() {
 ```typescript
 'use server';
 
-import { openWeatherMapClient, ApiError, ApiErrorType } from '@/lib/apiClient';
+import { openWeatherMapClient } from '@/lib/api/client';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 
 export async function fetchWeatherData(lat: number, lon: number) {
   try {

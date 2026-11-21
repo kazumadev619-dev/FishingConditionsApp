@@ -1,7 +1,7 @@
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiError } from '@/lib/api/errorHandler';
-import { ApiError, ApiErrorType } from '@/lib/apiClient';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 import { searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
 import { getCurrentWeather } from '@/lib/openWeatherService';

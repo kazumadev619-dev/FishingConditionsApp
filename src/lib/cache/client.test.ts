@@ -7,8 +7,6 @@ const redisMock = vi.hoisted(() => {
     status: 'ready',
     get: vi.fn(),
     set: vi.fn(),
-    del: vi.fn(),
-    scanStream: vi.fn(),
     multi: vi.fn(),
     disconnect: vi.fn(),
     constructed: vi.fn(),
@@ -32,8 +30,6 @@ vi.mock('ioredis', () => ({
     }
     get = redisMock.get;
     set = redisMock.set;
-    del = redisMock.del;
-    scanStream = redisMock.scanStream;
     on = (event: string, handler: (arg?: unknown) => void) => {
       redisMock.handlers[event] = handler;
     };
@@ -309,23 +305,7 @@ describe('Redis が応答しないときのコマンド失敗のログ', () => {
       { key: 'k', err: timeout },
       'Failed to increment counter',
     ],
-    [
-      'delete',
-      () => cache.delete('k'),
-      { key: 'k', error: timeout },
-      'Failed to delete cache data',
-    ],
-    [
-      'deleteByPattern',
-      () => cache.deleteByPattern('w:*'),
-      { pattern: 'w:*', error: timeout },
-      'Failed to delete cache data by pattern',
-    ],
   ])('%s の失敗も間引く（最初の1回だけ error）', async (_name, run, fields, message) => {
-    redisMock.del.mockRejectedValue(timeout);
-    redisMock.scanStream.mockImplementation(() => ({
-      [Symbol.asyncIterator]: () => ({ next: () => Promise.reject(timeout) }),
-    }));
     redisMock.multi.mockReturnValue({
       set: () => ({ incr: () => ({ exec: () => Promise.reject(timeout) }) }),
     });

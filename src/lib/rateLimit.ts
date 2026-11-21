@@ -3,7 +3,7 @@ import { isIPv4, isIPv6 } from 'node:net';
 import { headers } from 'next/headers';
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
-import { cache } from '@/lib/cache';
+import { cache } from '@/lib/cache/client';
 import { logger } from '@/lib/logger';
 
 const USER_LIMIT_PER_MINUTE = 60;
