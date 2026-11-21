@@ -24,7 +24,8 @@ export function overlayPending(
   const onServer = new Set(server.map((fav) => fav.locationId));
   // 一時行は新しい順に先頭へ（楽観更新と同じ並び）。サーバに既に載った地点は二重にしない。
   // ponytail: portId / 座標での追加は一時行の locationId が仮なので、POST の確定後、
-  // その追加自身の取り直しより先に別の取り直しが返ると一瞬二重に見える。自身の取り直しで消える
+  // その追加自身の取り直しより先に別の取り直しが返ると一瞬二重に見える。自身の取り直しで消える。
+  // 上げる条件: 二重表示の報告が出たとき。直し方は、一時行を locationId でなく tempId で突き合わせる。
   const temps = Array.from(pending.adds.values())
     .reverse()
     .filter((fav) => !onServer.has(fav.locationId));
