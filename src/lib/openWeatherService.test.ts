@@ -31,7 +31,10 @@ const withPressure = (pressure: unknown) => ({
 
 const fetchWeather = () => getCurrentWeather(35, 139, { skipCache: true });
 
-beforeEach(() => vi.clearAllMocks());
+beforeEach(() => {
+  vi.clearAllMocks();
+  cacheMock.set.mockResolvedValue(true);
+});
 
 // #414: 風速が有限の数値でない応答は、不正な応答として弾く（OpenWeather の応答を受け取る時点）。
 // 通すと、風の点は 0 点なのに説明文の風の注意が出ない食い違いになる。
@@ -43,6 +46,13 @@ describe('風速が有限の数値でない応答は弾く（#414）', () => {
     ['speed が文字列', { wind: { speed: '5', deg: 90 } }],
     ['speed が Infinity', { wind: { speed: Number.POSITIVE_INFINITY, deg: 90 } }],
     ['wind 自体が無い', { wind: undefined }],
+    ['wind が null', { wind: null }],
+    ['speed が -Infinity', { wind: { speed: Number.NEGATIVE_INFINITY, deg: 90 } }],
+    // Number.isFinite は型を変換しない。グローバルの isFinite に替えると、次の4つは通ってしまう
+    ['speed が空文字', { wind: { speed: '', deg: 90 } }],
+    ['speed が true', { wind: { speed: true, deg: 90 } }],
+    ['speed が配列', { wind: { speed: [5], deg: 90 } }],
+    ['speed がオブジェクト', { wind: { speed: {}, deg: 90 } }],
   ])('%s → 502 の ApiError（SERVER_ERROR）', async (_label, overrides) => {
     apiMock.openWeatherMapClient.get.mockResolvedValue(rawWeather(overrides));
 
@@ -52,7 +62,7 @@ describe('風速が有限の数値でない応答は弾く（#414）', () => {
     expect(error).toMatchObject({ statusCode: 502, type: ApiErrorType.SERVER_ERROR });
   });
 
-  it.each([0, 0.5, 6, 25])('風速 %s は通す（0 は欠損ではない）', async (speed) => {
+  it.each([0, -0, 0.5, 6, 6.0001, 1e6])('風速 %s は通す（0 は欠損ではない）', async (speed) => {
     apiMock.openWeatherMapClient.get.mockResolvedValue(rawWeather({ wind: { speed, deg: 90 } }));
 
     const result = await fetchWeather();
@@ -80,6 +90,12 @@ describe('気圧が有限の数値でない応答は弾く（#414）', () => {
     ['pressure が文字列', withPressure('1013')],
     ['pressure が無限大', withPressure(Number.NEGATIVE_INFINITY)],
     ['main 自体が無い', { main: undefined }],
+    ['main が null', { main: null }],
+    ['pressure が +Infinity', withPressure(Number.POSITIVE_INFINITY)],
+    ['pressure が空文字', withPressure('')],
+    ['pressure が true', withPressure(true)],
+    ['pressure が配列', withPressure([1013])],
+    ['風速と気圧が両方 null', { wind: { speed: null, deg: 90 }, ...withPressure(null) }],
   ])('%s → 502 の ApiError（SERVER_ERROR）', async (_label, overrides) => {
     apiMock.openWeatherMapClient.get.mockResolvedValue(rawWeather(overrides));
 
@@ -87,6 +103,19 @@ describe('気圧が有限の数値でない応答は弾く（#414）', () => {
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({ statusCode: 502, type: ApiErrorType.SERVER_ERROR });
+  });
+
+  it('キャッシュミスの経路でも、弾いた気圧は書かず、そのあとの正常な応答だけを書く', async () => {
+    cacheMock.get.mockResolvedValue({ hit: false });
+    apiMock.openWeatherMapClient.get.mockResolvedValueOnce(rawWeather(withPressure(null)));
+    await expect(getCurrentWeather(35, 139)).rejects.toBeInstanceOf(ApiError);
+    expect(cacheMock.set).not.toHaveBeenCalled();
+
+    apiMock.openWeatherMapClient.get.mockResolvedValueOnce(rawWeather());
+    const result = await getCurrentWeather(35, 139);
+
+    expect(result.data.pressure).toBe(1013);
+    expect(cacheMock.set).toHaveBeenCalledTimes(1);
   });
 
   it.each([0, 985, 1013, 1040])('気圧 %s は通す', async (pressure) => {
