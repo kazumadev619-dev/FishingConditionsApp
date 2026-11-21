@@ -7,7 +7,8 @@ import { calculateFishingScore } from './index';
 //  - 総合スコア = 潮汐 (40) + 天気 (35) + 時間帯 (25)（「スコア算出概要」）
 //  - 合計は四捨五入して 0〜100 に収める。components の各値は丸めない（「合計の丸め」）
 //  - ランクは「スコア範囲と評価」の表。ランクの元になるのは丸めたあとの総合スコア
-//  - bestComponent / worstComponent は components のうち最も高い / 低い要素（「スコア内訳表示」）
+//  - bestComponent / worstComponent は、名前どおり components のうち最高・最低の要素（#364 での決定。
+//    scoring-algorithm.md「スコア内訳表示」は型だけを書く）。同点は仕様未定で #420 の対象外なので、テストしない
 // 各要素の点数そのものは tideScore / weatherScore / timeScore のテストが見る。ここは、組み合わせ方だけを見る。
 //
 // 要素の点数を作る手がかり（現在時刻は JST 2026-10-17 12:00）:
@@ -18,11 +19,11 @@ const DATE = '2026-10-17';
 const NOW = new Date(`${DATE}T12:00:00+09:00`);
 const jst = (hhmm: string) => new Date(`${DATE}T${hhmm}:00+09:00`);
 
-const tideFor = (flood: string, cm: number, moon?: { age: string; title: string }) =>
+const tideFor = (flood: string, cm: number, moon?: { age: string; title: string }, date = DATE) =>
   ({
     tides: [
       {
-        date: DATE,
+        date,
         daily: {
           flood: [{ time: flood, cm, unix: 0 }],
           edd: [{ time: '00:00', cm: 0, unix: 0 }],
@@ -174,35 +175,16 @@ describe('calculateFishingScore の合計とランク', () => {
 });
 
 describe('calculateFishingScore の潮名・月齢・計算時刻', () => {
-  it('当日の潮汐データの moon.title と moon.age を tideName と moonAge に入れる', () => {
-    const tide = tideFor('12:00', 150, { age: '14.2', title: '大潮' });
+  // 「tideName: 当日の tide736 の moon.title」「moonAge: 当日の moon.age」。前日が先頭にあっても当日を選ぶ
+  it('tideName と moonAge は、前日ではなく当日（JST）の moon から取る', () => {
+    const yesterday = tideFor('12:00', 150, { age: '13.2', title: '中潮' }, '2026-10-16');
+    const today = tideFor('12:00', 150, { age: '14.2', title: '大潮' });
+    const tide = { tides: [...yesterday.tides, ...today.tides] } as FormattedTideData;
     const result = calculateFishingScore(tide, W_35(SUN_25), NOW);
 
     expect(result.tideName).toBe('大潮');
     expect(result.moonAge).toBe('14.2');
     expect(result.calculatedAt).toBe(NOW);
-  });
-
-  // 「tideName: 当日の tide736 の moon.title」「moonAge: 当日の moon.age」。前日が先頭にあっても当日を選ぶ
-  it('tideName と moonAge は前日ではなく当日（JST）の moon から取る', () => {
-    const day = (date: string, moon: { age: string; title: string }) => ({
-      date,
-      daily: {
-        flood: [{ time: '12:00', cm: 150, unix: 0 }],
-        edd: [{ time: '00:00', cm: 0, unix: 0 }],
-        moon,
-      },
-    });
-    const tide = {
-      tides: [
-        day('2026-10-16', { age: '13.2', title: '中潮' }),
-        day(DATE, { age: '14.2', title: '大潮' }),
-      ],
-    } as unknown as FormattedTideData;
-    const result = calculateFishingScore(tide, W_35(SUN_25), NOW);
-
-    expect(result.tideName).toBe('大潮');
-    expect(result.moonAge).toBe('14.2');
   });
 
   it('当日の潮汐データがなければ tideName と moonAge は無い', () => {

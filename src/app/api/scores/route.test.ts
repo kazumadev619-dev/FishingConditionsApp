@@ -13,7 +13,6 @@ vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));
 vi.mock('@/lib/tideService', () => ({ getTideData: tideMock }));
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
 
-import { CACHE_TTL } from '@/lib/cache';
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
 import type { FormattedTideData } from '@/lib/tideService';
 import { GET } from './route';
@@ -117,32 +116,29 @@ describe('GET /api/scores の基準時刻（#301）', () => {
   });
 });
 
-// 以下は #364。スコア API のキャッシュと入力検証。期待値の出どころは各 describe に書く。
-const BASE = 'lat=35.6789&lon=139.7654&prefectureCode=13&portCode=1';
-const get = (query: string) => GET(new NextRequest(`http://localhost/api/scores?${query}`));
+// 以下は #364。スコア API のキャッシュ。期待値の出どころは各 describe に書く。
 
 // 守る状態: 応答は共有キャッシュ（CDN・中間プロキシ）に保存されない。
 // 期待値: docs/reference/architecture.md「キャッシュの層」（`/api/scores` は `private, max-age=1800`（30分）。
 // 認証必須の API なので `public` にして共有キャッシュに載せない）。
 describe('GET /api/scores の Cache-Control', () => {
-  it('キャッシュ経由の応答は private で、max-age はスコアの TTL（30分）', async () => {
-    const res = await get(BASE);
+  it('キャッシュ経由の応答は private, max-age=1800', async () => {
+    const res = await GET(request());
 
     const control = res.headers.get('Cache-Control') ?? '';
     expect(control.split(/,\s*/)).toContain('private');
     expect(control).not.toMatch(/public|s-maxage/);
-    expect(control).toContain(`max-age=${CACHE_TTL.SCORE}`);
+    expect(control).toContain('max-age=1800');
   });
 
   it('キャッシュヒットの応答も private', async () => {
     cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody() });
-    const res = await get(BASE);
+    const res = await GET(request());
 
     expect(res.headers.get('Cache-Control')?.split(/,\s*/)).toContain('private');
   });
 });
 
-// キャッシュは JSON で往復するので、Date は ISO 文字列で戻る。Invalid Date は null に落ちる。
 const cachedBody = () => ({
   score: {
     score: 70,
@@ -156,37 +152,41 @@ const cachedBody = () => ({
   fromCache: false,
 });
 
-// キャッシュヒットの応答は、外部 API を呼ばず、X-From-Cache: true で返す。
-// 日付の復元・壊れた日付の扱いは仕様未定のため、ここでは固定しない（#420）。
-describe('GET /api/scores のキャッシュヒット', () => {
-  it('外部 API を呼ばず、X-From-Cache: true で返す', async () => {
+// 守る状態: キャッシュヒットでは外部 API を呼ばず、ミスでは呼んで結果を保存する。
+// 期待値: docs/reference/architecture.md「キャッシュの層」（Redis は外部 API の結果を保つ）。
+// 呼び出し回数を見るのは、回数が仕様（キャッシュ）のため（testing-policy 5節の例外）。
+// X-From-Cache の値、日付の復元・壊れた日付の扱いは仕様未定のため、ここでは固定しない（#420）。
+describe('GET /api/scores のキャッシュヒットとミス', () => {
+  it('ヒットのときは外部 API を呼ばない', async () => {
     cacheMock.get.mockResolvedValue({ hit: true, value: cachedBody() });
 
-    const res = await get(BASE);
+    const res = await GET(request());
 
     expect(res.status).toBe(200);
-    expect(res.headers.get('X-From-Cache')).toBe('true');
     expect(weatherMock).not.toHaveBeenCalled();
     expect(tideMock).not.toHaveBeenCalled();
   });
 
-  it('ミスのときは X-From-Cache: false で、外部 API を呼び、結果をキャッシュに保存する', async () => {
-    const res = await get(BASE);
+  it('ミスのときは外部 API を呼び、結果をキャッシュに保存する', async () => {
+    await GET(request());
 
-    expect(res.headers.get('X-From-Cache')).toBe('false');
     expect(weatherMock).toHaveBeenCalledOnce();
     expect(tideMock).toHaveBeenCalledOnce();
     expect(cacheMock.set).toHaveBeenCalledOnce();
   });
 });
 
+// 取得に失敗したら 500 を返し、内部のエラー文は出さない。
+// 出典: docs/reference/api-error-handling.md には /api/scores の 500 の本文の文言の記述がない
+// （同文書「ユーザーに適切なメッセージを表示」は getErrorMessage を使うとだけ書く）。そのため文言そのものは固定せず、
+// ステータスと「内部のエラー文を含まない」ことだけを見る。文言の仕様は #420 で扱う。
 describe('GET /api/scores の取得失敗', () => {
-  it('外部取得が失敗したら 500 と固定のメッセージを返す（内部のエラー文を出さない）', async () => {
+  it('外部取得が失敗したら 500 を返し、内部のエラー文を出さない', async () => {
     weatherMock.mockRejectedValue(new Error('secret upstream detail'));
 
-    const res = await get(BASE);
+    const res = await GET(request());
 
     expect(res.status).toBe(500);
-    expect(await res.json()).toEqual({ error: 'Failed to calculate fishing score' });
+    expect(JSON.stringify(await res.json())).not.toContain('secret upstream detail');
   });
 });
