@@ -1,8 +1,8 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiClient.ts`、`src/lib/apiErrorUtils.ts`
-> - **最終確認**: 2026-11-21（2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiClient.ts`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`
+> - **最終確認**: 2026-11-21（2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -242,6 +242,19 @@ const RETRYABLE_STATUS_CODES = [
 - `isRetryable(error: ApiError): boolean`: `error.retryable` を返す。
 
 `/api/weather` の Route Handler が `getErrorMessage` と `logApiError` を使っている。
+
+## 上流の応答が不正なとき
+
+OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
+
+| 入口 | 利用者に出るもの |
+|---|---|
+| `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
+| `/api/scores` | HTTP 500。`error` は「Failed to calculate fishing score」 |
+| `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
+| `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
+
+応答には、不正だった値も上流の本文も入れない（`message` はログにだけ残る）。点を付けられない値を 0 点として扱う案は採らない（点と説明文が食い違うため）。
 
 ## ベストプラクティス
 

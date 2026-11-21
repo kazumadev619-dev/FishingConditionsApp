@@ -121,7 +121,7 @@ Zenn は、自アプリだけが使う DB はモックにせず、実DBの統合
 | ① 認証・認可 | `src/auth/`、`src/proxy.ts`、`src/lib/actions.ts`、`src/lib/googleSignIn.ts`、`src/lib/token.ts`、`src/lib/email.ts`、`src/app/api/auth/`、`src/app/api/favorites/`（所有者の確認に関わる変更。一覧の取得だけの変更は対象外）、`src/lib/csp.mjs` |
 | ② スコア計算 | `src/lib/scoring/`、`src/lib/scoringService.ts`、`src/lib/tideService.ts` |
 | ③ データ移行・シード | `prisma/migrations/`、`prisma/seed.ts`、`prisma/data/`、`scripts/verify-seed-rerun.sh` |
-| ④ 入力検証・レート制限 | `src/lib/validators/`、`src/lib/password-validation.ts`、`src/lib/rateLimit.ts`、`src/lib/prismaConstraints.ts` |
+| ④ 入力検証・レート制限 | `src/lib/validators/`、`src/lib/openWeatherService.ts`（上流の応答の検証）、`src/lib/password-validation.ts`、`src/lib/rateLimit.ts`、`src/lib/prismaConstraints.ts` |
 
 見直しの時期: [#354](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/354)（実DB基盤）が完了したときと、この4つの役割を持つファイルを、一覧の外に新しく作ったとき。
 
