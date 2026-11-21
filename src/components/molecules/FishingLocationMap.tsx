@@ -1,7 +1,8 @@
 'use client';
 
 import { AdvancedMarker, APIProvider, Map as GoogleMap } from '@vis.gl/react-google-maps';
-import { Component, type ReactNode } from 'react';
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { reportClientError } from '@/lib/clientErrors';
 import { logger } from '@/lib/logger';
 
 interface FishingLocationMapProps {
@@ -25,6 +26,10 @@ export class MapErrorBoundary extends Component<{ children: ReactNode }, { faile
 
   static getDerivedStateFromError() {
     return { failed: true };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    reportClientError(error, 'map-boundary', info.componentStack);
   }
 
   render() {

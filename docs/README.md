@@ -18,6 +18,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | 認証の仕組みを知りたい | [reference/authentication.md](./reference/authentication.md) ／ [図解](./reference/authentication-diagrams.md) |
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |
 | 外部 API の仕様を知りたい | [reference/api-integration.md](./reference/api-integration.md) ／ [Google Maps](./reference/google-maps-api.md) |
+| エラーを正常・異常・想定外に分けた扱い（HTTP・ログ・リトライ・通知）を知りたい | [reference/error-classification.md](./reference/error-classification.md) |
 | API エラーの扱い方を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
 | 性能計測（Server-Timing）の対象を増やしたい／読み方を知りたい | [src/lib/serverTiming.ts](../src/lib/serverTiming.ts)（JSDoc） |
 | 監視の構成と選定理由を知りたい | [adr/005-monitoring-platform.md](./adr/005-monitoring-platform.md) |
