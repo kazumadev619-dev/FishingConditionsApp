@@ -8,9 +8,9 @@ import type {
   FavoriteAddResponse,
   FavoriteErrorResponse,
   FavoriteLocation,
+  FavoriteRequest,
 } from '@/types/favorites';
 import type { PendingFavoriteOps } from './useFavoritesFetch';
-import { buildFavoriteRequestBody } from './utils/favoriteRequestBuilder';
 
 interface UseFavoritesOptimisticProps {
   favorites: FavoriteLocation[];
@@ -30,22 +30,17 @@ export function useFavoritesOptimistic({
   pending,
 }: UseFavoritesOptimisticProps) {
   const addFavorite = useCallback(
-    async (
-      locationId?: string,
-      portId?: string,
-      lat?: number,
-      lng?: number,
-      name?: string,
-    ): Promise<string> => {
+    async (request: FavoriteRequest): Promise<string> => {
+      const { locationId, coordinates } = request;
       // 同時に複数追加したとき、失敗した1件だけを消せるよう毎回別の id にする。
       // FavoriteTab は id を React の key に使うので、固定値だと key も衝突する（#152）
       const tempId = `temp-${++tempSeq}`;
       const tempFavorite: FavoriteLocation = {
         id: tempId,
         locationId: locationId || tempId,
-        name: name || '',
-        latitude: lat || 0,
-        longitude: lng || 0,
+        name: coordinates?.name || '',
+        latitude: coordinates?.lat || 0,
+        longitude: coordinates?.lng || 0,
         createdAt: new Date().toISOString(),
       };
 
@@ -56,12 +51,10 @@ export function useFavoritesOptimistic({
       setFavorites((prev) => [tempFavorite, ...prev]);
 
       try {
-        const requestBody = buildFavoriteRequestBody(locationId, portId, lat, lng, name);
-
         const response = await fetch('/api/favorites', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(requestBody),
+          body: JSON.stringify(request),
         });
 
         if (!response.ok) {
@@ -97,7 +90,7 @@ export function useFavoritesOptimistic({
         await fetchFavorites();
         return data.locationId;
       } catch (err) {
-        logger.error({ err, locationId, portId, lat, lng }, 'Failed to add favorite');
+        logger.error({ err, ...request }, 'Failed to add favorite');
         pending.adds.delete(tempId);
         setFavorites((prev) => prev.filter((fav) => fav.id !== tempId));
         throw err;
