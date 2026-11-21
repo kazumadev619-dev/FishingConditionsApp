@@ -3,12 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const apiMock = vi.hoisted(() => ({ openWeatherMapClient: { get: vi.fn() } }));
 const cacheMock = vi.hoisted(() => ({ get: vi.fn(), set: vi.fn() }));
 vi.mock('./cache/client', () => ({ cache: cacheMock }));
-vi.mock('./apiClient', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./apiClient')>()),
+vi.mock('./api/client', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./api/client')>()),
   ...apiMock,
 }));
 
-import { ApiError, ApiErrorType } from './apiClient';
+import { ApiError, ApiErrorType } from './api/types';
 import { getCurrentWeather } from './openWeatherService';
 
 const rawWeather = (overrides: Record<string, unknown> = {}) => ({

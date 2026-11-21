@@ -20,16 +20,6 @@ export interface ScoreComponents {
 export type ScoreRank = 'excellent' | 'good' | 'fair' | 'poor' | 'bad';
 
 /**
- * スコアランク情報
- */
-export interface RankInfo {
-  rank: ScoreRank;
-  label: string;
-  color: string;
-  description: string;
-}
-
-/**
  * 釣りやすさスコア全体
  */
 export interface FishingScore {
@@ -54,52 +44,6 @@ export interface FishingScore {
 }
 
 /**
- * 潮汐スコアの詳細情報
- */
-export interface TideScoreBreakdown {
-  /** 潮汐タイミングスコア (0-25点) */
-  timing: number;
-  /** 潮の大きさスコア (0-15点) */
-  size: number;
-  /** 最も近い満潮・干潮までの時間（分） */
-  minutesToNextExtreme: number;
-  /** 潮位差（メートル） */
-  tideRange: number;
-  /** 潮の大きさレベル ('large' | 'medium' | 'small' | 'very_small') */
-  tideSizeLevel: 'large' | 'medium' | 'small' | 'very_small';
-}
-
-/**
- * 天気スコアの詳細情報
- */
-export interface WeatherScoreBreakdown {
-  /** 風速スコア (0-15点) */
-  windSpeed: number;
-  /** 気象条件スコア (0-12点) */
-  condition: number;
-  /** 気圧安定性スコア (0-8点) */
-  pressureStability: number;
-  /** 実測風速 (m/s) */
-  actualWindSpeed: number;
-  /** 気象メイン条件 */
-  weatherMain: string;
-  /** 気圧変化 (hPa) */
-  pressureChange: number;
-}
-
-/**
- * スコア計算のオプション
- */
-export interface ScoringOptions {
-  /** 地点ID */
-  locationId?: string;
-  /** キャッシュをスキップするか */
-  skipCache?: boolean;
-  /** 詳細情報を含めるか */
-  includeBreakdown?: boolean;
-}
-
-/**
  * スコア計算API レスポンス
  */
 export interface ScoringResponse {
@@ -107,9 +51,4 @@ export interface ScoringResponse {
   score: FishingScore;
   /** キャッシュから取得したか */
   fromCache: boolean;
-  /** 詳細な要素ごとの情報（オプション） */
-  breakdown?: {
-    tide: TideScoreBreakdown;
-    weather: WeatherScoreBreakdown;
-  };
 }

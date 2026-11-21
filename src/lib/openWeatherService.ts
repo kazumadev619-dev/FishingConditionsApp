@@ -4,17 +4,16 @@
  */
 
 import type { CurrentWeatherData, ForecastData } from '@/types/weather';
+import { openWeatherMapClient } from './api/client';
 import { createApiError } from './api/errorHandler';
-import { openWeatherMapClient } from './apiClient';
+import { CACHE_PREFIX, CACHE_TTL } from './cache/config';
 import {
-  CACHE_PREFIX,
-  CACHE_TTL,
   type CacheResponse,
   fetchWithOptionalCache,
   generateCacheKey,
   type Jsonified,
   reviveDate,
-} from './cache';
+} from './cache/helpers';
 
 /**
  * 天気取得時のオプション

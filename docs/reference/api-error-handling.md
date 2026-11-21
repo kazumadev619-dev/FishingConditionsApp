@@ -1,12 +1,12 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiClient.ts`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`
 > - **最終確認**: 2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
-`src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。`src/lib/apiClient.ts` は、その再エクスポートの入口で、以降の例はそこから import します。
+`src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。クライアントは `@/lib/api/client`、`ApiError` と `ApiErrorType` は `@/lib/api/types` から import します。
 
 **この HTTP クライアントはサーバー専用です。** `openWeatherMapClient` と `googleMapsClient` のキーはサーバー専用で、`NEXT_PUBLIC_` を付けられません（#143）。`'use client'` のコンポーネントから呼ばず、Route Handler・Server Action・サーバーコンポーネントから使います。ブラウザには `/api/*` の応答だけを返します。
 
@@ -48,7 +48,8 @@ export class ApiError extends Error {
 ### 基本的なエラーハンドリング
 
 ```typescript
-import { openWeatherMapClient, ApiError, ApiErrorType } from '@/lib/apiClient';
+import { openWeatherMapClient } from '@/lib/api/client';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 
 try {
   const weather = await openWeatherMapClient.get('/weather', {
@@ -121,7 +122,8 @@ try {
 ```typescript
 'use server';
 
-import { openWeatherMapClient, ApiError, ApiErrorType } from '@/lib/apiClient';
+import { openWeatherMapClient } from '@/lib/api/client';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 import { logApiError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 

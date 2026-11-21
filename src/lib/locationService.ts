@@ -9,7 +9,8 @@ import type {
   LocationSearchResponse,
   LocationSearchResult,
 } from '@/types/location';
-import { CACHE_PREFIX, CACHE_TTL, fetchWithOptionalCache, generateCacheKey } from './cache';
+import { CACHE_PREFIX, CACHE_TTL } from './cache/config';
+import { fetchWithOptionalCache, generateCacheKey } from './cache/helpers';
 import { geocode } from './googleMapsClient';
 
 /**

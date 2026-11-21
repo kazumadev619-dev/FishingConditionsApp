@@ -1,4 +1,4 @@
-import { type ApiError, ApiErrorType } from './apiClient';
+import { type ApiError, ApiErrorType } from './api/types';
 import { logger } from './logger';
 
 // エラー型から日本語のメッセージを生成
