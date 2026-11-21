@@ -82,7 +82,7 @@ describe('POST /api/client-errors（#247）', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('本文が上限（16KB）を超えたら 413 で、ログに残さない', async () => {
+  it('本文が上限（CLIENT_ERROR_LIMITS.bodyBytes）を超えたら 413 で、ログに残さない', async () => {
     const big = JSON.stringify({ ...valid, message: 'x'.repeat(CLIENT_ERROR_LIMITS.bodyBytes) });
 
     expect((await post(big)).status).toBe(413);
