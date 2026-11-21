@@ -10,7 +10,7 @@ import { POST } from './route';
 
 // 上限は仕様（docs/reference/error-classification.md §3）の値を、リテラルで書く。
 // 実装の定数を読むと、定数を書き換えたときにテストも一緒に動いて、変異を見逃す。
-// bodyBytes = 全項目の上限の合計 6,900 文字 × 最悪の 1 文字 6 バイト + 余裕 1,024 バイト
+// bodyBytes = 全項目の上限の合計 6,900 文字 × 日本語の最悪 3 バイト + 余裕 1,024 バイト
 const LIMITS = {
   message: 500,
   name: 100,
@@ -18,7 +18,7 @@ const LIMITS = {
   componentStack: 2000,
   digest: 100,
   path: 200,
-  bodyBytes: 42424,
+  bodyBytes: 21724,
 };
 
 // Redis は利用者ごとのキーで数える偽物にする（取得のスタブ。回数の検証はしない）
@@ -99,7 +99,6 @@ describe('反証: POST /api/client-errors（#247）', () => {
       ...valid,
       message: 'あ'.repeat(LIMITS.message),
       stack: 'あ'.repeat(LIMITS.stack),
-      componentStack: 'あ'.repeat(LIMITS.componentStack),
     });
     const over = padToBytes(japanese, LIMITS.bodyBytes + 1);
     expect(over.length).toBeLessThan(LIMITS.bodyBytes);
@@ -107,9 +106,8 @@ describe('反証: POST /api/client-errors（#247）', () => {
     expect((await POST(req(over))).status).toBe(413);
   });
 
-  it('項目の上限をすべて満たした最大の本文は、必ず通る（上限は項目の上限から計算した値）', async () => {
-    // 1文字が JSON で最も長くなる制御文字（\u0001 の6バイト）で、全項目を上限まで埋める
-    const worst = filledWith('\u0001');
+  it('日本語で全項目を上限まで埋めた最大の本文は、必ず通る（上限は項目の上限から計算した値）', async () => {
+    const worst = filledWith('あ');
     expect(bytes(worst)).toBeLessThanOrEqual(LIMITS.bodyBytes);
     // 余裕は大きすぎない。上限だけを大きくして済ませていないことの確認
     expect(LIMITS.bodyBytes - bytes(worst)).toBeLessThan(1100);
@@ -117,8 +115,12 @@ describe('反証: POST /api/client-errors（#247）', () => {
     expect((await POST(req(worst))).status).toBe(204);
   });
 
-  it('日本語で全項目を上限まで埋めた本文も通る（レビューで 413 になっていた形）', async () => {
-    expect((await POST(req(filledWith('あ')))).status).toBe(204);
+  it('改行だらけの最大の本文も通る（改行は JSON で2バイト）', async () => {
+    expect((await POST(req(filledWith('\n')))).status).toBe(204);
+  });
+
+  it('制御文字（JSON で6バイト）で全項目を埋めた本文は、上限を超えるので 413', async () => {
+    expect((await POST(req(filledWith('\u0001')))).status).toBe(413);
   });
 
   it('Content-Length を小さく偽っても、実際に届いた量で 413 にする', async () => {
@@ -130,7 +132,7 @@ describe('反証: POST /api/client-errors（#247）', () => {
     const chunk = new TextEncoder().encode('a'.repeat(1024));
     const stream = new ReadableStream<Uint8Array>({
       start(c) {
-        for (let i = 0; i < 43; i++) c.enqueue(chunk); // 43 KiB = 44,032 バイト > 42,424
+        for (let i = 0; i < 22; i++) c.enqueue(chunk); // 22 KiB = 22,528 バイト > 21,724
         c.close();
       },
     });
