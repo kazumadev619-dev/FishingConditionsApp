@@ -16,6 +16,8 @@ const SIGNUP_WINDOW_SECONDS = 60 * 60;
  * このキーの呼び出しが、窓の間に limit を超えたかどうか。
  *
  * ponytail: 固定窓なので、窓の境目では瞬間的に limit の2倍まで通る。
+ * 上げる条件: 窓の境目の2倍が許容できない経路（課金・外部 API の割り当てに直結するもの）を足すとき。
+ * そのときは Redis のスライディングウィンドウ（sorted set）に替える。
  * Redis が使えないときは制限しない（キャッシュと同じく、落ちてもアプリは動かす）。
  */
 export async function isRateLimited(

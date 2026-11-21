@@ -3,20 +3,14 @@
 import { createContext, useCallback, useContext, useMemo } from 'react';
 import { useFavoritesFetch } from '@/hooks/useFavoritesFetch';
 import { useFavoritesOptimistic } from '@/hooks/useFavoritesOptimistic';
-import type { FavoriteLocation } from '@/types/favorites';
+import type { FavoriteLocation, FavoriteRequest } from '@/types/favorites';
 
 interface FavoritesContextValue {
   favorites: FavoriteLocation[];
   isLoading: boolean;
   error: string | null;
   /** お気に入り追加。成功時は登録されたlocationIdを返す */
-  addFavorite: (
-    locationId?: string,
-    portId?: string,
-    lat?: number,
-    lng?: number,
-    name?: string,
-  ) => Promise<string>;
+  addFavorite: (request: FavoriteRequest) => Promise<string>;
   removeFavorite: (locationId: string) => Promise<void>;
   isFavorite: (locationId: string) => boolean;
   refetch: () => void;
