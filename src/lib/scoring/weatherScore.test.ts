@@ -14,15 +14,15 @@ const weatherWith = (windSpeed: number) =>
 
 describe('calculateWeatherScore の風速', () => {
   it.each([
-    [0, 15],
-    [2, 15],
-    [2.1, 10],
-    [4, 10],
-    [4.1, 5],
-    [6, 5],
-    [6.1, 0],
-    [20, 0],
-  ])('風速 %sm/s のとき、風速のスコアは %s 点', (windSpeed, windScore) => {
+    ['T-WIND-01', 0, 15],
+    ['T-WIND-01', 2, 15],
+    ['T-WIND-02', 2.1, 10],
+    ['T-WIND-03', 4, 10],
+    ['T-WIND-04', 4.1, 5],
+    ['T-WIND-05', 6, 5],
+    ['T-WIND-06', 6.1, 0],
+    ['T-WIND-06', 20, 0],
+  ])('[%s] 風速 %sm/s のとき、風速のスコアは %s 点', (_id, windSpeed, windScore) => {
     expect(calculateWeatherScore(weatherWith(windSpeed))).toBe(windScore + 20);
   });
 });
@@ -35,22 +35,22 @@ const weatherOf = (main: string, pressure: number) =>
 // 期待値: docs/reference/scoring-algorithm.md「天候評価」。気圧 1013hPa（8点）と風速 15点を足して 23 + 天候の点数。
 describe('calculateWeatherScore の天候', () => {
   it.each([
-    ['Clear', 12],
-    ['Sunny', 12],
-    ['晴れ', 12],
-    ['Clouds', 8],
-    ['曇り', 8],
-    ['Drizzle', 4],
-    ['Mist', 4],
-    ['小雨', 4],
-    ['Rain', 2],
-    ['雨', 2],
-    ['Thunderstorm', 0],
-    ['Snow', 0],
-    ['嵐', 0],
-    ['雪', 0],
-    ['Haze', 5], // 「上記以外」
-  ])('天候 %s のとき、天候のスコアは %s 点', (main, conditionScore) => {
+    ['T-COND-01', 'Clear', 12],
+    ['T-COND-01', 'Sunny', 12],
+    ['T-COND-01', '晴れ', 12],
+    ['T-COND-02', 'Clouds', 8],
+    ['T-COND-02', '曇り', 8],
+    ['T-COND-03', 'Drizzle', 4],
+    ['T-COND-03', 'Mist', 4],
+    ['T-COND-03', '小雨', 4],
+    ['T-COND-04', 'Rain', 2],
+    ['T-COND-04', '雨', 2],
+    ['T-COND-05', 'Thunderstorm', 0],
+    ['T-COND-05', 'Snow', 0],
+    ['T-COND-05', '嵐', 0],
+    ['T-COND-05', '雪', 0],
+    ['T-COND-06', 'Haze', 5], // 「上記以外」
+  ])('[%s] 天候 %s のとき、天候のスコアは %s 点', (_id, main, conditionScore) => {
     expect(calculateWeatherScore(weatherOf(main, 1013))).toBe(23 + conditionScore);
   });
 });
@@ -60,14 +60,14 @@ describe('calculateWeatherScore の天候', () => {
 // 満点 15 + 12 + 8 = 35 は「天気スコア (0-35点)」の上限と一致する。
 describe('calculateWeatherScore の気圧', () => {
   it.each([
-    [960, 4],
-    [989.9, 4],
-    [990, 8],
-    [1013, 8],
-    [1030, 8],
-    [1030.1, 4],
-    [1050, 4],
-  ])('気圧 %shPa のとき、気圧のスコアは %s 点', (pressure, pressureScore) => {
+    ['T-PRES-01', 960, 4],
+    ['T-PRES-01', 989.9, 4],
+    ['T-PRES-02', 990, 8],
+    ['T-PRES-03', 1013, 8],
+    ['T-PRES-04', 1030, 8],
+    ['T-PRES-05', 1030.1, 4],
+    ['T-PRES-05', 1050, 4],
+  ])('[%s] 気圧 %shPa のとき、気圧のスコアは %s 点', (_id, pressure, pressureScore) => {
     expect(calculateWeatherScore(weatherOf('Clear', pressure))).toBe(27 + pressureScore);
   });
 });

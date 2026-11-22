@@ -112,7 +112,7 @@ npm run e2e:down      # 環境を片付ける
 | `E2E-FAV-02` | P1 | 予定（PR 2） | お気に入り一覧から場所を選ぶとその場所のダッシュボードに切り替わる | #439 | - |
 | `E2E-LOC-02` | P2 | 予定（PR 2） | 自由検索で場所を選ぶとその場所のダッシュボードに切り替わる | #439 | - |
 | `E2E-AUTH-03` | P2 | 予定（PR 2） | 新規登録 → 確認メール → 確認確定 → ログイン | [authentication.md](../reference/authentication.md) | - |
-| `E2E-ERR-01` | P2 | 予定（PR 2） | 上流 API が失敗したときエラー画面（「一時的に利用できません」）が表示される | [api-error-handling.md](../reference/api-error-handling.md)、[error-classification.md](../reference/error-classification.md) | - |
+| `E2E-ERR-01` | P2 | 予定（PR 2） | 上流 API が失敗したときエラー画面（「一時的に利用できません」）が表示される | [api-error-handling.md](../reference/api-error-handling.md) | - |
 | `E2E-AUTH-04` | P1 | 予定（PR 2） | サイドバーからログアウトすると `/dashboard` に戻れない | [authentication.md](../reference/authentication.md)（3節）、#439 | - |
 | `E2E-AUTH-05` | P2 | 予定（PR 2） | ログイン済みで `/login` を開くと `/dashboard` にリダイレクトされる | [authentication.md](../reference/authentication.md)（3節） | - |
 
