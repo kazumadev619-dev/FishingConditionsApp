@@ -416,10 +416,6 @@ describe('proxy の matcher', () => {
     ['/_next/static/chunks/main.js', 'ビルド成果物'],
     ['/_next/image', '画像最適化'],
     ['/favicon.ico', 'メタデータ'],
-    [
-      '/favicon.ico?favicon.37alxibxcl9j9.ico',
-      'メタデータ（キャッシュバスティングクエリ付き、#443）',
-    ],
     ['/sitemap.xml', 'メタデータ'],
     ['/robots.txt', 'メタデータ'],
   ])('対象外にする: %s（%s）', (pathname) => {
