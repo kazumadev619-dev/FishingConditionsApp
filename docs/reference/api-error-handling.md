@@ -6,6 +6,8 @@
 
 ## 概要
 
+エラーを「正常・異常・想定外」に分けた扱い（HTTP ステータス、ログのレベル、通知）は [error-classification.md](./error-classification.md) にある。
+
 `src/lib/api/` に実装したエラーハンドリング機構の使用方法を説明します。クライアントは `@/lib/api/client`、`ApiError` と `ApiErrorType` は `@/lib/api/types` から import します。
 
 **この HTTP クライアントはサーバー専用です。** `openWeatherMapClient` と `googleMapsClient` のキーはサーバー専用で、`NEXT_PUBLIC_` を付けられません（#143）。`'use client'` のコンポーネントから呼ばず、Route Handler・Server Action・サーバーコンポーネントから使います。ブラウザには `/api/*` の応答だけを返します。

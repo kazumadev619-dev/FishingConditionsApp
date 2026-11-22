@@ -19,6 +19,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |
 | スコア計算のテストケース（同値クラス・境界値）とカバレッジの記録を知りたい | [reference/scoring-test-cases.md](./reference/scoring-test-cases.md) |
 | 外部 API の仕様を知りたい | [reference/api-integration.md](./reference/api-integration.md) ／ [Google Maps](./reference/google-maps-api.md) |
+| エラーを正常・異常・想定外に分けた扱い（HTTP・ログ・リトライ・通知）を知りたい | [reference/error-classification.md](./reference/error-classification.md) |
 | API エラーの扱い方を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
 | 主要 API の応答時間の実測と、測り方を知りたい | [perf/2026-11-22-api-baseline.md](./perf/2026-11-22-api-baseline.md) |
 | 性能計測（Server-Timing）の対象を増やしたい／読み方を知りたい | [src/lib/serverTiming.ts](../src/lib/serverTiming.ts)（JSDoc） |

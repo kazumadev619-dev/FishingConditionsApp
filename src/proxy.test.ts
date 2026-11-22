@@ -170,6 +170,13 @@ const ROUTES: RouteExpectation[] = [
     authenticated: 'allowed',
     why: 'ハンドラ内に auth() 無し。Google Maps のクォータを消費する',
   },
+  {
+    pattern: '/api/client-errors',
+    sample: '/api/client-errors',
+    anonymous: 'unauthorized-401',
+    authenticated: 'allowed',
+    why: '未ログインで受けるとログを溢れさせられる（#247）。ハンドラ内でも auth() を呼ぶ',
+  },
 
   // ---- 保護（ハンドラ内でも auth() を呼ぶ二段防御） ----
   {
