@@ -1,6 +1,6 @@
 # E2E 環境
 
-E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright のテスト本体は #439、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
+E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（PR 1 で基盤と P0 3本を導入済み、PR 2 で残シナリオを追加予定）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
 
 ## 立てる・片付ける
 
@@ -83,11 +83,38 @@ Playwright からは `scripts/e2e/session-cookie.mjs` の `sessionCookie()` を 
 
 ## CI
 
-`.github/workflows/ci.yml` の `e2e-env` ジョブが、Postgres・Redis を service container で用意し、同じ `up.sh` / `smoke.sh` を流す。`E2E_DATABASE_URL` と `E2E_REDIS_URL` が両方あると、`up.sh` は compose を使わずそのサービスに接続する。使い捨てで、`localhost` か `127.0.0.1` のものだけを受け付ける。2つの URL を1つずつ判定し、クエリの `host` / `hostaddr` も同じ判定にかける（pg は URL のホストよりクエリを優先する）。どちらかが別のホストなら、`.e2e/` も作らずに終了コード 2 で止まる。`seed-users.mjs` も、`DATABASE_URL` が別のホストなら入れない。
+`.github/workflows/ci.yml` の `e2e-env` ジョブが、Postgres・Redis を service container で用意し、同じ `up.sh` / `smoke.sh` に続けて Playwright（Chromium）の `npm run test:e2e` を流す。`E2E_DATABASE_URL` と `E2E_REDIS_URL` が両方あると、`up.sh` は compose を使わずそのサービスに接続する。使い捨てで、`localhost` か `127.0.0.1` のものだけを受け付ける。2つの URL を1つずつ判定し、クエリの `host` / `hostaddr` も同じ判定にかける（pg は URL のホストよりクエリを優先する）。どちらかが別のホストなら、`.e2e/` も作らずに終了コード 2 で止まる。`seed-users.mjs` も、`DATABASE_URL` が別のホストなら入れない。
 
-GitHub Actions の `services:` はジョブをまたいで共有できない。実 DB のテスト（#354）は、この `e2e-env` ジョブにステップを足すか、同じ `services:` の定義を写して使う。いまは必須のチェックにしていない。
+`ci-summary` は `e2e-env` の結果を参照し、`main` 向け PR（`github.base_ref == 'main'`）のときだけ `e2e-env` の失敗で `ci-summary` を落とす（`develop` 向け PR では結果の表示のみ）。
 
-失敗したときのログは、`up.sh` が片付ける前にジョブのログへ出す。
+GitHub Actions の `services:` はジョブをまたいで共有できない。実 DB のテスト（#354）は、この `e2e-env` ジョブにステップを足すか、同じ `services:` の定義を写して使う。
+
+失敗したときは、`e2e:down` で `.e2e/` が消える前に `.e2e/app.log` と `.e2e/stub.log` の末尾をジョブのログへ出し、`playwright-report/` と `test-results/` を 7 日間 artifact に保存する。
+
+## Playwright の実行とシナリオ一覧（#439）
+
+```bash
+npm run e2e:up        # 環境を起動（.e2e/state.env に APP_URL を書き出す）
+npm run test:e2e      # Playwright E2E テストを実行（Chromium のみ）
+npm run e2e:down      # 環境を片付ける
+```
+
+- 設定は `playwright.config.ts`、共通 fixture と `expectDashboard` は `e2e/fixtures.ts`。
+- `e2e/fixtures.ts` の `context` fixture が `APP_URL` 以外のオリジンへのブラウザ通信を遮断し、1件でも記録されればテストを落とす。
+- テストを足したり消したりしたら、下の表も更新する。
+
+| ID | 優先度 | 状態 | 流れ | 期待値の出どころ | ファイル |
+|---|---|---|---|---|---|
+| `E2E-AUTH-01` | P0 | 実装済み | 未ログインで `/dashboard` を開くと `/login` に移り、確認済みユーザーでログインすると `/dashboard` と各カードが表示される | [authentication.md](../reference/authentication.md)（2・3節）、[scoring-algorithm.md](../reference/scoring-algorithm.md) | `e2e/auth.spec.ts` |
+| `E2E-AUTH-02` | P0 | 実装済み | 間違ったパスワードでログインするとエラーが表示され、`/dashboard` へも入れない | [authentication.md](../reference/authentication.md)（2・3節） | `e2e/auth.spec.ts` |
+| `E2E-LOC-01` | P0 | 実装済み | （Cookie でログイン）「港から選ぶ」で都道府県・港を選ぶと `portId=` 付き URL と選択港の見出しに切り替わる | #439、`code.csv`、[scoring-algorithm.md](../reference/scoring-algorithm.md) | `e2e/location.spec.ts` |
+| `E2E-FAV-01` | P1 | 予定（PR 2） | お気に入りに追加・削除し、再読み込み後も状態が保たれる | #439、#78 | - |
+| `E2E-FAV-02` | P1 | 予定（PR 2） | お気に入り一覧から場所を選ぶとその場所のダッシュボードに切り替わる | #439 | - |
+| `E2E-LOC-02` | P2 | 予定（PR 2） | 自由検索で場所を選ぶとその場所のダッシュボードに切り替わる | #439 | - |
+| `E2E-AUTH-03` | P2 | 予定（PR 2） | 新規登録 → 確認メール → 確認確定 → ログイン | [authentication.md](../reference/authentication.md) | - |
+| `E2E-ERR-01` | P2 | 予定（PR 2） | 上流 API が失敗したときエラー画面（「一時的に利用できません」）が表示される | [api-error-handling.md](../reference/api-error-handling.md) | - |
+| `E2E-AUTH-04` | P1 | 予定（PR 2） | サイドバーからログアウトすると `/dashboard` に戻れない | [authentication.md](../reference/authentication.md)（3節）、#439 | - |
+| `E2E-AUTH-05` | P2 | 予定（PR 2） | ログイン済みで `/login` を開くと `/dashboard` にリダイレクトされる | [authentication.md](../reference/authentication.md)（3節） | - |
 
 ## 本番に触れない
 
