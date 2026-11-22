@@ -1,0 +1,60 @@
+# 性能測定用の環境（docs/perf/）。本番と同じ runner イメージを、専用の Redis・上流スタブと動かす。
+# 実際のキー・DB・本番には触れない（キーは仮の値、DATABASE_URL は届かない宛先）。
+#
+#   docker compose -f scripts/perf/docker-compose.yml -p fishing-perf up -d --build
+#   scripts/perf/run.sh ...
+#   docker compose -f scripts/perf/docker-compose.yml -p fishing-perf down
+name: fishing-perf
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  stub:
+    image: node:26.13.1-alpine
+    command: ['node', '/perf/stub.mjs']
+    volumes:
+      - ./stub.mjs:/perf/stub.mjs:ro
+
+  app:
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+      target: runner
+    environment:
+      NODE_ENV: production
+      LOG_LEVEL: warn
+      REDIS_URL: redis://redis:6379
+      # 測定専用の値。make-cookies.mjs と同じ
+      AUTH_SECRET: perf-only-secret-not-used-anywhere-else
+      AUTH_URL: http://app:3000
+      AUTH_TRUST_HOST: 'true'
+      # 起動時に必須だが、ログインは使わないので仮の値でよい
+      AUTH_GOOGLE_ID: perf-dummy
+      AUTH_GOOGLE_SECRET: perf-dummy
+      # 上流はスタブに向けるので仮の値でよい（空だと「未設定」で 503 になる）
+      OPENWEATHERMAP_API_KEY: perf-dummy
+      GOOGLE_MAPS_API_KEY: perf-dummy
+      # 対象 4 ルートは DB を使わない想定。使ったら接続エラーで気づけるよう、届かない宛先にする
+      DATABASE_URL: postgresql://perf:perf@db.invalid:5432/perf
+      NODE_OPTIONS: --import /perf/redirect-upstream.mjs
+    volumes:
+      - ./redirect-upstream.mjs:/perf/redirect-upstream.mjs:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+      stub:
+        condition: service_started
+
+  k6:
+    image: grafana/k6:1.4.0
+    profiles: ['tools']
+    entrypoint: ['k6']
+    volumes:
+      - ./k6.js:/perf/k6.js:ro
+      - ./out:/perf/out
