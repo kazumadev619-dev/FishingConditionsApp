@@ -238,7 +238,7 @@ ADR-003 の Stage 2 / Stage 3 にあたる。Vitest のまま、Node 環境で�
 - **Route Handler**（Stage 2）: `src/app/api/` の下に、Route Handler の関数を呼んで確かめるテストがある（例: `src/app/api/scores/route.test.ts`）。外部への依存はモックやスタブに置き換える（分類は[テスト品質ポリシー](./testing-policy.md)の5節）。
 - **コンポーネント**（Stage 3）: `.test.tsx` の多くは `renderToStaticMarkup`（`react-dom/server`）で描画した HTML を確かめる。jsdom と React Testing Library は導入していない。ブラウザ上の操作を確かめるテストは、いまはない。
 
-E2E（Playwright）は導入するかどうかも含めて未定である。Vitest とは別ランナーとして扱う。
+E2E（Playwright）のテスト本体は未導入である（#439）。Vitest とは別ランナーとして扱う。E2E を流すための環境（Postgres・Redis・上流スタブ・テスト用ユーザー）は先に用意してあり、使い方は [E2E 環境](./e2e-env.md)。
 
 ---
 
