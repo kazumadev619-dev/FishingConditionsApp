@@ -8,7 +8,7 @@ import { auth } from '@/auth';
 import { cache } from '@/lib/cache/client';
 import { POST } from './route';
 
-// 上限は仕様（docs/reference/error-classification.md §3）の値を、リテラルで書く。
+// 上限は仕様（`src/lib/clientErrors.ts` のコメントにある計算）の値を、リテラルで書く。
 // 実装の定数を読むと、定数を書き換えたときにテストも一緒に動いて、変異を見逃す。
 // bodyBytes = 全項目の上限の合計 6,900 文字 × 日本語の最悪 3 バイト + 余裕 1,024 バイト
 const LIMITS = {

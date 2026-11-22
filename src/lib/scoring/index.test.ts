@@ -67,7 +67,7 @@ const W_35 = (sun: readonly [string, string]) => weatherOf(0, 'Clear', 1013, ...
 const W_8 = (sun: readonly [string, string]) => weatherOf(7, 'Thunderstorm', 1013, ...sun);
 const W_4 = (sun: readonly [string, string]) => weatherOf(7, 'Thunderstorm', 1040, ...sun);
 
-describe('calculateFishingScore の bestComponent と worstComponent', () => {
+describe('[T-BEST-01] calculateFishingScore の bestComponent と worstComponent', () => {
   it.each([
     [
       '潮汐が最高・時間帯が最低',
@@ -127,14 +127,14 @@ describe('calculateFishingScore の bestComponent と worstComponent', () => {
 });
 
 describe('calculateFishingScore の合計とランク', () => {
-  it('3つの要素の合計になり、そのスコアのランクになる', () => {
+  it('[T-TOTAL-01] 3つの要素の合計になり、そのスコアのランクになる', () => {
     const result = calculateFishingScore(TIDE_20, W_8(SUN_25), NOW);
 
     expect(result.score).toBe(53); // 20 + 8 + 25
     expect(result.rank).toBe('fair');
   });
 
-  it('満点は 100 点で excellent、最低の組み合わせ（5 + 4 + 0）は 9 点で bad', () => {
+  it('[T-TOTAL-02] 満点は 100 点で excellent、最低の組み合わせ（5 + 4 + 0）は 9 点で bad', () => {
     const best = calculateFishingScore(TIDE_40, W_35(SUN_25), NOW);
     expect(best).toMatchObject({ score: 100, rank: 'excellent' });
     expect(best.components).toEqual({ tide: 40, weather: 35, time: 25 });
@@ -145,7 +145,7 @@ describe('calculateFishingScore の合計とランク', () => {
   });
 
   // 潮汐タイミングは 25 - (極値までの分 / 60) * 6.25。満潮が 12:00 の m 分後だと 25 - m * 0.1041666…
-  it('合計は四捨五入する（切り捨て・切り上げにしない）が、components は丸めない', () => {
+  it('[T-TOTAL-03] 合計は四捨五入する（切り捨て・切り上げにしない）が、components は丸めない', () => {
     // 4分: 潮汐 39.5833 + 35 + 25 = 99.5833 → 100（切り捨てなら 99）
     const up = calculateFishingScore(tideFor('12:04', 150), W_35(SUN_25), NOW);
     expect(up.score).toBe(100);
@@ -157,7 +157,7 @@ describe('calculateFishingScore の合計とランク', () => {
     expect(down.components.tide).toBeCloseTo(39.4792, 4);
   });
 
-  it('ちょうど .5 は切り上げる（四捨五入）', () => {
+  it('[T-TOTAL-04] ちょうど .5 は切り上げる（四捨五入）', () => {
     // 24分: 潮汐 22.5 + 15 = 37.5。37.5 + 35 + 25 = 97.5 → 98（.5 を切り捨てる丸めなら 97）
     const result = calculateFishingScore(tideFor('12:24', 150), W_35(SUN_25), NOW);
 
@@ -165,7 +165,7 @@ describe('calculateFishingScore の合計とランク', () => {
     expect(result.score).toBe(98);
   });
 
-  it('ランクは丸めたあとのスコアで決める（79.79 は 80 になり excellent）', () => {
+  it('[T-TOTAL-05] ランクは丸めたあとのスコアで決める（79.79 は 80 になり excellent）', () => {
     // 2分: 潮汐 39.7917 + 35 + 5 = 79.7917 → 80。丸める前の値で判定すると good になる
     const result = calculateFishingScore(tideFor('12:02', 150), W_35(SUN_5), NOW);
 
@@ -176,7 +176,7 @@ describe('calculateFishingScore の合計とランク', () => {
 
 describe('calculateFishingScore の潮名・月齢・計算時刻', () => {
   // 「tideName: 当日の tide736 の moon.title」「moonAge: 当日の moon.age」。前日が先頭にあっても当日を選ぶ
-  it('tideName と moonAge は、前日ではなく当日（JST）の moon から取る', () => {
+  it('[T-TOTAL-06] tideName と moonAge は、前日ではなく当日（JST）の moon から取る', () => {
     const yesterday = tideFor('12:00', 150, { age: '13.2', title: '中潮' }, '2026-10-16');
     const today = tideFor('12:00', 150, { age: '14.2', title: '大潮' });
     const tide = { tides: [...yesterday.tides, ...today.tides] } as FormattedTideData;
@@ -187,7 +187,7 @@ describe('calculateFishingScore の潮名・月齢・計算時刻', () => {
     expect(result.calculatedAt).toBe(NOW);
   });
 
-  it('当日の潮汐データがなければ tideName と moonAge は無い', () => {
+  it('[T-TOTAL-07] 当日の潮汐データがなければ tideName と moonAge は無い', () => {
     const result = calculateFishingScore(TIDE_20, W_35(SUN_25), NOW);
 
     expect(result.tideName).toBeUndefined();
