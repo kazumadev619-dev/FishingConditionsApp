@@ -251,7 +251,7 @@ npm run prisma:generate
 - [x] Vitestセットアップ
 - [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
 - ~~コードカバレッジ計測~~（不採用。[testing-policy.md](./testing-policy.md) の8節）
-- [x] E2Eテスト（Playwright。`e2e-env` ジョブで P0 3本を実行。残シナリオは #439 PR 2 で追加）
+- [x] E2Eテスト（Playwright。`e2e-env` ジョブで全10シナリオを実行。#439）
 - [ ] 実 DB（PostgreSQL・Redis）を使うテスト（service container は `e2e-env` ジョブにある。テストの切り替えは #354）
 
 ### Phase 3: Prismaマイグレーション検証

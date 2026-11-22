@@ -1,6 +1,6 @@
 # E2E 環境
 
-E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（PR 1 で基盤と P0 3本を導入済み、PR 2 で残シナリオを追加予定）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
+E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と全 10 シナリオを導入済み）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
 
 ## 立てる・片付ける
 
@@ -29,7 +29,7 @@ DATABASE_URL_DIRECT=postgresql://x@localhost/x npx prisma generate
 | Postgres・Redis | `scripts/e2e/docker-compose.yml`。この環境専用の空のコンテナ |
 | 上流スタブ | `scripts/perf/stub.mjs`（OpenWeatherMap・tide736・Google Geocoding・Resend の代わり）。ホストのプロセス |
 | アプリ | `next build` + `next start`。`scripts/perf/redirect-upstream.mjs` で、上の4つ宛ての `fetch` だけをスタブへ向ける |
-| E2E ユーザー | `scripts/e2e/users.mjs` の2人。確認済み（ログインできる）と未確認（ログインは拒否される） |
+| E2E ユーザー | `scripts/e2e/users.mjs` の2人（確認済み・未確認）に加え、`e2e/fixtures.ts` の `testUserPage` が DB を書き換えるテストごとに乱数 UUID の確認済みユーザーを作り、終了時に削除する（`user_favorites` は `ON DELETE CASCADE` で自動削除）。新規登録テスト（`E2E-AUTH-03`）は `cleanupUserByEmail()` で `verification_tokens` と `users` を削除する |
 
 接続先・ポート・PID は `.e2e/state.env`（git 管理外）に書く。ログは `.e2e/app.log`・`.e2e/stub.log`・`.e2e/build.log`。
 
@@ -73,7 +73,8 @@ Playwright からは `scripts/e2e/session-cookie.mjs` の `sessionCookie()` を 
 - スタブは `127.0.0.1` だけで待ち受ける（`/__mails` の確認リンクが同じ LAN から見えないように）
 - ここでいう「外部に出ない」は実行時の話。`next build` は `next/font/google` でフォントを取りに行くため、ビルドのときだけ Google Fonts に出る（課金のある API ではない）
 - Resend に送られた内容は `$STUB_URL/__mails` で読める（登録の流れで確認リンクを取り出すときに使う）。上流の呼び出し回数は `$STUB_URL/__stats`
-- スタブの応答は成功の形だけ。上流の失敗や、検索結果が複数のときの応答が要るテストは、`scripts/perf/stub.mjs` に足す
+- `scripts/e2e/session-cookie.mjs` の `sessionCookie()` は、`users.mjs` の固定ユーザー名だけでなく `{ id, email }` も受け取る。`testUserPage` fixture はテストごとに作成したユーザーで Cookie を発行し、`finally` で `users` 行を削除して他のテストと状態を共有しない
+- `scripts/perf/stub.mjs` は通常 200 の固定応答を返す（Geocoding は `スタブ地点0`〜`9` の 10 件）。ただし `E2E-ERR-01` 用に、他テストや perf で使わない専用の港（`pc=0, hc=24`: 千島列島・伽藍埼）への `tide736` 要求に限り HTTP 503（本文マーカー `STUB_UPSTREAM_ERROR_BODY_DO_NOT_LEAK`）を返す（状態を持たず Redis キャッシュも汚さないため、テストの実行順に依存しない）
 
 ### Google Maps の地図
 
@@ -108,13 +109,13 @@ npm run e2e:down      # 環境を片付ける
 | `E2E-AUTH-01` | P0 | 実装済み | 未ログインで `/dashboard` を開くと `/login` に移り、確認済みユーザーでログインすると `/dashboard` と各カードが表示される | [authentication.md](../reference/authentication.md)（2・3節）、[scoring-algorithm.md](../reference/scoring-algorithm.md) | `e2e/auth.spec.ts` |
 | `E2E-AUTH-02` | P0 | 実装済み | 間違ったパスワードでログインするとエラーが表示され、`/dashboard` へも入れない | [authentication.md](../reference/authentication.md)（2・3節） | `e2e/auth.spec.ts` |
 | `E2E-LOC-01` | P0 | 実装済み | （Cookie でログイン）「港から選ぶ」で都道府県・港を選ぶと `portId=` 付き URL と選択港の見出しに切り替わる | #439、`code.csv`、[scoring-algorithm.md](../reference/scoring-algorithm.md) | `e2e/location.spec.ts` |
-| `E2E-FAV-01` | P1 | 予定（PR 2） | お気に入りに追加・削除し、再読み込み後も状態が保たれる | #439、#78 | - |
-| `E2E-FAV-02` | P1 | 予定（PR 2） | お気に入り一覧から場所を選ぶとその場所のダッシュボードに切り替わる | #439 | - |
-| `E2E-LOC-02` | P2 | 予定（PR 2） | 自由検索で場所を選ぶとその場所のダッシュボードに切り替わる | #439 | - |
-| `E2E-AUTH-03` | P2 | 予定（PR 2） | 新規登録 → 確認メール → 確認確定 → ログイン | [authentication.md](../reference/authentication.md) | - |
-| `E2E-ERR-01` | P2 | 予定（PR 2） | 上流 API が失敗したときエラー画面（「一時的に利用できません」）が表示される | [api-error-handling.md](../reference/api-error-handling.md) | - |
-| `E2E-AUTH-04` | P1 | 予定（PR 2） | サイドバーからログアウトすると `/dashboard` に戻れない | [authentication.md](../reference/authentication.md)（3節）、#439 | - |
-| `E2E-AUTH-05` | P2 | 予定（PR 2） | ログイン済みで `/login` を開くと `/dashboard` にリダイレクトされる | [authentication.md](../reference/authentication.md)（3節） | - |
+| `E2E-FAV-01` | P1 | 実装済み | お気に入りに追加・削除し、再読み込み後も状態が保たれる | #439、#78 | `e2e/favorites.spec.ts` |
+| `E2E-FAV-02` | P1 | 実装済み | お気に入り一覧から場所を選ぶとその場所のダッシュボードに切り替わる | #439、[scoring-algorithm.md](../reference/scoring-algorithm.md) | `e2e/favorites.spec.ts` |
+| `E2E-LOC-02` | P2 | 実装済み | 自由検索で場所を選ぶとその場所のダッシュボードに切り替わる | #439、`scripts/perf/stub.mjs`、[scoring-algorithm.md](../reference/scoring-algorithm.md) | `e2e/location.spec.ts` |
+| `E2E-AUTH-03` | P2 | 実装済み | 新規登録 → 確認メール → 確認確定 → ログイン（未確認のままのログイン拒否と、リンクを開くだけでは確定しないことも含む） | [authentication.md](../reference/authentication.md)（1・2節） | `e2e/auth.spec.ts` |
+| `E2E-ERR-01` | P2 | 実装済み | 上流 API が失敗したときエラー画面（「一時的に利用できません」と「再試行」）が表示され、上流の応答本文は漏れない | [api-error-handling.md](../reference/api-error-handling.md) | `e2e/error.spec.ts` |
+| `E2E-AUTH-04` | P1 | 実装済み | サイドバーからログアウトすると `/login` に移り `/dashboard` に戻れない | [authentication.md](../reference/authentication.md)（3節）、#439 | `e2e/auth.spec.ts` |
+| `E2E-AUTH-05` | P2 | 実装済み | ログイン済みで `/login` と `/register` を開くと `/dashboard` にリダイレクトされる | [authentication.md](../reference/authentication.md)（3節） | `e2e/auth.spec.ts` |
 
 ## 本番に触れない
 
