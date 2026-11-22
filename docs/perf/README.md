@@ -12,10 +12,4 @@
 - 数値は、測った時点のものである。現在の値として読まない。現在の値が要るときは、測り直して新しい記録にする
 - ファイル名は `YYYY-MM-DD-<題>.md` にする
 
-## 記録の一覧
-
-| ファイル | 内容 |
-|---|---|
-| [2026-11-22-api-baseline.md](./2026-11-22-api-baseline.md) | 主要 API の応答時間のベースライン（#427） |
-| [2026-11-22-scores-parallel-and-dedupe.md](./2026-11-22-scores-parallel-and-dedupe.md) | `/api/scores` の並列化（#432）と、同時の初回要求の相乗り（#433）の、直す前後 |
-| [2026-11-22-scoring-coverage-mutation.md](./2026-11-22-scoring-coverage-mutation.md) | スコア計算のカバレッジと変異テストの結果（#426） |
+記録の一覧は [docs/README.md](../README.md) の索引にある。
