@@ -200,15 +200,18 @@ async function computeScore(
   dateStr: string,
   scoreTime: Date,
 ): Promise<ScoringResponse> {
-  // 天気データを取得
-  const weatherResponse = await getCurrentWeather(latitude, longitude, {
-    skipCache: false,
-  });
-
-  // 潮汐データを取得
-  const tideResponse = await getTideData(prefectureCode, portCode, dateStr, {
-    skipCache: false,
-  });
+  // 天気と潮汐は互いに依存しないので並べて呼ぶ（#432）。
+  // Promise.all ではなく allSettled にするのは、両方が失敗したときに、順番に呼んでいた頃と同じく
+  // 天気の失敗を理由にするため（先に失敗したほうが選ばれると、エラーの3分類が揺れる）。
+  // 片方が失敗しても、もう片方の完了までは待つ。成功した側はキャッシュに載るので無駄にならない。
+  const [weatherResult, tideResult] = await Promise.allSettled([
+    getCurrentWeather(latitude, longitude, { skipCache: false }),
+    getTideData(prefectureCode, portCode, dateStr, { skipCache: false }),
+  ]);
+  if (weatherResult.status === 'rejected') throw weatherResult.reason;
+  if (tideResult.status === 'rejected') throw tideResult.reason;
+  const weatherResponse = weatherResult.value;
+  const tideResponse = tideResult.value;
 
   // スコアを計算
   const fishingScore = calculateFishingScore(tideResponse.data, weatherResponse.data, scoreTime);
