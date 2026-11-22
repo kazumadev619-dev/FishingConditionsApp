@@ -413,15 +413,14 @@ class AntigravityHookProtocolTest(unittest.TestCase):
         self.assertIn("secret_guard", body["reason"])
         self.assertIn(".env.local", body["reason"])
 
-    def test_allowed_run_command_returns_empty_json(self):
+    def test_allowed_run_command_exits_0_silently(self):
         payload = {
             "hookEventName": "PreToolUse",
             "cwd": "/tmp",
             "toolCall": {"name": "run_command", "args": {"CommandLine": "npm test"}},
         }
         result = self.run_hook(payload)
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout), {})
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
     def test_read_file_and_grep_search_are_checked(self):
         read_payload = {
@@ -446,8 +445,7 @@ class AntigravityHookProtocolTest(unittest.TestCase):
             "toolCall": {"name": "grep_search", "args": {"SearchPath": ".env", "Query": "AUTH", "FilesOnly": True}},
         }
         result = self.run_hook(payload)
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout), {})
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
 
 if __name__ == "__main__":

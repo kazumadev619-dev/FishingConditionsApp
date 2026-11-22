@@ -50,8 +50,6 @@ def main() -> int:
         print(BLOCK_MESSAGE, file=sys.stderr)
         return 2
 
-    if is_antigravity:
-        print("{}")
     return 0
 
 

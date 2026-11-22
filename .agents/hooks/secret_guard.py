@@ -3,8 +3,9 @@
 
 .claude/settings.json（Bash / Read / Grep）および .agents/hooks.json（run_command / read_file / view_file / grep_search）
 からツール実行直前に呼ばれる。stdin に hook の入力（JSON）を受け取り、
-Claude Code 形式では理由を stderr に書いて終了コード 2 を、Antigravity 形式では stdout に
-{"decision": "deny", "reason": ...}（許可時は {}）を返して終了コード 0 を返す。
+Claude Code 形式では理由を stderr に書いて終了コード 2 を、Antigravity 形式では
+ブロック時に stdout へ {"decision": "deny", "reason": ...} を出力して終了コード 0 を返す
+（許可時は Antigravity 形式も空出力で終了コード 0）。
 サブエージェントのツール呼び出しにも同じ hook がかかる。
 
 うっかり出すのを防ぐための網であって、境界ではない。シェルを完全には解釈しないので、
@@ -816,7 +817,6 @@ def main() -> int:
         else:
             reason = None
         if reason is None:
-            print("{}")
             return 0
         print(json.dumps({"decision": "deny", "reason": MESSAGE.format(reason=reason)}, ensure_ascii=False))
         return 0

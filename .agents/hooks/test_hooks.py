@@ -76,8 +76,7 @@ class LinterConfigGuardTest(unittest.TestCase):
             "toolCall": {"name": "edit_file", "args": {"Path": "/repo/src/index.ts"}},
         }
         result = self.run_hook(json.dumps(payload))
-        self.assertEqual(result.returncode, 0)
-        self.assertEqual(json.loads(result.stdout), {})
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
 
 
 class PostEditCheckTest(unittest.TestCase):
