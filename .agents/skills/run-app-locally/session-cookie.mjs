@@ -1,6 +1,6 @@
 // ローカルの既存ユーザーとしてログインした状態の Cookie を、curl の cookie jar に書き出す。
 //
-//   npx dotenv -e .env.local -- node .claude/skills/run-app-locally/session-cookie.mjs <jar> [email]
+//   npx dotenv -e .env.local -- node .agents/skills/run-app-locally/session-cookie.mjs <jar> [email]
 //
 // セッションは JWT 戦略なので、AUTH_SECRET でトークンを作ればパスワードも OAuth も要らない。
 // トークンの値は標準出力に出さない（jar のパスだけを出す）。email を省くと最初に作られたユーザーを使う。

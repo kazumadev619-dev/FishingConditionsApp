@@ -1,6 +1,6 @@
 """mutate.py のテスト。
 
-実行: python3 .claude/skills/mutation-test/test_mutate.py
+実行: python3 .agents/skills/mutation-test/test_mutate.py
 
 一時ディレクトリに git リポジトリを作り、その中で mutate.py を実際に起動する。
 ここに並んでいるケースの多くは、手作業の変異テストで実際に起きた失敗を再現したもの。

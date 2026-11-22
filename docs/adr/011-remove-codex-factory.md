@@ -48,4 +48,4 @@ Claude Code はディレクトリのリンクを辿れると確かめた。た�
 - ADR の番号は、007 を AI factory（Claude 版）、008 を signup のレート制限に予約している。009・010 は使用済みなので、この ADR は 011 とした。
 
 - Codex を契約し、factory として使いたくなったとき。`codex-factory-last` から復元できる。
-- Codex 以外のエージェントが、`.agents/skills/` などの置き場所を必要としたとき。
+- Codex 以外のエージェントが、`.agents/skills/` などの置き場所を必要としたとき。（追記: Antigravity の併用に合わせ、[ADR-013](./013-multi-agent-customizations.md) で `.agents/` を正本・`.claude/` をリンク等にする構成へ切り替えた）

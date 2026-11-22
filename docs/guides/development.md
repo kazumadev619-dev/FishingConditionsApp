@@ -116,12 +116,12 @@ git commit -m "📝 docs: 開発ガイドを更新"
 
 | 工程 | 見るもの |
 |---|---|
-| issue の選択から本番の確認まで | [`issue-delivery`](../../.claude/skills/issue-delivery/SKILL.md) |
-| ブランチ・コミット・push・PR | [`github-push-pr`](../../.claude/skills/github-push-pr/SKILL.md)、[PR テンプレート](../../.github/pull_request_template.md) |
+| issue の選択から本番の確認まで | [`issue-delivery`](../../.agents/skills/issue-delivery/SKILL.md) |
+| ブランチ・コミット・push・PR | [`github-push-pr`](../../.agents/skills/github-push-pr/SKILL.md)、[PR テンプレート](../../.github/pull_request_template.md) |
 | テストの書き方 | [testing-policy.md](./testing-policy.md) |
-| 変異テスト、テストのレビュー | [`mutation-test`](../../.claude/skills/mutation-test/SKILL.md)、[`test-review`](../../.claude/skills/test-review/SKILL.md) |
-| 依存の更新 | [`updating-dependencies`](../../.claude/skills/updating-dependencies/SKILL.md) |
-| ローカル起動・実 DB での確認 | [`run-app-locally`](../../.claude/skills/run-app-locally/SKILL.md) |
+| 変異テスト、テストのレビュー | [`mutation-test`](../../.agents/skills/mutation-test/SKILL.md)、[`test-review`](../../.agents/skills/test-review/SKILL.md) |
+| 依存の更新 | [`updating-dependencies`](../../.agents/skills/updating-dependencies/SKILL.md) |
+| ローカル起動・実 DB での確認 | [`run-app-locally`](../../.agents/skills/run-app-locally/SKILL.md) |
 
 `develop` 向けの PR は `Refs #N` で書き、`Closes #N` は `main` 昇格 PR で付ける。`develop` と `main` は `CI Summary` が必須のチェックで、通らない PR は通常マージできない（`enforce_admins` が無効なので、管理者は飛ばせる。[ci-cd.md](./ci-cd.md)）。
 

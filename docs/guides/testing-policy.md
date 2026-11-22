@@ -129,7 +129,7 @@ Zenn は、自アプリだけが使う DB はモックにせず、実DBの統合
 
 PR で次を行う。
 
-- ①②④（認証・認可、スコア計算、入力検証・レート制限）: [`mutation-test`](../../.claude/skills/mutation-test/SKILL.md) の結果を PR 本文に載せる。実装とは別のエージェントが、間違いを証明するテストを差分として提案し、実装者が取り込み、誰が書いたかを PR 本文に書く。提案は fork には頼まず、仕様と差分だけを渡した新しいエージェント（できれば別モデル）に頼む（実装者の文脈を引き継ぐと、同じ見落としを共有する）。
+- ①②④（認証・認可、スコア計算、入力検証・レート制限）: [`mutation-test`](../../.agents/skills/mutation-test/SKILL.md) の結果を PR 本文に載せる。実装とは別のエージェントが、間違いを証明するテストを差分として提案し、実装者が取り込み、誰が書いたかを PR 本文に書く。提案は fork には頼まず、仕様と差分だけを渡した新しいエージェント（できれば別モデル）に頼む（実装者の文脈を引き継ぐと、同じ見落としを共有する）。
 - ③: `bash scripts/verify-seed-rerun.sh`（使い捨てのコンテナで seed を再実行する）の結果を載せる。このスクリプトは、空の DB に `migrate deploy` を流してから seed を再実行するので、マイグレーションの変更もこれで確かめられる。`prisma/migrations/` に冪等性は求めず、`psql -f` で手で流さない。マイグレーションは `_prisma_migrations` で多重適用を防いでおり、手で流すと壊れる行がある。
 - すべて: issue か PR に、守る状態（何が壊れたら困るか）を書く。
 - 反証テストが落ちたら、実装を直す。期待値の根拠が仕様に見つからなければ、テストを書き換える前にユーザーへ確認する。
@@ -139,7 +139,7 @@ PR で次を行う。
 
 ## 8. カバレッジ
 
-網羅率は、コードが実行されたかどうかを示すだけで、結果を確かめたかどうかを示さない。このリポジトリでは、閾値を置かず、計測のツールも入れない。薄い箇所を探す目安として使いたいときは、手元で `vitest run --coverage` を試してよい（依存を足さないと動かない）。テストが退行を検知できるかは、網羅率ではなく、[`mutation-test`](../../.claude/skills/mutation-test/SKILL.md) で確かめる。
+網羅率は、コードが実行されたかどうかを示すだけで、結果を確かめたかどうかを示さない。このリポジトリでは、閾値を置かず、計測のツールも入れない。薄い箇所を探す目安として使いたいときは、手元で `vitest run --coverage` を試してよい（依存を足さないと動かない）。テストが退行を検知できるかは、網羅率ではなく、[`mutation-test`](../../.agents/skills/mutation-test/SKILL.md) で確かめる。
 
 ## 9. 適用範囲
 
@@ -152,6 +152,6 @@ PR で次を行う。
 - [ADR-009: テスト品質ポリシー](../adr/009-testing-quality-policy.md)（決めた理由）
 - [ADR-003: テスト基盤の選定](../adr/003-testing-strategy.md)（ランナーの選定）
 - [development.md のテスト戦略](./development.md#テスト戦略)（置き場所、コマンド）
-- [`mutation-test` skill](../../.claude/skills/mutation-test/SKILL.md)（壊して落ちることの確かめ）
-- [`test-review` skill](../../.claude/skills/test-review/SKILL.md)（書かれたテストが信頼できるかの検証手順）
-- [`pr-verifier`](../../.claude/agents/pr-verifier.md)（実行して確かめるレビュー）
+- [`mutation-test` skill](../../.agents/skills/mutation-test/SKILL.md)（壊して落ちることの確かめ）
+- [`test-review` skill](../../.agents/skills/test-review/SKILL.md)（書かれたテストが信頼できるかの検証手順）
+- [`pr-verifier`](../../.agents/agents/pr-verifier.md)（実行して確かめるレビュー）
