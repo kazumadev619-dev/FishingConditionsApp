@@ -6,10 +6,10 @@ vi.mock('@/lib/actions', () => ({ signup: vi.fn() }));
 vi.mock('@/lib/googleSignIn', () => ({ signInWithGoogle: vi.fn() }));
 
 const getInputAutocomplete = (html: string, id: string) => {
-  const tag = (html.match(/<input\b[^>]*>/g) ?? []).find((el) =>
-    new RegExp(`\\bid="${id}"`).test(el),
+  const tag = (html.match(/<input(?=\s)[^>]*>/g) ?? []).find((el) =>
+    new RegExp(`(?:^|\\s)id="${id}"`).test(el),
   );
-  return tag?.match(/\bautocomplete="([^"]*)"/i)?.[1];
+  return tag?.match(/(?:^|\s)autocomplete="([^"]*)"/i)?.[1];
 };
 
 describe('新規登録フォームの autoComplete 属性（#444）', () => {
