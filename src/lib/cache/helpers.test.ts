@@ -166,22 +166,14 @@ describe('fetchWithOptionalCache', () => {
 // 上流にはクォータと課金があり、同じ値のために要求の数だけ呼ぶのは無駄になる。
 // 期待値: #433 の完了条件。回数を見るのは、回数がクォータの仕様のため（testing-policy 5節の「回数の例外」）。
 describe('同じキーの同時の取得（#433）', () => {
-  const deferred = <T>() => {
-    let resolve!: (v: T) => void;
-    let reject!: (e: unknown) => void;
-    const promise = new Promise<T>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return { promise, resolve, reject };
-  };
+  const flush = () => new Promise<void>((r) => setImmediate(r));
 
   beforeEach(() => {
     cacheMock.get.mockResolvedValue({ hit: false });
   });
 
   it('同時に来た要求は fetcher を 1 回だけ呼び、全員が同じ値を受け取る', async () => {
-    const upstream = deferred<{ v: string }>();
+    const upstream = Promise.withResolvers<{ v: string }>();
     const fetcher = vi.fn().mockReturnValue(upstream.promise);
 
     const calls = [
@@ -208,7 +200,7 @@ describe('同じキーの同時の取得（#433）', () => {
 
   it('取得が失敗したら、待っていた全員に同じ失敗が返り、次の要求は取得をやり直せる', async () => {
     const error = new Error('upstream failed');
-    const upstream = deferred<{ v: string }>();
+    const upstream = Promise.withResolvers<{ v: string }>();
     const failing = vi.fn().mockReturnValue(upstream.promise);
 
     const waiting = [withCache('dup:c', 60, failing), withCache('dup:c', 60, failing)];
@@ -228,7 +220,7 @@ describe('同じキーの同時の取得（#433）', () => {
   });
 
   it('skipCache の要求は、進行中の取得に相乗りせず、自分で取得する', async () => {
-    const upstream = deferred<{ v: string }>();
+    const upstream = Promise.withResolvers<{ v: string }>();
     const shared = vi.fn().mockReturnValue(upstream.promise);
     const fresh = vi.fn().mockResolvedValue({ v: 'fresh' });
 
@@ -239,5 +231,79 @@ describe('同じキーの同時の取得（#433）', () => {
 
     expect(skipped.data).toEqual({ v: 'fresh' });
     expect(fresh).toHaveBeenCalledTimes(1);
+  });
+
+  // 以下は、別のエージェント（Opus）が issue #433 と差分だけから提案した反証テストを、実装者が取り込んだもの。
+  it('成功のあと、キャッシュがまだミスなら、次の要求は取得し直す（終わった取得が残らない）', async () => {
+    await withCache('dup:e', 60, vi.fn().mockResolvedValue({ v: 1 }));
+    const next = vi.fn().mockResolvedValue({ v: 2 });
+
+    const r = await withCache('dup:e', 60, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(r.data).toEqual({ v: 2 });
+  });
+
+  it('cache.get を待っている間に来た要求も相乗りし、cache.get も 1 回で済む', async () => {
+    const g = Promise.withResolvers<{ hit: false }>();
+    cacheMock.get.mockReturnValueOnce(g.promise);
+    const fetcher = vi.fn().mockResolvedValue({ v: 1 });
+
+    const a = withCache('dup:f', 60, fetcher);
+    const b = withCache('dup:f', 60, fetcher);
+    g.resolve({ hit: false });
+    await Promise.all([a, b]);
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(cacheMock.get).toHaveBeenCalledTimes(1);
+  });
+
+  it('失敗はキャッシュに書かない', async () => {
+    await expect(withCache('dup:g', 60, vi.fn().mockRejectedValue(new Error('x')))).rejects.toThrow(
+      'x',
+    );
+
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
+  it('fetcher の実行中に来た要求にも同じ失敗が返り、その後は取得をやり直す', async () => {
+    const up = Promise.withResolvers<{ v: number }>();
+    const fetcher = vi.fn().mockReturnValue(up.promise);
+    const a = withCache('dup:h', 60, fetcher);
+    await flush();
+    const b = fetchWithOptionalCache('dup:h', 60, false, fetcher);
+    const error = new Error('boom');
+
+    up.reject(error);
+
+    await expect(a).rejects.toBe(error);
+    await expect(b).rejects.toBe(error);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    const retry = vi.fn().mockResolvedValue({ v: 9 });
+    await expect(withCache('dup:h', 60, retry)).resolves.toMatchObject({ data: { v: 9 } });
+  });
+
+  it('cache.get が同期で投げても、そのキーが失敗のまま固まらない', async () => {
+    cacheMock.get.mockImplementationOnce(() => {
+      throw new Error('sync');
+    });
+    await expect(withCache('dup:i', 60, vi.fn())).rejects.toThrow('sync');
+
+    const retry = vi.fn().mockResolvedValue({ v: 1 });
+    await expect(withCache('dup:i', 60, retry)).resolves.toMatchObject({ data: { v: 1 } });
+  });
+
+  it('skipCache の失敗は、進行中の取得に影響しない', async () => {
+    const up = Promise.withResolvers<{ v: number }>();
+    const shared = vi.fn().mockReturnValue(up.promise);
+    const a = withCache('dup:j', 60, shared);
+
+    await expect(
+      fetchWithOptionalCache('dup:j', 60, true, vi.fn().mockRejectedValue(new Error('s'))),
+    ).rejects.toThrow('s');
+    up.resolve({ v: 1 });
+
+    await expect(a).resolves.toMatchObject({ data: { v: 1 } });
+    expect(shared).toHaveBeenCalledTimes(1);
   });
 });

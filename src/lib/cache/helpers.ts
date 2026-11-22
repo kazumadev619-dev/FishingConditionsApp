@@ -79,30 +79,28 @@ export function withCache<T extends Cacheable>(
   const running = inFlight.get(key) as Promise<{ data: T; fromCache: boolean }> | undefined;
   if (running) return running;
 
+  // 後片付けは .finally につなぐ。try/finally だと、最初の await より前に同期で例外が起きたとき、
+  // 削除が set より先に走り、失敗した Promise がそのキーに残り続ける。
   const promise = (async () => {
-    try {
-      // キャッシュから取得を試みる
-      const cached = await cache.get<T>(key);
+    // キャッシュから取得を試みる
+    const cached = await cache.get<T>(key);
 
-      if (cached.hit) {
-        // revive を省けるのは ReviverArgument が `Jsonified<T> extends T` を確かめた型だけなので、
-        // このキャストは JSON 往復で型が変わらない場合に限られる
-        return { data: revive ? revive(cached.value) : (cached.value as T), fromCache: true };
-      }
-
-      // fetcherでデータを取得
-      const data = await fetcher();
-
-      // キャッシュに保存（非同期、エラーは無視）
-      cache.set(key, data, ttlSeconds).catch((error) => {
-        logger.error({ key, error }, 'Failed to cache data');
-      });
-
-      return { data, fromCache: false };
-    } finally {
-      inFlight.delete(key);
+    if (cached.hit) {
+      // revive を省けるのは ReviverArgument が `Jsonified<T> extends T` を確かめた型だけなので、
+      // このキャストは JSON 往復で型が変わらない場合に限られる
+      return { data: revive ? revive(cached.value) : (cached.value as T), fromCache: true };
     }
-  })();
+
+    // fetcherでデータを取得
+    const data = await fetcher();
+
+    // キャッシュに保存（非同期、エラーは無視）
+    cache.set(key, data, ttlSeconds).catch((error) => {
+      logger.error({ key, error }, 'Failed to cache data');
+    });
+
+    return { data, fromCache: false };
+  })().finally(() => inFlight.delete(key));
   inFlight.set(key, promise);
   return promise;
 }
