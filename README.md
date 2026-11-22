@@ -77,7 +77,7 @@
 | デプロイ       | Raspberry Pi 5 + k3s         | -                       | Cloudflare Tunnel + Traefik、arm64 本番                            |
 | CI/CD          | GitHub Actions → GHCR / k3s  | -                       | PR で品質・ビルド・k8s・Docker を検証、`main` push で自動デプロイ |
 
-> バージョンは `package-lock.json` の解決済みの版および `docker/Dockerfile` に基づく（`package.json` の範囲指定は `^`）。
+> バージョンは `package-lock.json` の解決済みの版、`docker/Dockerfile`（Node.js など）、`docker/docker-compose.yml`（PostgreSQL・Redis）に基づく（`package.json` の範囲指定は `^`）。
 >
 > **PWA:** `next-pwa` が Turbopack 未対応のため現在無効（パッケージは削除済み）。対応後に再有効化予定（`next.config.mjs` 参照）。
 
@@ -160,7 +160,7 @@ npm run docker:down
 | `npm run prisma:migrate`  | マイグレーション作成・実行            |
 | `npm run prisma:seed`     | シードデータ投入                      |
 | `npm run prisma:studio`   | Prisma Studio起動（DBビジュアル）     |
-| `npm run prisma:reset`    | マイグレーションのリセット            |
+| `npm run prisma:reset`    | DB を削除してマイグレーションを最初から適用し直す（データはすべて消える。`.env.local` の接続先に注意） |
 
 ### E2E開発環境
 
