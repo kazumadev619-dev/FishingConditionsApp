@@ -11,7 +11,7 @@ const SCORE_RANK_RANGES = [
   { label: '不適', min: 0, max: 19 },
 ] as const;
 
-type SessionUser = 'verified' | 'unverified' | { id: string; email: string };
+type SessionUser = 'verified' | 'unverified';
 
 type E2EFixtures = {
   authenticatedPage: Page;
@@ -67,10 +67,8 @@ export const test = base.extend<E2EFixtures>({
   },
 
   authenticatedPage: async ({ page, context, baseURL }, use) => {
-    if (!baseURL) {
-      throw new Error('baseURL が未設定です。playwright.config.ts を確認してください。');
-    }
-    await loginWithCookie(context, baseURL, 'verified');
+    // baseURL の未設定は context fixture で検査済み（page は context の後に作られる）
+    await loginWithCookie(context, baseURL as string, 'verified');
     await use(page);
   },
 });
@@ -94,9 +92,7 @@ export async function expectDashboard(page: Page): Promise<void> {
   const rankSpec = SCORE_RANK_RANGES.find((entry) => entry.label === rankLabel);
   expect(rankSpec, `想定外のスコアランク: ${rankLabel}`).toBeDefined();
 
-  const totalScoreText = (
-    await rankStatus.locator('..').locator('span').first().textContent()
-  )?.trim();
+  const totalScoreText = (await scoreCard.getByText(/^\d+$/).first().textContent())?.trim();
   expect(totalScoreText).toMatch(/^\d+$/);
   const totalScore = Number(totalScoreText);
   if (rankSpec) {

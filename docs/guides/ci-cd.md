@@ -114,6 +114,7 @@ Code Quality Check、Build、Manifests、Docker Images、E2E Environment の結�
 
 ```
 ✅ 成功時: "🟢 All checks passed!"
+🟢 E2E だけ失敗（必須でないとき）: "🟢 Required checks passed! (E2E Environment: failure)"
 ❌ 失敗時: 各ジョブの結果を個別表示
 ```
 

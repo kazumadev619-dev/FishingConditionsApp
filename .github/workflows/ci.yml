@@ -444,8 +444,6 @@ jobs:
           MANIFESTS_RESULT: ${{ needs.manifests.result }}
           DOCKER_RESULT: ${{ needs.docker.result }}
           E2E_RESULT: ${{ needs.e2e-env.result }}
-          EVENT_NAME: ${{ github.event_name }}
-          BASE_REF: ${{ github.base_ref }}
           E2E_REQUIRED: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
         run: |
           set -euo pipefail
@@ -465,11 +463,7 @@ jobs:
 
           e2e_note=""
           if [ "$E2E_REQUIRED" != "true" ]; then
-            if [ "$EVENT_NAME" = "pull_request" ]; then
-              e2e_note=" (${BASE_REF} PR では参考結果)"
-            else
-              e2e_note=" (参考結果)"
-            fi
+            e2e_note=" (参考結果)"
           fi
 
           {
