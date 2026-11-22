@@ -65,7 +65,7 @@ describe('generateExplanation の風の注意と、ほかの文の組み合わ�
       new Date('2026-01-01T03:00:00Z'),
     );
 
-  it('潮名の文があっても、風の注意はちょうど 1 回足され、潮名の文は消えない', () => {
+  it('[T-EXPL-04] 潮名の文があっても、風の注意はちょうど 1 回足され、潮名の文は消えない', () => {
     const explanation = at(7);
     expect(explanation.split(WIND_WARNING)).toHaveLength(2);
     expect(explanation).toContain('大潮');

@@ -175,6 +175,15 @@
 | T-EXPL-01 | 風速 6m/s ちょうど以下 | 風の注意を出さない |
 | T-EXPL-02 | 風速 6m/s を超える | 風の注意を出す |
 | T-EXPL-03 | 風の注意と、風の点が 0 になる境目の一致 | 一致する |
+| T-EXPL-04 | 潮名の文があっても、風の注意は 1 回だけ足される | 風の注意がちょうど 1 回。潮名の文は消えない（潮名の文が残ることは、仕様に書いていない。[#436](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/436) の5） |
+
+### 4.5 日本時間の時刻の取り出し
+
+出どころ: 「時刻と日付はすべて日本時間（`Asia/Tokyo`）で扱う」（`scoring-algorithm.md`。`getJapanDateTimeParts` で取る）。時刻の境界は、日付が変わる JST の 0 時である。
+
+| ID | 同値クラス・境界値 | 入力 | 期待値 |
+|---|---|---|---|
+| T-JST-01 | JST の 0 時ちょうど | UTC の前日 15:00（JST 0:00） | 時 0・分 0（24 時にしない）。日付は JST の当日 |
 
 ## テストを書かない行
 
@@ -190,4 +199,4 @@
 | 天候の欠損 | 仕様の対象外（`scoring-algorithm.md` が「別 issue」と書いている）。[#417](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/417) |
 | 最も良い・最も悪い要素の同点 | 仕様に書いていない。比較の `>` と `>=`、`<` と `<=` は、同点のときだけ変わる。[#436](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/436) の3で決める |
 | ランクの範囲外（負、100 超）、小数 | 仕様に書いていない（呼び出し側が丸めて 0〜100 に収めてから渡す） |
-| 説明文のランクごとの文、最も良い条件の文、潮名・月齢の文 | 文面は仕様ではない。ランクの一文と「最も良い条件」は [#423](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/423)、潮名・月齢の行と文言の扱いは [#436](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/436) の5で決める。決めるときに、仕様と一緒にテストを足す |
+| 説明文のランクごとの文、最も良い条件の文、潮名・月齢の文（T-EXPL-04 は、潮名の文が残ることだけを確かめている） | 文面は仕様ではない。ランクの一文と「最も良い条件」は [#423](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/423)、潮名・月齢の行と文言の扱いは [#436](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/436) の5で決める。決めるときに、仕様と一緒にテストを足す |

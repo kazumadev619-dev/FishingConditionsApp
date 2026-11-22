@@ -106,7 +106,7 @@ describe('スコア計算の日本時間', () => {
     });
   }
 
-  it('JSTの0時を24時にしない', () => {
+  it('[T-JST-01] JSTの0時を24時にしない', () => {
     expect(getJapanDateTimeParts(new Date('2026-10-16T15:00:00Z'))).toEqual({
       date: '2026-10-17',
       hours: 0,
