@@ -119,8 +119,20 @@ PR 本文は、`.github/pull_request_template.md` を読んで、各節を埋め
 gh pr create \
   --base develop \
   --title "<emoji> <type>: <説明> #<TaskNo>" \
-  --body-file <埋めた本文>
+  --body-file <埋めた本文> \
+  --assignee @me \
+  --label <種類> \
+  --label <priority:*> \
+  --milestone "<issue と同じ名前>"   # priority:* と milestone は、issue に無ければ付けない
 ```
+
+### ラベル・担当者・マイルストーン
+
+- **Labels**: issue のラベルのうち、種類（`bug`・`enhancement`・`documentation`・`refactor`・`infra`・`security`・`dependencies`）と `priority:*` を写す。`priority:*` は issue に無ければ付けない。issue に種類がなければ、タイトルの種類から決める（fix・hotfix→`bug`、feat・improve・update・style・test→`enhancement`、docs→`documentation`、refactor・delete・move→`refactor`、chore・WIP→付けない、package→`dependencies`）。`agent:*` や `done` などは付けない
+- **Milestone**: issue と同じ。issue に無ければ付けない
+- **Assignees**: `@me`。Reviewers は付けない
+- **Development**: `develop` 向けでは空のまま（`Refs` で表す）。main 昇格 PR は `Closes` で埋まる
+- **main 昇格 PR**: Assignees だけ
 
 ### PR本文の書き方
 
