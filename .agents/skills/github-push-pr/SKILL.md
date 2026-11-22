@@ -121,13 +121,14 @@ gh pr create \
   --title "<emoji> <type>: <説明> #<TaskNo>" \
   --body-file <埋めた本文> \
   --assignee @me \
-  --label <種類> --label <priority:*> \
-  --milestone "<issue と同じ名前>"   # issue に無ければ付けない
+  --label <種類> \
+  --label <priority:*> \
+  --milestone "<issue と同じ名前>"   # priority:* と milestone は、issue に無ければ付けない
 ```
 
 ### ラベル・担当者・マイルストーン
 
-- **Labels**: issue のラベルのうち、種類（`bug`・`enhancement`・`documentation`・`refactor`・`infra`・`security`）と `priority:*` を写す。issue に種類がなければ、タイトルの種類から決める（fix→`bug`、feat/style/improve/test/perf→`enhancement`、docs→`documentation`、refactor/delete→`refactor`、ci/build→`infra`）。`agent:*` や `done` などは付けない
+- **Labels**: issue のラベルのうち、種類（`bug`・`enhancement`・`documentation`・`refactor`・`infra`・`security`・`dependencies`）と `priority:*` を写す。`priority:*` は issue に無ければ付けない。issue に種類がなければ、タイトルの種類から決める（fix・hotfix→`bug`、feat・improve・update・style・test→`enhancement`、docs→`documentation`、refactor・delete・move→`refactor`、chore・WIP→付けない、package→`dependencies`）。`agent:*` や `done` などは付けない
 - **Milestone**: issue と同じ。issue に無ければ付けない
 - **Assignees**: `@me`。Reviewers は付けない
 - **Development**: `develop` 向けでは空のまま（`Refs` で表す）。main 昇格 PR は `Closes` で埋まる
