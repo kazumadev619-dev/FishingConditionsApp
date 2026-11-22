@@ -214,7 +214,7 @@ Refs #110（残り: メジャー8件。完了条件が「メジャーは個別 P
 **番号ごとにキーワードを付ける。** GitHub の公式ドキュメントは「Use full syntax for each issue」（例: `Resolves #10, resolves #123`）としている。`Closes #129 #133` のように1つのキーワードに番号を並べる書き方は規則から外れ、閉じる対象に入らない可能性がある。上のように1行1件で書くのが一番確実。どう認識されたかは次の手順4で確かめる。
 
 ```bash
-gh pr create --base main --head develop --title "<まとめ> (#129 #133)" --body-file <本文>
+gh pr create --base main --head develop --title "<まとめ> (#129 #133)" --body-file <本文> --assignee @me
 ```
 
 ### 4. マージ前に GitHub の認識を確かめる
