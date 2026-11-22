@@ -70,3 +70,7 @@ Node 24 との親和性が高く、依存パッケージを1つも増やさず�
 - Next.js 公式ガイドが Vitest 以外を推奨するようになったとき
 - E2E を導入し、Playwright のコンポーネントテスト機能で Stage 3 を代替できると判断したとき
 - ESM モジュールのモックが言語・ランタイム標準の機能で解決され、ランナー固有の実装に依存しなくなったとき
+
+## 追記（#439: Playwright 導入）
+
+2026-11-22 に Playwright Test（`@playwright/test`）を `e2e/` に導入した（`npm run test:e2e`）。本 ADR の決定どおり Vitest（`npm run test` / `npm run check-code`）とは別ランナーとして運用する。E2E 環境とシナリオは [e2e-env.md](../guides/e2e-env.md) を参照。

@@ -186,7 +186,8 @@ AUTH_GOOGLE_SECRET=...               # Google Cloud ConsoleのClient Secret
 ```bash
 npm run test          # 一度だけ実行（CI と同じ）
 npm run test:watch    # 変更を監視して再実行
-npm run check-code    # lint + format + 型チェック + テスト
+npm run check-code    # lint + format + 型チェック + Vitest テスト
+npm run test:e2e      # Playwright E2E テスト（事前に npm run e2e:up が必要）
 ```
 
 変更を push する前に、必ず `npm run check-code` を実行する。
@@ -238,7 +239,9 @@ ADR-003 の Stage 2 / Stage 3 にあたる。Vitest のまま、Node 環境で�
 - **Route Handler**（Stage 2）: `src/app/api/` の下に、Route Handler の関数を呼んで確かめるテストがある（例: `src/app/api/scores/route.test.ts`）。外部への依存はモックやスタブに置き換える（分類は[テスト品質ポリシー](./testing-policy.md)の5節）。
 - **コンポーネント**（Stage 3）: `.test.tsx` の多くは `renderToStaticMarkup`（`react-dom/server`）で描画した HTML を確かめる。jsdom と React Testing Library は導入していない。ブラウザ上の操作を確かめるテストは、いまはない。
 
-E2E（Playwright）のテスト本体は未導入である（#439）。Vitest とは別ランナーとして扱う。E2E を流すための環境（Postgres・Redis・上流スタブ・テスト用ユーザー）は先に用意してあり、使い方は [E2E 環境](./e2e-env.md)。
+### E2E テスト（Playwright）
+
+ブラウザを通した画面の一連の流れは、Vitest とは別ランナーの Playwright Test で検証する（[ADR-003](../adr/003-testing-strategy.md)）。テスト本体はリポジトリ直下の `e2e/*.spec.ts` に置き、`npm run check-code`（`npm run test`）には含めない。起動・外部 API スタブ・シナリオ一覧は [E2E 環境](./e2e-env.md)。
 
 ---
 

@@ -59,7 +59,7 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
   return (
     <div className="space-y-3">
       <Select value={selectedPrefecture} onValueChange={setSelectedPrefecture}>
-        <SelectTrigger disabled={isLoading || allPorts.length === 0}>
+        <SelectTrigger aria-label="都道府県" disabled={isLoading || allPorts.length === 0}>
           <SelectValue placeholder="都道府県を選択" />
         </SelectTrigger>
         <SelectContent>
@@ -85,7 +85,7 @@ export function PortSelectionTab({ onPortSelect }: PortSelectionTabProps) {
 
       {!isLoading && filteredPorts.length > 0 && (
         <Select value={selectedPortId} onValueChange={handlePortChange}>
-          <SelectTrigger>
+          <SelectTrigger aria-label="港">
             <SelectValue placeholder="港を選択" />
           </SelectTrigger>
           <SelectContent>

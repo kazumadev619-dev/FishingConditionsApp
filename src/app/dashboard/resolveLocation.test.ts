@@ -19,6 +19,7 @@ import { isUserRateLimited } from '@/lib/rateLimit';
 import { DEFAULT_LOCATION, resolveLocation } from './resolveLocation';
 
 const PORT_ID = '11111111-1111-4111-8111-111111111111';
+const ENOSHIMA_PORT_ID = '44444444-4444-4444-8444-444444444444';
 const LOCATION_ID = '22222222-2222-4222-8222-222222222222';
 const UNKNOWN_ID = '33333333-3333-4333-8333-333333333333';
 
@@ -29,6 +30,16 @@ const TSUKIJI_PORT = {
   port_code: '2',
   latitude: 35.6667,
   longitude: 139.767,
+};
+
+/** 既定地点（東京都 `13` / 芝浦港 `2`）と県コード・港コード・座標がすべて異なる港のスタブ */
+const ENOSHIMA_PORT = {
+  id: ENOSHIMA_PORT_ID,
+  name: '江ノ島',
+  prefecture_code: '14',
+  port_code: '19',
+  latitude: 35.3005,
+  longitude: 139.4803,
 };
 
 /** 築地港と同じ座標で既に作られている locations 行（お気に入り登録済みの地点） */
@@ -57,16 +68,27 @@ describe('resolveLocation（?portId=）', () => {
     const location = await resolveLocation({ portId: PORT_ID });
 
     expect(location.id).toBe(LOCATION_ID);
+    expect(location.name).toBe('築地');
+    expect(location.latitude).toBe(35.6667);
+    expect(location.longitude).toBe(139.767);
+    expect(location.prefectureCode).toBe('13');
+    expect(location.portCode).toBe('2');
     expect(location.source).toEqual({ type: 'port', portId: PORT_ID });
   });
 
-  it('対応する locations がまだ無ければ id は付かない', async () => {
-    prismaMock.ports.findUnique.mockResolvedValue(TSUKIJI_PORT);
+  it('対応する locations がまだ無ければ id は付かず、港の座標と県・港コードを返す', async () => {
+    prismaMock.ports.findUnique.mockResolvedValue(ENOSHIMA_PORT);
 
-    const location = await resolveLocation({ portId: PORT_ID });
+    const location = await resolveLocation({ portId: ENOSHIMA_PORT_ID });
 
-    expect(location.id).toBeUndefined();
-    expect(location.name).toBe('築地');
+    expect(location).toEqual({
+      name: '江ノ島',
+      latitude: 35.3005,
+      longitude: 139.4803,
+      prefectureCode: '14',
+      portCode: '19',
+      source: { type: 'port', portId: ENOSHIMA_PORT_ID },
+    });
   });
 
   it('港が見つからなければデフォルト地点を返す', async () => {

@@ -241,3 +241,7 @@ docs/superpowers/
 
 # E2E 環境の状態・ログ（scripts/e2e/up.sh）
 /.e2e/
+
+# Playwright E2E テスト出力
+/test-results/
+/playwright-report/

@@ -333,14 +333,14 @@ jobs:
         run: docker build --file docker/Dockerfile --target runner .
 
   # ============================================
-  # E2E 環境（#438）
+  # E2E 環境・Playwright テスト（#438, #439）
   # ============================================
   # Postgres・Redis を service container で用意し、scripts/e2e/up.sh で E2E 用の環境
-  # （migrate・seed・E2E ユーザー・ビルド・アプリ・上流スタブ）を立てて smoke.sh で確かめる。
+  # （migrate・seed・E2E ユーザー・ビルド・アプリ・上流スタブ）を立てて smoke.sh と Playwright を流す。
   # services: はジョブをまたいで共有できないので、#354（実 DB のテスト）はこのジョブにステップを足すか、
-  # 同じ定義を写して使う。Playwright の実行は #439 がここに足す。
-  # 失敗したときのログは、up.sh が片付ける前に出す。
-  # 安定するまで必須にしない（ci-summary の needs には入れない）。
+  # 同じ定義を写して使う。
+  # 失敗したときのログとレポートは、e2e:down で .e2e/ が消える前に出す。
+  # ci-summary の必須判定に含めるのは main 向け PR のみ（github.event_name == 'pull_request' && github.base_ref == 'main'）。
   e2e-env:
     name: E2E Environment
     runs-on: ubuntu-26.04
@@ -396,6 +396,33 @@ jobs:
       - name: Smoke check
         run: npm run e2e:smoke
 
+      - name: Install Playwright Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Run E2E tests
+        run: npm run test:e2e
+
+      - name: Print E2E logs on failure
+        if: failure()
+        run: |
+          for f in app stub; do
+            if [ -f ".e2e/$f.log" ]; then
+              echo "=== .e2e/$f.log ==="
+              tail -n 50 ".e2e/$f.log"
+            fi
+          done
+
+      - name: Upload Playwright artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
       - name: Stop E2E environment
         if: always()
         run: npm run e2e:down
@@ -406,30 +433,61 @@ jobs:
   ci-summary:
     name: CI Summary
     runs-on: ubuntu-26.04
-    needs: [quality-check, build, manifests, docker]
+    needs: [quality-check, build, manifests, docker, e2e-env]
     if: always() # 失敗してもサマリーは表示
 
     steps:
       - name: Check CI results
+        env:
+          QUALITY_RESULT: ${{ needs.quality-check.result }}
+          BUILD_RESULT: ${{ needs.build.result }}
+          MANIFESTS_RESULT: ${{ needs.manifests.result }}
+          DOCKER_RESULT: ${{ needs.docker.result }}
+          E2E_RESULT: ${{ needs.e2e-env.result }}
+          E2E_REQUIRED: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
         run: |
+          set -euo pipefail
+          icon() { [ "$1" = "success" ] && echo "🟢" || echo "❌"; }
+
+          core_ok=true
+          for r in "$QUALITY_RESULT" "$BUILD_RESULT" "$MANIFESTS_RESULT" "$DOCKER_RESULT"; do
+            if [ "$r" != "success" ]; then
+              core_ok=false
+            fi
+          done
+
+          e2e_ok=true
+          if [ "$E2E_REQUIRED" = "true" ] && [ "$E2E_RESULT" != "success" ]; then
+            e2e_ok=false
+          fi
+
+          e2e_note=""
+          if [ "$E2E_REQUIRED" != "true" ]; then
+            e2e_note=" (参考結果)"
+          fi
+
           {
             echo "## CI Results"
             echo ""
 
-            if [ "${{ needs.quality-check.result }}" == "success" ] && [ "${{ needs.build.result }}" == "success" ] && [ "${{ needs.manifests.result }}" == "success" ] && [ "${{ needs.docker.result }}" == "success" ]; then
-              echo "🟢 All checks passed!"
-              echo ""
-              echo "- 🟢 Code Quality Check"
-              echo "- 🟢 Build Verification"
-              echo "- 🟢 Kubernetes Manifests"
-              echo "- 🟢 Docker Images"
+            if [ "$core_ok" = "true" ] && [ "$e2e_ok" = "true" ]; then
+              if [ "$E2E_RESULT" = "success" ]; then
+                echo "🟢 All checks passed!"
+              else
+                echo "🟢 Required checks passed! (E2E Environment: ${E2E_RESULT})"
+              fi
             else
               echo "❌ Some checks failed"
-              echo ""
-              echo "- ${{ needs.quality-check.result == 'success' && '🟢' || '❌' }} Code Quality Check"
-              echo "- ${{ needs.build.result == 'success' && '🟢' || '❌' }} Build Verification"
-              echo "- ${{ needs.manifests.result == 'success' && '🟢' || '❌' }} Kubernetes Manifests"
-              echo "- ${{ needs.docker.result == 'success' && '🟢' || '❌' }} Docker Images"
+            fi
+
+            echo ""
+            echo "- $(icon "$QUALITY_RESULT") Code Quality Check"
+            echo "- $(icon "$BUILD_RESULT") Build Verification"
+            echo "- $(icon "$MANIFESTS_RESULT") Kubernetes Manifests"
+            echo "- $(icon "$DOCKER_RESULT") Docker Images"
+            echo "- $(icon "$E2E_RESULT") E2E Environment${e2e_note}"
+
+            if [ "$core_ok" != "true" ] || [ "$e2e_ok" != "true" ]; then
               exit 1
             fi
           } >> "$GITHUB_STEP_SUMMARY"
