@@ -184,7 +184,7 @@ ALLOW = [
     # .env.local を読み込んで使うだけ（中身は出さない）
     "cd docker && docker compose --env-file ../.env.local up -d postgres redis && cd ..",
     "npx dotenv -e .env.local -- prisma migrate status",
-    "npx dotenv -e .env.local -- node .claude/skills/run-app-locally/session-cookie.mjs \"$J\" a@example.invalid",
+    "npx dotenv -e .env.local -- node .agents/skills/run-app-locally/session-cookie.mjs \"$J\" a@example.invalid",
     "npx dotenv -e .env.local -- node --import tsx/esm check.ts",
     "APP_PORT=3100 docker compose --env-file ../.env.local up -d --build app",
     "docker compose --env-file ../.env.local --profile tools run --rm migrator",
@@ -253,7 +253,7 @@ ALLOW = [
     # その他の普段のコマンド
     "npm run dev",
     "curl -s http://localhost:3000/api/healthz",
-    "python3 -m unittest discover -s .claude/hooks",
+    "python3 -m unittest discover -s .agents/hooks",
     "echo 'unterminated",
 ]
 
@@ -439,14 +439,31 @@ class AntigravityHookProtocolTest(unittest.TestCase):
         self.assertEqual(grep_res.returncode, 0)
         self.assertEqual(json.loads(grep_res.stdout)["decision"], "deny")
 
-    def test_grep_search_files_only_is_allowed(self):
+    def test_grep_search_with_undocumented_args_is_still_blocked(self):
+        """grep_search の引数は SearchPath・Query・IsRegex・CaseInsensitive・Includes・MatchPerLine だけ。
+
+        出典: https://antigravity.google/docs/hooks/ の Supported tools（2026-11-22 に確認）と、
+        agy 1.5.14 での実測（PR #450 のレビュー）。FilesOnly のような仕様に無い引数を付けても、
+        秘密のファイルの行を出す検索は止める。
+        """
         payload = {
             "hookEventName": "PreToolUse",
             "toolCall": {"name": "grep_search", "args": {"SearchPath": ".env", "Query": "AUTH", "FilesOnly": True}},
         }
         result = self.run_hook(payload)
-        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["decision"], "deny")
 
+    def test_grep_search_includes_and_view_file_absolute_path_are_checked(self):
+        """出典: https://antigravity.google/docs/hooks/ （grep_search の Includes、view_file の AbsolutePath）。"""
+        for args, tool in (
+            ({"SearchPath": "/repo", "Query": "AUTH", "Includes": [".env*"]}, "grep_search"),
+            ({"AbsolutePath": "/repo/.env.local"}, "view_file"),
+        ):
+            with self.subTest(tool=tool):
+                result = self.run_hook({"hookEventName": "PreToolUse", "toolCall": {"name": tool, "args": args}})
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(json.loads(result.stdout)["decision"], "deny")
 
 if __name__ == "__main__":
     unittest.main()

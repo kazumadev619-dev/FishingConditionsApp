@@ -778,12 +778,11 @@ MESSAGE = """secret_guard: {reason}。
 
 
 def check_antigravity_grep(args: dict) -> Optional[str]:
-    if args.get("FilesOnly") or args.get("ReturnFilePathsOnly"):
-        return None
-    path = args.get("SearchPath") or args.get("SearchDirectory") or args.get("Path") or ""
+    # 引数名は https://antigravity.google/docs/hooks/ の grep_search に合わせる
+    path = args.get("SearchPath") or ""
     if is_secret_file(path) or is_secret_directory(path):
         return f"grep_search で {path} の行を出そうとしている"
-    includes = args.get("Includes") or args.get("Include") or []
+    includes = args.get("Includes") or []
     if isinstance(includes, str):
         includes = [includes]
     for pattern in includes:
@@ -810,7 +809,8 @@ def main() -> int:
         if tool == "run_command":
             reason = check_bash(args.get("CommandLine") or "", cwd)
         elif tool in ("read_file", "view_file"):
-            path = args.get("Path") or args.get("AbsolutePath") or args.get("file_path") or ""
+            # read_file(Path) は agy 1.5.14 の実測、view_file(AbsolutePath) は公式の文書
+            path = args.get("Path") or args.get("AbsolutePath") or ""
             reason = check_read({"file_path": path})
         elif tool == "grep_search":
             reason = check_antigravity_grep(args)
