@@ -101,23 +101,22 @@ nohup "${app_env[@]}" "NODE_OPTIONS=--import $ROOT/scripts/perf/redirect-upstrea
 echo "APP_PID=$!" >> "$STATE"
 
 # /healthz が返っても、返したのが自分のアプリとは限らない（別の worktree のアプリがそのポートにいると、
-# 自分のアプリは EADDRINUSE で死んでいても、curl はそちらに届く）。ポートで待ち受けているのが、
-# 自分が起動したアプリで、作業ディレクトリもこの worktree のものであることを確かめる
+# 自分のアプリは EADDRINUSE で死んでいても、curl はそちらに届く）。次の2つで確かめる。
+#   1. 自分が起動したアプリの PID が生きている（EADDRINUSE で死んでいれば、npx も一緒に終わっている）
+#   2. lsof でそのポートの待ち受けを引けるなら、作業ディレクトリがこの worktree のものがある。
+#      引けない環境（CI のランナーなど。lsof はあるが待ち受けを返さない）では、1 だけで判断する
 owns_port() {
   kill -0 "$(grep '^APP_PID=' "$STATE" | cut -d= -f2)" 2> /dev/null || return 1
-  for pid in $(lsof -ti "tcp:$APP_PORT" -sTCP:LISTEN 2> /dev/null); do
+  pids=$(lsof -ti "tcp:$APP_PORT" -sTCP:LISTEN 2> /dev/null || true)
+  [ -z "$pids" ] && return 0
+  for pid in $pids; do
     lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | grep -qx "n$PWD" && return 0
   done
   return 1
 }
 for _ in $(seq 1 60); do
   if curl -sf "$APP_URL/healthz" > /dev/null; then
-    owns_port || {
-      echo "$APP_PORT で待ち受けているのが、この worktree のアプリではない（別のものがそのポートを使っている）" >&2
-      lsof -nP "-iTCP:$APP_PORT" -sTCP:LISTEN >&2 2> /dev/null || echo "（lsof で待ち受けを引けなかった: $(command -v lsof || echo 'lsof が無い')）" >&2
-      for pid in $(lsof -ti "tcp:$APP_PORT" -sTCP:LISTEN 2> /dev/null); do echo "pid $pid cwd: $(lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | tr '\n' ' ') / PWD=$PWD" >&2; done
-      exit 1
-    }
+    owns_port || { echo "$APP_PORT で待ち受けているのが、この worktree のアプリではない（別のものがそのポートを使っている）" >&2; exit 1; }
     READY=1
     echo "起動した: $APP_URL （スタブのポート: ${STUB_PORT}。状態は .e2e/state.env）"
     exit 0
