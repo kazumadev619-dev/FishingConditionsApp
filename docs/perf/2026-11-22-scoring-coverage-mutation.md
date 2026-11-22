@@ -33,7 +33,7 @@ npx vitest run --coverage --coverage.provider=v8 --coverage.reporter=text
 
 ## 変異テスト
 
-[`mutation-test`](../../.claude/skills/mutation-test/SKILL.md) で、スコア計算の実装を60通りに壊し、`npx vitest run src/lib/scoring src/lib/utils/scoreRank.test.ts` で確かめた（対象: `tideScore.ts`、`weatherScore.ts`、`timeScore.ts`、`index.ts`、`scoreRank.ts`）。
+[`mutation-test`](../../.agents/skills/mutation-test/SKILL.md) で、スコア計算の実装を60通りに壊し、`npx vitest run src/lib/scoring src/lib/utils/scoreRank.test.ts` で確かめた（対象: `tideScore.ts`、`weatherScore.ts`、`timeScore.ts`、`index.ts`、`scoreRank.ts`）。
 
 - 57件が落ちた（KILLED）
 - 3件が通った（SURVIVED）。いずれも、仕様の上で値が変わらない変異である

@@ -1,0 +1,44 @@
+{
+  "linter-config-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "write_file|edit_file|replace_file_content|multi_replace_file_content|write_to_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./hooks/linter_config_guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "secret-guard": {
+    "PreToolUse": [
+      {
+        "matcher": "run_command|read_file|view_file|grep_search",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./hooks/secret_guard.py",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "post-edit-check": {
+    "PostToolUse": [
+      {
+        "matcher": "write_file|edit_file|replace_file_content|multi_replace_file_content|write_to_file",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ./hooks/post_edit_check.py",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

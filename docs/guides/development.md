@@ -116,12 +116,12 @@ git commit -m "📝 docs: 開発ガイドを更新"
 
 | 工程 | 見るもの |
 |---|---|
-| issue の選択から本番の確認まで | [`issue-delivery`](../../.claude/skills/issue-delivery/SKILL.md) |
-| ブランチ・コミット・push・PR | [`github-push-pr`](../../.claude/skills/github-push-pr/SKILL.md)、[PR テンプレート](../../.github/pull_request_template.md) |
+| issue の選択から本番の確認まで | [`issue-delivery`](../../.agents/skills/issue-delivery/SKILL.md) |
+| ブランチ・コミット・push・PR | [`github-push-pr`](../../.agents/skills/github-push-pr/SKILL.md)、[PR テンプレート](../../.github/pull_request_template.md) |
 | テストの書き方 | [testing-policy.md](./testing-policy.md) |
-| 変異テスト、テストのレビュー | [`mutation-test`](../../.claude/skills/mutation-test/SKILL.md)、[`test-review`](../../.claude/skills/test-review/SKILL.md) |
-| 依存の更新 | [`updating-dependencies`](../../.claude/skills/updating-dependencies/SKILL.md) |
-| ローカル起動・実 DB での確認 | [`run-app-locally`](../../.claude/skills/run-app-locally/SKILL.md) |
+| 変異テスト、テストのレビュー | [`mutation-test`](../../.agents/skills/mutation-test/SKILL.md)、[`test-review`](../../.agents/skills/test-review/SKILL.md) |
+| 依存の更新 | [`updating-dependencies`](../../.agents/skills/updating-dependencies/SKILL.md) |
+| ローカル起動・実 DB での確認 | [`run-app-locally`](../../.agents/skills/run-app-locally/SKILL.md) |
 
 `develop` 向けの PR は `Refs #N` で書き、`Closes #N` は `main` 昇格 PR で付ける。`develop` と `main` は `CI Summary` が必須のチェックで、通らない PR は通常マージできない（`enforce_admins` が無効なので、管理者は飛ばせる。[ci-cd.md](./ci-cd.md)）。
 
@@ -238,7 +238,7 @@ ADR-003 の Stage 2 / Stage 3 にあたる。Vitest のまま、Node 環境で�
 - **Route Handler**（Stage 2）: `src/app/api/` の下に、Route Handler の関数を呼んで確かめるテストがある（例: `src/app/api/scores/route.test.ts`）。外部への依存はモックやスタブに置き換える（分類は[テスト品質ポリシー](./testing-policy.md)の5節）。
 - **コンポーネント**（Stage 3）: `.test.tsx` の多くは `renderToStaticMarkup`（`react-dom/server`）で描画した HTML を確かめる。jsdom と React Testing Library は導入していない。ブラウザ上の操作を確かめるテストは、いまはない。
 
-E2E（Playwright）は導入するかどうかも含めて未定である。Vitest とは別ランナーとして扱う。
+E2E（Playwright）のテスト本体は未導入である（#439）。Vitest とは別ランナーとして扱う。E2E を流すための環境（Postgres・Redis・上流スタブ・テスト用ユーザー）は先に用意してあり、使い方は [E2E 環境](./e2e-env.md)。
 
 ---
 

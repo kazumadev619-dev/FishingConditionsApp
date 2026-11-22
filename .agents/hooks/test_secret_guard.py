@@ -1,9 +1,9 @@
 """secret_guard.py のテスト。
 
-実行: python3 .claude/hooks/test_secret_guard.py
+実行: python3 .agents/hooks/test_secret_guard.py
 
 BLOCK は止めるべきコマンド、ALLOW はこのリポジトリのスキルやエージェントが実際に使っているコマンド。
-ALLOW の多くは .claude/skills/ と .claude/agents/ に書かれている形そのままで、
+ALLOW の多くは .agents/skills/ と .agents/agents/ に書かれている形そのままで、
 止めてしまうと手順が回らなくなる。
 """
 
@@ -184,7 +184,7 @@ ALLOW = [
     # .env.local を読み込んで使うだけ（中身は出さない）
     "cd docker && docker compose --env-file ../.env.local up -d postgres redis && cd ..",
     "npx dotenv -e .env.local -- prisma migrate status",
-    "npx dotenv -e .env.local -- node .claude/skills/run-app-locally/session-cookie.mjs \"$J\" a@example.invalid",
+    "npx dotenv -e .env.local -- node .agents/skills/run-app-locally/session-cookie.mjs \"$J\" a@example.invalid",
     "npx dotenv -e .env.local -- node --import tsx/esm check.ts",
     "APP_PORT=3100 docker compose --env-file ../.env.local up -d --build app",
     "docker compose --env-file ../.env.local --profile tools run --rm migrator",
@@ -253,7 +253,7 @@ ALLOW = [
     # その他の普段のコマンド
     "npm run dev",
     "curl -s http://localhost:3000/api/healthz",
-    "python3 -m unittest discover -s .claude/hooks",
+    "python3 -m unittest discover -s .agents/hooks",
     "echo 'unterminated",
 ]
 
@@ -391,6 +391,79 @@ class HookProtocolTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("secret_guard", result.stderr)
 
+
+class AntigravityHookProtocolTest(unittest.TestCase):
+    """Antigravity の PreToolUse（toolCall JSON -> stdout JSON + exit 0）で動かす。"""
+
+    def run_hook(self, payload: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(SCRIPT)], input=json.dumps(payload), capture_output=True, text=True, timeout=30
+        )
+
+    def test_blocked_run_command_returns_deny_decision(self):
+        payload = {
+            "hookEventName": "PreToolUse",
+            "cwd": "/tmp",
+            "toolCall": {"name": "run_command", "args": {"CommandLine": "cat .env.local"}},
+        }
+        result = self.run_hook(payload)
+        self.assertEqual(result.returncode, 0)
+        body = json.loads(result.stdout)
+        self.assertEqual(body["decision"], "deny")
+        self.assertIn("secret_guard", body["reason"])
+        self.assertIn(".env.local", body["reason"])
+
+    def test_allowed_run_command_exits_0_silently(self):
+        payload = {
+            "hookEventName": "PreToolUse",
+            "cwd": "/tmp",
+            "toolCall": {"name": "run_command", "args": {"CommandLine": "npm test"}},
+        }
+        result = self.run_hook(payload)
+        self.assertEqual((result.returncode, result.stdout, result.stderr), (0, "", ""))
+
+    def test_read_file_and_grep_search_are_checked(self):
+        read_payload = {
+            "hookEventName": "PreToolUse",
+            "toolCall": {"name": "read_file", "args": {"Path": "/x/.env.local"}},
+        }
+        read_res = self.run_hook(read_payload)
+        self.assertEqual(read_res.returncode, 0)
+        self.assertEqual(json.loads(read_res.stdout)["decision"], "deny")
+
+        grep_payload = {
+            "hookEventName": "PreToolUse",
+            "toolCall": {"name": "grep_search", "args": {"SearchPath": ".env", "Query": "AUTH"}},
+        }
+        grep_res = self.run_hook(grep_payload)
+        self.assertEqual(grep_res.returncode, 0)
+        self.assertEqual(json.loads(grep_res.stdout)["decision"], "deny")
+
+    def test_grep_search_with_undocumented_args_is_still_blocked(self):
+        """grep_search の引数は SearchPath・Query・IsRegex・CaseInsensitive・Includes・MatchPerLine だけ。
+
+        出典: https://antigravity.google/docs/hooks/ の Supported tools（2026-11-22 に確認）と、
+        agy 1.5.14 での実測（PR #450 のレビュー）。FilesOnly のような仕様に無い引数を付けても、
+        秘密のファイルの行を出す検索は止める。
+        """
+        payload = {
+            "hookEventName": "PreToolUse",
+            "toolCall": {"name": "grep_search", "args": {"SearchPath": ".env", "Query": "AUTH", "FilesOnly": True}},
+        }
+        result = self.run_hook(payload)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout)["decision"], "deny")
+
+    def test_grep_search_includes_and_view_file_absolute_path_are_checked(self):
+        """出典: https://antigravity.google/docs/hooks/ （grep_search の Includes、view_file の AbsolutePath）。"""
+        for args, tool in (
+            ({"SearchPath": "/repo", "Query": "AUTH", "Includes": [".env*"]}, "grep_search"),
+            ({"AbsolutePath": "/repo/.env.local"}, "view_file"),
+        ):
+            with self.subTest(tool=tool):
+                result = self.run_hook({"hookEventName": "PreToolUse", "toolCall": {"name": tool, "args": args}})
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(json.loads(result.stdout)["decision"], "deny")
 
 if __name__ == "__main__":
     unittest.main()
