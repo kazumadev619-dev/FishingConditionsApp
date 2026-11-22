@@ -38,7 +38,7 @@ DATABASE_URL_DIRECT=postgresql://x@localhost/x npx prisma generate
 worktree ごとに次を分けているので、並行して立てても干渉しない。
 
 - compose のプロジェクト名は `fishing-e2e-<worktree のパスのハッシュ>`。コンテナ・ネットワーク・ボリュームが分かれる
-- Postgres・Redis のホスト側ポートは Docker に、アプリとスタブのポートは OS に選ばせる。固定のポートは使わない
+- Postgres・Redis のホスト側ポートは Docker に、アプリとスタブのポートは OS に選ばせる。固定のポートは使わない。空きは `127.0.0.1` と `::1` の両方で確かめる（macOS では `localhost` が `::1` に引かれ、アプリは `[::1]` だけで待ち受けるため）。`up` は、`/healthz` が返ったあとも、そのポートで待ち受けているのが自分のアプリ（作業ディレクトリがこの worktree）であることを確かめ、違えば失敗にして片付ける
 - DB のデータ、Redis のカウンタ（レート制限を含む）、スタブの呼び出し回数は、環境ごとに別
 
 アプリの URL は `http://localhost:<ポート>`。`127.0.0.1` ではなく `localhost` にそろえている。Auth.js はログイン後の転送先を `localhost` で作るので、`127.0.0.1` で開くと Cookie が届かず、ログインの直後に未ログインへ戻る。画面を開くテストも `APP_URL` を使う。
@@ -83,7 +83,7 @@ Playwright からは `scripts/e2e/session-cookie.mjs` の `sessionCookie()` を 
 
 ## CI
 
-`.github/workflows/ci.yml` の `e2e-env` ジョブが、Postgres・Redis を service container で用意し、同じ `up.sh` / `smoke.sh` を流す。`E2E_DATABASE_URL` と `E2E_REDIS_URL` が両方あると、`up.sh` は compose を使わずそのサービスに接続する。使い捨てで、`localhost` か `127.0.0.1` のものだけを受け付ける。2つの URL を1つずつ判定し、どちらかが別のホストなら、`.e2e/` も作らずに終了コード 2 で止まる。`seed-users.mjs` も、`DATABASE_URL` が別のホストなら入れない。
+`.github/workflows/ci.yml` の `e2e-env` ジョブが、Postgres・Redis を service container で用意し、同じ `up.sh` / `smoke.sh` を流す。`E2E_DATABASE_URL` と `E2E_REDIS_URL` が両方あると、`up.sh` は compose を使わずそのサービスに接続する。使い捨てで、`localhost` か `127.0.0.1` のものだけを受け付ける。2つの URL を1つずつ判定し、クエリの `host` / `hostaddr` も同じ判定にかける（pg は URL のホストよりクエリを優先する）。どちらかが別のホストなら、`.e2e/` も作らずに終了コード 2 で止まる。`seed-users.mjs` も、`DATABASE_URL` が別のホストなら入れない。
 
 GitHub Actions の `services:` はジョブをまたいで共有できない。実 DB のテスト（#354）は、この `e2e-env` ジョブにステップを足すか、同じ `services:` の定義を写して使う。いまは必須のチェックにしていない。
 

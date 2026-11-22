@@ -54,10 +54,7 @@ else
 fi
 
 # 空きポートを OS に選ばせる（アプリとスタブ）
-read -r APP_PORT STUB_PORT < <(node -e '
-  const net = require("node:net");
-  const pick = () => new Promise((r) => { const s = net.createServer().listen(0, "127.0.0.1", () => { const p = s.address().port; s.close(() => r(p)); }); });
-  Promise.all([pick(), pick()]).then((p) => console.log(p.join(" ")));')
+read -r APP_PORT STUB_PORT < <(node scripts/e2e/free-ports.mjs 2)
 # アプリは localhost で名乗る。Auth.js はログイン後の転送先を localhost で作るので、127.0.0.1 だと
 # Cookie が届かない（ブラウザは 127.0.0.1 と localhost を別のホストとして扱う）
 APP_URL=http://localhost:$APP_PORT
@@ -103,8 +100,19 @@ nohup "${app_env[@]}" "NODE_OPTIONS=--import $ROOT/scripts/perf/redirect-upstrea
   npx --no-install next start -H localhost -p "$APP_PORT" > .e2e/app.log 2>&1 &
 echo "APP_PID=$!" >> "$STATE"
 
+# /healthz が返っても、返したのが自分のアプリとは限らない（別の worktree のアプリがそのポートにいると、
+# 自分のアプリは EADDRINUSE で死んでいても、curl はそちらに届く）。ポートで待ち受けているのが、
+# 自分が起動したアプリで、作業ディレクトリもこの worktree のものであることを確かめる
+owns_port() {
+  kill -0 "$(grep '^APP_PID=' "$STATE" | cut -d= -f2)" 2> /dev/null || return 1
+  for pid in $(lsof -ti "tcp:$APP_PORT" -sTCP:LISTEN 2> /dev/null); do
+    lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | grep -qx "n$PWD" && return 0
+  done
+  return 1
+}
 for _ in $(seq 1 60); do
   if curl -sf "$APP_URL/healthz" > /dev/null; then
+    owns_port || { echo "$APP_PORT で待ち受けているのが、この worktree のアプリではない（別のものがそのポートを使っている）" >&2; exit 1; }
     READY=1
     echo "起動した: $APP_URL （スタブのポート: ${STUB_PORT}。状態は .e2e/state.env）"
     exit 0

@@ -7,14 +7,22 @@ import { pathToFileURL, URL } from 'node:url';
 
 export function assertLocal(...urls) {
   for (const u of urls) {
-    let host;
+    let url;
     try {
-      host = new URL(u).hostname;
+      url = new URL(u);
     } catch {
       throw new Error('接続先の URL として読めない（値は出さない）');
     }
-    if (host !== 'localhost' && host !== '127.0.0.1') {
-      throw new Error(`接続先が localhost / 127.0.0.1 ではない: ${host}`);
+    // pg は、クエリの host / hostaddr があると URL のホストより優先する（?host=prod.example.com）。
+    // ioredis など他のドライバも同じ名前で上書きしうるので、どれも同じ判定にかける
+    const hosts = [
+      url.hostname,
+      ...['host', 'hostaddr'].flatMap((k) => url.searchParams.getAll(k)),
+    ];
+    for (const host of hosts) {
+      if (host !== 'localhost' && host !== '127.0.0.1') {
+        throw new Error(`接続先が localhost / 127.0.0.1 ではない: ${host}`);
+      }
     }
   }
 }
