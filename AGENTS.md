@@ -24,7 +24,7 @@
 | 実装 | `mattpocock-skills:tdd`（テスト先行）。不具合は `diagnosing-bugs` で調べる。書き方は `docs/guides/testing-policy.md` | 推奨。高リスク箇所（同 7節）は必須 | 実装者 |
 | 実装の完了後 | `ponytail:ponytail-review`（差分）、`ponytail:ponytail-audit`（リポジトリ全体）、`ponytail:ponytail-debt`（`ponytail:` コメントの台帳化） | 推奨。報告のみで、修正は適用しない | 実装者 |
 | 実証 | `mutation-test`、`run-app-locally`、`updating-dependencies`（依存の更新）。手順は `issue-delivery` のステップ3 | テストや CI のガードを書いたら `mutation-test` は必須。高リスク箇所は testing-policy 7節の追加要件も必須 | 実装者 |
-| レビュー | OCR delegate（上の「コードレビュー」）と `mattpocock-skills:code-review` は実装者が自分で。`pr-verifier` と `test-review` は別のエージェント。手順は `issue-delivery` のステップ4 | 必須。`test-review` は条件つき（ステップ4）。投稿は明示承認のあと | 実装者と別のエージェント |
+| レビュー | OCR delegate（上の「コードレビュー」）と `mattpocock-skills:code-review` は実装者が自分で。`pr-verifier` と `test-review` は別のエージェント。手順は `issue-delivery` のステップ4。マージしてよいかの判定は `merge-readiness` | 必須。`test-review` は条件つき（ステップ4）。投稿は明示承認のあと | 実装者と別のエージェント |
 | PR とマージ | `github-push-pr`（コミット・push・PR。`Refs`/`Closes` の書き方もここ）。PR はレビューの前に作る | 必須。マージはオーナーの指示を待つ | 実装者（マージはオーナー） |
 | 昇格・デプロイ後の確認 | `issue-delivery` のステップ6（`main` への昇格、本番での確認） | 必須 | オーナーの指示のもとで実装者 |
 

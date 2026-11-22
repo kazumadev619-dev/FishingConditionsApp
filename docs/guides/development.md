@@ -120,6 +120,7 @@ git commit -m "📝 docs: 開発ガイドを更新"
 | ブランチ・コミット・push・PR | [`github-push-pr`](../../.agents/skills/github-push-pr/SKILL.md)、[PR テンプレート](../../.github/pull_request_template.md) |
 | テストの書き方 | [testing-policy.md](./testing-policy.md) |
 | 変異テスト、テストのレビュー | [`mutation-test`](../../.agents/skills/mutation-test/SKILL.md)、[`test-review`](../../.agents/skills/test-review/SKILL.md) |
+| マージしてよいかの判定 | [`merge-readiness`](../../.agents/skills/merge-readiness/SKILL.md) |
 | 依存の更新 | [`updating-dependencies`](../../.agents/skills/updating-dependencies/SKILL.md) |
 | ローカル起動・実 DB での確認 | [`run-app-locally`](../../.agents/skills/run-app-locally/SKILL.md) |
 
