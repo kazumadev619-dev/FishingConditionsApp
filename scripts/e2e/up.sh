@@ -112,7 +112,12 @@ owns_port() {
 }
 for _ in $(seq 1 60); do
   if curl -sf "$APP_URL/healthz" > /dev/null; then
-    owns_port || { echo "$APP_PORT で待ち受けているのが、この worktree のアプリではない（別のものがそのポートを使っている）" >&2; exit 1; }
+    owns_port || {
+      echo "$APP_PORT で待ち受けているのが、この worktree のアプリではない（別のものがそのポートを使っている）" >&2
+      lsof -nP "-iTCP:$APP_PORT" -sTCP:LISTEN >&2 2> /dev/null || echo "（lsof で待ち受けを引けなかった: $(command -v lsof || echo 'lsof が無い')）" >&2
+      for pid in $(lsof -ti "tcp:$APP_PORT" -sTCP:LISTEN 2> /dev/null); do echo "pid $pid cwd: $(lsof -a -p "$pid" -d cwd -Fn 2> /dev/null | tr '\n' ' ') / PWD=$PWD" >&2; done
+      exit 1
+    }
     READY=1
     echo "起動した: $APP_URL （スタブのポート: ${STUB_PORT}。状態は .e2e/state.env）"
     exit 0
