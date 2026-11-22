@@ -1,15 +1,17 @@
 #!/usr/bin/env python3
 """秘密の値を会話ログに出すツール呼び出しを止める PreToolUse hook。
 
-.claude/settings.json から Bash / Read / Grep の直前に呼ばれる。stdin に hook の入力（JSON）を受け取り、
-止めるときは理由を stderr に書いて終了コード 2 を返す。Claude Code はツールを実行せず、理由を Claude に渡す。
+.claude/settings.json（Bash / Read / Grep）および .agents/hooks.json（run_command / read_file / view_file / grep_search）
+からツール実行直前に呼ばれる。stdin に hook の入力（JSON）を受け取り、
+Claude Code 形式では理由を stderr に書いて終了コード 2 を、Antigravity 形式では stdout に
+{"decision": "deny", "reason": ...}（許可時は {}）を返して終了コード 0 を返す。
 サブエージェントのツール呼び出しにも同じ hook がかかる。
 
 うっかり出すのを防ぐための網であって、境界ではない。シェルを完全には解釈しないので、
 書き方を変えれば通り抜けられる（別名でコピーしてから読む、スクリプトファイルの中で出力する、など）。
 止められたら迂回せず、値を出さない方法に切り替えること。
 
-テスト: python3 .claude/hooks/test_secret_guard.py
+テスト: python3 .agents/hooks/test_secret_guard.py
 """
 
 import fnmatch
@@ -767,11 +769,26 @@ def check_grep(tool_input: dict) -> Optional[str]:
 
 
 MESSAGE = """secret_guard: {reason}。
-秘密の値を会話ログに残さないため、このツール呼び出しを止めた（.claude/hooks/secret_guard.py）。
+秘密の値を会話ログに残さないため、このツール呼び出しを止めた（.agents/hooks/secret_guard.py）。
 - 変数があるかだけ知りたいなら `grep -c '^NAME=' .env.local`（値は出ない）
 - 秘密を要するコマンドは `npx dotenv -e .env.local -- <cmd>` で動かし、値を出力しない
 - sops の復号や本番の Secret の中身が本当に要るなら、ユーザーに自分のターミナルで実行してもらう（`!` で実行すると出力が会話に残る）
 書き方を変えて通り抜けようとしないこと。"""
+
+
+def check_antigravity_grep(args: dict) -> Optional[str]:
+    if args.get("FilesOnly") or args.get("ReturnFilePathsOnly"):
+        return None
+    path = args.get("SearchPath") or args.get("SearchDirectory") or args.get("Path") or ""
+    if is_secret_file(path) or is_secret_directory(path):
+        return f"grep_search で {path} の行を出そうとしている"
+    includes = args.get("Includes") or args.get("Include") or []
+    if isinstance(includes, str):
+        includes = [includes]
+    for pattern in includes:
+        if pattern and glob_hits_secret(pattern, (".env", ".env.local", ".env.production.local")):
+            return f"grep_search で glob {pattern} に当たる秘密のファイルの行を出そうとしている"
+    return None
 
 
 def main() -> int:
@@ -784,6 +801,26 @@ def main() -> int:
         # 終了コード 2 は「止める」の意味になるので 1 にする。Claude Code は非ブロッキングのエラーとして表示する
         print(f"secret_guard: hook の入力を JSON のオブジェクトとして読めなかった（{payload}）。判定せずに通す", file=sys.stderr)
         return 1
+    if "toolCall" in payload or "hookEventName" in payload:
+        tool_call = payload.get("toolCall") or {}
+        tool = tool_call.get("name") or ""
+        args = tool_call.get("args") or {}
+        cwd = args.get("Cwd") or payload.get("cwd") or os.getcwd()
+        if tool == "run_command":
+            reason = check_bash(args.get("CommandLine") or "", cwd)
+        elif tool in ("read_file", "view_file"):
+            path = args.get("Path") or args.get("AbsolutePath") or args.get("file_path") or ""
+            reason = check_read({"file_path": path})
+        elif tool == "grep_search":
+            reason = check_antigravity_grep(args)
+        else:
+            reason = None
+        if reason is None:
+            print("{}")
+            return 0
+        print(json.dumps({"decision": "deny", "reason": MESSAGE.format(reason=reason)}, ensure_ascii=False))
+        return 0
+
     tool_input = payload.get("tool_input") or {}
     tool = payload.get("tool_name")
     if tool == "Bash":

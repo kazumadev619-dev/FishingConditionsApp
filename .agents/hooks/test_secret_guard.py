@@ -1,9 +1,9 @@
 """secret_guard.py のテスト。
 
-実行: python3 .claude/hooks/test_secret_guard.py
+実行: python3 .agents/hooks/test_secret_guard.py
 
 BLOCK は止めるべきコマンド、ALLOW はこのリポジトリのスキルやエージェントが実際に使っているコマンド。
-ALLOW の多くは .claude/skills/ と .claude/agents/ に書かれている形そのままで、
+ALLOW の多くは .agents/skills/ と .agents/agents/ に書かれている形そのままで、
 止めてしまうと手順が回らなくなる。
 """
 
@@ -390,6 +390,64 @@ class HookProtocolTest(unittest.TestCase):
         result = self.run_hook("not json")
         self.assertEqual(result.returncode, 1)
         self.assertIn("secret_guard", result.stderr)
+
+
+class AntigravityHookProtocolTest(unittest.TestCase):
+    """Antigravity の PreToolUse（toolCall JSON -> stdout JSON + exit 0）で動かす。"""
+
+    def run_hook(self, payload: dict) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            [sys.executable, str(SCRIPT)], input=json.dumps(payload), capture_output=True, text=True, timeout=30
+        )
+
+    def test_blocked_run_command_returns_deny_decision(self):
+        payload = {
+            "hookEventName": "PreToolUse",
+            "cwd": "/tmp",
+            "toolCall": {"name": "run_command", "args": {"CommandLine": "cat .env.local"}},
+        }
+        result = self.run_hook(payload)
+        self.assertEqual(result.returncode, 0)
+        body = json.loads(result.stdout)
+        self.assertEqual(body["decision"], "deny")
+        self.assertIn("secret_guard", body["reason"])
+        self.assertIn(".env.local", body["reason"])
+
+    def test_allowed_run_command_returns_empty_json(self):
+        payload = {
+            "hookEventName": "PreToolUse",
+            "cwd": "/tmp",
+            "toolCall": {"name": "run_command", "args": {"CommandLine": "npm test"}},
+        }
+        result = self.run_hook(payload)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), {})
+
+    def test_read_file_and_grep_search_are_checked(self):
+        read_payload = {
+            "hookEventName": "PreToolUse",
+            "toolCall": {"name": "read_file", "args": {"Path": "/x/.env.local"}},
+        }
+        read_res = self.run_hook(read_payload)
+        self.assertEqual(read_res.returncode, 0)
+        self.assertEqual(json.loads(read_res.stdout)["decision"], "deny")
+
+        grep_payload = {
+            "hookEventName": "PreToolUse",
+            "toolCall": {"name": "grep_search", "args": {"SearchPath": ".env", "Query": "AUTH"}},
+        }
+        grep_res = self.run_hook(grep_payload)
+        self.assertEqual(grep_res.returncode, 0)
+        self.assertEqual(json.loads(grep_res.stdout)["decision"], "deny")
+
+    def test_grep_search_files_only_is_allowed(self):
+        payload = {
+            "hookEventName": "PreToolUse",
+            "toolCall": {"name": "grep_search", "args": {"SearchPath": ".env", "Query": "AUTH", "FilesOnly": True}},
+        }
+        result = self.run_hook(payload)
+        self.assertEqual(result.returncode, 0)
+        self.assertEqual(json.loads(result.stdout), {})
 
 
 if __name__ == "__main__":

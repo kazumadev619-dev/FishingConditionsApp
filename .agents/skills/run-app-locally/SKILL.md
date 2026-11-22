@@ -41,7 +41,7 @@ curl -s http://localhost:3000/readyz    # {"status":"ready","checks":{"database"
 
 ```bash
 J=$(mktemp -d)/cookies.txt
-npx dotenv -e .env.local -- node .claude/skills/run-app-locally/session-cookie.mjs "$J" [email]
+npx dotenv -e .env.local -- node .agents/skills/run-app-locally/session-cookie.mjs "$J" [email]
 curl -s -b "$J" -o /dev/null -w '%{http_code}\n' http://localhost:3000/api/ports     # 200
 curl -s -b "$J" -o /dev/null -w '%{http_code}\n' http://localhost:3000/dashboard     # 200
 ```

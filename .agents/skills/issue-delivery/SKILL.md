@@ -127,7 +127,7 @@ ocr delegate rule --format json <reviewable_files のパス...>
 
 ### レビューは `pr-verifier` agent に worktree 隔離で投げる
 
-守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.claude/agents/pr-verifier.md` に書いてある。呼ぶ側が渡すのは次の3つだけ。
+守るべきルール（コミットしない、推測で指摘しない、秘密を出さない、報告の形）は `.agents/agents/pr-verifier.md` に書いてある。呼ぶ側が渡すのは次の3つだけ。
 
 ```
 Agent(
@@ -142,7 +142,7 @@ Agent(
 - 角度を変えて2本投げると噛み合う（例: セキュリティ + 型、インフラ + アーキテクチャ。テストの信頼性は `test-review` に任せる）
 - 高リスク箇所のうち認証・認可、スコア計算、入力検証・レート制限（`docs/guides/testing-policy.md` の7節）を変えたときは、別エージェント（仕様と差分だけを渡した新しいエージェント。fork には頼まない。できれば別モデル）に、間違いを示すテストを差分で提案させる。取り込んだら、出典を PR 本文に書く（`pr-verifier` は検証が役目で、Write と Edit を持たず、コミットもしないので、提案役にしない）
 
-`pr-verifier` が選べないとき（agent 定義を足したばかりのセッション、定義がまだ develop に無いブランチにいるときなど）は、`general-purpose` に「最初に `.claude/agents/pr-verifier.md` を Read し、frontmatter より下の本文に従う。使うツールは frontmatter の `tools` だけ」と指示して投げる。**Bash を持たない agent type（例: `everything-claude-code:architect`）には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
+`pr-verifier` が選べないとき（agent 定義を足したばかりのセッション、定義がまだ develop に無いブランチにいるとき、または別エージェント環境で `pr-verifier` 名が未解決のときなど）は、汎用サブエージェント（Claude Code なら `general-purpose`、Antigravity なら `self` の `Workspace: "branch"` / `"share"` 等）に「最初に `.agents/agents/pr-verifier.md` を Read し、frontmatter より下の本文に従う。使うツールは読み取りとコマンド実行だけ（編集・書き込み禁止）」と指示して投げる。**コマンド実行を持たない agent type（例: `everything-claude-code:architect` や `research`）には投げない。** `git fetch` もできず、推論だけのレポートが返ってくる。
 
 **レビューが走っている間、本体の作業ツリーのブランチを切り替えない。** agent 定義や skill は作業ツリーのファイルから読まれるので、定義が無いブランチに切り替えると agent type が選べなくなる（切り替えた直後にレビューが停止したことがある。因果は断定できていない）。別のブランチを触る必要があれば、別の worktree で作業する。
 
@@ -300,4 +300,4 @@ GitHub Actions のアノテーション記法をコミット本文に貼った�
 - `sops` を Claude Code の `!` から実行しない（TTY が無くエディタが異常終了し、復号内容が会話ログへ出る。2026-09-12 に実際に事故った）
 - 秘密の値をコマンドラインに渡さない。`npx dotenv -e .env.local -- <cmd>` の形を使う
 - サブエージェントにも同じ制約を明示する（レビュアーが `.env.local` の中身を出力してしまったことがある）
-- 上のうち機械的に見分けられるものは、PreToolUse hook（`.claude/hooks/secret_guard.py`）が Bash / Read / Grep の前に止める。止められたら書き方を変えて通そうとせず、値を出さない方法に切り替える。hook はうっかりを防ぐ網で、すべては見分けられない
+- 上のうち機械的に見分けられるものは、PreToolUse hook（`.agents/hooks/secret_guard.py`）がコマンド実行・ファイル読み取り・検索の前に止める。止められたら書き方を変えて通そうとせず、値を出さない方法に切り替える。hook はうっかりを防ぐ網で、すべては見分けられない

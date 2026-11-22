@@ -8,7 +8,7 @@ description: 依存パッケージを更新するとき、npm outdated や npm a
 依存更新で踏んだ罠のうち機械的に見つけられるものは、同梱の `deps.py` が見つける。文書は判断が要る部分だけを扱う。
 
 ```bash
-D=.claude/skills/updating-dependencies/deps.py
+D=.agents/skills/updating-dependencies/deps.py
 python3 $D check-install              # 入っている版が lock どおりか
 python3 $D outdated                   # npm outdated を Latest 列の罠を踏まずに読む
 python3 $D lockdiff "$(git merge-base origin/develop HEAD)"   # この PR で変えた lock の差分を検査する
@@ -48,4 +48,4 @@ python3 $D lockdiff "$(git merge-base origin/develop HEAD)"   # この PR で変
 
 `outdated` は `npm outdated` に出ない新しい版を出さない。`@types/ioredis` は dist-tag の latest が 5.0.0 だが、ioredis 本体が型を持つので中身の無い型定義になっている。上げるのではなく外す候補。
 
-スクリプト自体のテスト: `python3 .claude/skills/updating-dependencies/test_deps.py`
+スクリプト自体のテスト: `python3 .agents/skills/updating-dependencies/test_deps.py`

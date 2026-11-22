@@ -8,7 +8,7 @@ description: 回帰テストや CI のガード（ワークフローの run:）�
 **テストやガードは、実装を壊して落ちることを確かめるまで検証になっていない。** 手でファイルを書き換えて戻すと、ハーネスの方が壊れる（置換が効いていない、抜き出しが途中で切れている、戻し忘れる）。同梱の `mutate.py` に任せる。
 
 ```bash
-python3 .claude/skills/mutation-test/mutate.py run <spec.json>
+python3 .agents/skills/mutation-test/mutate.py run <spec.json>
 ```
 
 spec は `mktemp -d` の下に置く。リポジトリには置かない。複数行の `old` を JSON で手書きするとエスケープを誤るので、**spec は Python の `json.dump` で書き出す**。
@@ -47,7 +47,7 @@ spec は `mktemp -d` の下に置く。リポジトリには置かない。複�
 
 ```bash
 T=$(mktemp -d)
-python3 .claude/skills/mutation-test/mutate.py extract-step .github/workflows/ci.yml "<step の name>" \
+python3 .agents/skills/mutation-test/mutate.py extract-step .github/workflows/ci.yml "<step の name>" \
   | sed "s|/tmp/rendered.yaml|$T/rendered.yaml|g" > "$T/guard.sh"
 ```
 
@@ -92,4 +92,4 @@ python3 .claude/skills/mutation-test/mutate.py extract-step .github/workflows/ci
 | `SURVIVED` が出たのでテストを足そうとしている | 先に「その変異は本当に挙動を変えるか」を考える。例: Python の `SIGINT` ハンドラを消しても、既定の `KeyboardInterrupt` で `finally` が走るので結果は変わらない |
 | 1件ずつ手で置換して戻している | spec にまとめて1回で流す。戻し忘れと置換の空振りをスクリプトが止める |
 
-スクリプト自体のテスト: `python3 .claude/skills/mutation-test/test_mutate.py`
+スクリプト自体のテスト: `python3 .agents/skills/mutation-test/test_mutate.py`

@@ -1,6 +1,6 @@
 """deps.py のテスト。
 
-実行: python3 .claude/skills/updating-dependencies/test_deps.py
+実行: python3 .agents/skills/updating-dependencies/test_deps.py
 
 ここに並ぶケースは、依存更新で実際に踏んだ罠を再現したもの（#110 / PR #158）。
 """
