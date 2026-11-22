@@ -18,11 +18,12 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | システム全体の構成を知りたい | [reference/architecture.md](./reference/architecture.md) |
 | 認証の仕組みを知りたい | [reference/authentication.md](./reference/authentication.md) ／ [図解](./reference/authentication-diagrams.md) |
 | スコアの計算方法を知りたい | [reference/scoring-algorithm.md](./reference/scoring-algorithm.md) |
-| スコア計算のテストケース（同値クラス・境界値）とカバレッジの記録を知りたい | [reference/scoring-test-cases.md](./reference/scoring-test-cases.md) |
+| スコア計算のテストケース（同値クラス・境界値。ID でテストを探せる）を知りたい | [reference/scoring-test-cases.md](./reference/scoring-test-cases.md) |
+| スコア計算のカバレッジと変異テストの結果を知りたい | [perf/2026-11-22-scoring-coverage-mutation.md](./perf/2026-11-22-scoring-coverage-mutation.md) |
 | 外部 API の仕様を知りたい | [reference/api-integration.md](./reference/api-integration.md) ／ [Google Maps](./reference/google-maps-api.md) |
-| エラーを正常・異常・想定外に分けた扱い（HTTP・ログ・リトライ・通知）を知りたい | [reference/error-classification.md](./reference/error-classification.md) |
-| API エラーの扱い方を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
-| 主要 API の応答時間の実測と、測り方を知りたい | [perf/2026-11-22-api-baseline.md](./perf/2026-11-22-api-baseline.md) |
+| API エラーの扱い方と、エラーを正常・異常・想定外に分けた扱い（HTTP・ログ・リトライ・通知）を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
+| 主要 API の応答時間の実測と、測り方を知りたい | [perf/2026-11-22-api-baseline.md](./perf/2026-11-22-api-baseline.md)（記録の決まりは [perf/README.md](./perf/README.md)） |
+| `/api/scores` の並列化・同時要求の相乗りの、直す前後の数値を知りたい | [perf/2026-11-22-scores-parallel-and-dedupe.md](./perf/2026-11-22-scores-parallel-and-dedupe.md) |
 | 性能計測（Server-Timing）の対象を増やしたい／読み方を知りたい | [src/lib/serverTiming.ts](../src/lib/serverTiming.ts)（JSDoc） |
 | 監視の構成と選定理由を知りたい | [adr/005-monitoring-platform.md](./adr/005-monitoring-platform.md) |
 | 画面デザインの方針を知りたい | [adr/006-design-system.md](./adr/006-design-system.md) |
@@ -38,7 +39,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | `guides/` | コマンドを打ちながら読むか？ | 開発環境構築、Docker 操作、CI の対処法 |
 | `reference/` | 実装が何をしているか調べるために読むか？ 冒頭の「状態」が「仕様（正）」の文書は、テストの期待値の出どころで、実装と違えば実装の誤りとして扱う（[ADR-010](./adr/010-spec-source-of-truth.md)） | アーキテクチャ、認証仕様、スコア算出式 |
 | `adr/` | なぜ A ではなく B を選んだかを説明しているか？ | ツールチェーン選定、ディレクトリ構成の決定 |
-| `perf/` | 数値の記録か？ | パフォーマンス計測結果 |
+| `perf/` | 測った日・commit・条件つきの数値の記録か？ 記録は後から書き換えず、新しい日付のファイルを足す（[perf/README.md](./perf/README.md)） | パフォーマンス計測結果、カバレッジ・変異テストの結果 |
 | `agents/` | エージェントスキルが読む設定か？ | issue tracker の場所、triage ラベル、ドメイン文書の読み方 |
 | 直下 | 上のどれでもなく、プロジェクト全体を俯瞰するものか？ | この索引、ロードマップ |
 

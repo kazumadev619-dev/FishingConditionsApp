@@ -68,7 +68,7 @@ describe('スコア計算の日本時間', () => {
   });
 
   for (const tz of ['UTC', 'Asia/Tokyo', 'America/Los_Angeles']) {
-    it(`TZ=${tz} でもJSTの日付とスコアを使う`, () => {
+    it(`[T-TOTAL-08] TZ=${tz} でもJSTの日付とスコアを使う`, () => {
       process.env.TZ = tz;
 
       expect(getJapanDateTimeParts(currentTime)).toEqual({
@@ -84,7 +84,7 @@ describe('スコア計算の日本時間', () => {
     });
 
     // UTC ではまだ前日（10/16 16:00）。toISOString() や UTC の日付を使うと前日の潮汐を引く
-    it(`TZ=${tz} でもJSTの0時台はその日の潮汐を使う`, () => {
+    it(`[T-TDAY-05] TZ=${tz} でもJSTの0時台はその日の潮汐を使う`, () => {
       process.env.TZ = tz;
       const jstOneAm = new Date('2026-10-16T16:00:00Z'); // JST 10/17 01:00
       vi.useFakeTimers({ now: jstOneAm, toFake: ['Date'] });
@@ -106,7 +106,7 @@ describe('スコア計算の日本時間', () => {
     });
   }
 
-  it('JSTの0時を24時にしない', () => {
+  it('[T-JST-01] JSTの0時を24時にしない', () => {
     expect(getJapanDateTimeParts(new Date('2026-10-16T15:00:00Z'))).toEqual({
       date: '2026-10-17',
       hours: 0,

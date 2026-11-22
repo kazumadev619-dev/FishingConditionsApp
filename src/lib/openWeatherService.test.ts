@@ -38,7 +38,7 @@ beforeEach(() => {
 
 // #414: 風速が有限の数値でない応答は、不正な応答として弾く（OpenWeather の応答を受け取る時点）。
 // 通すと、風の点は 0 点なのに説明文の風の注意が出ない食い違いになる。
-describe('風速が有限の数値でない応答は弾く（#414）', () => {
+describe('[T-WIND-07] 風速が有限の数値でない応答は弾く（#414）', () => {
   it.each([
     ['speed が無い', { wind: { deg: 90 } }],
     ['speed が null', { wind: { speed: null, deg: 90 } }],
@@ -82,7 +82,7 @@ describe('風速が有限の数値でない応答は弾く（#414）', () => {
 });
 
 // 気圧が数値でないと、気圧の点の「<990 || >1030」が false になり、満点（8点）になる。
-describe('気圧が有限の数値でない応答は弾く（#414）', () => {
+describe('[T-PRES-06] 気圧が有限の数値でない応答は弾く（#414）', () => {
   it.each([
     ['pressure が無い', { main: { temp: 20, feels_like: 19, humidity: 60 } }],
     ['pressure が null', withPressure(null)],
