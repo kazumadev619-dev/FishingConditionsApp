@@ -1,8 +1,8 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/rateLimit.ts`、`src/lib/clientErrors.ts`、`src/app/api/`
-> - **最終確認**: 2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合した。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/dashboard/error.tsx`
+> - **最終確認**: 2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -245,7 +245,7 @@ OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧
 | 入口 | 利用者に出るもの |
 |---|---|
 | `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
-| `/api/scores` | HTTP 500。`error` は「Failed to calculate fishing score」 |
+| `/api/scores` | HTTP 500。`error` は「Failed to calculate fishing score」。上流の障害を 502 にする決まりとは合っていない（#428） |
 | `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
 | `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
 
@@ -273,7 +273,16 @@ API ルートごとの現状は、ここに書かない（コードが変わる�
 - 想定外を 500 以外で返さない。異常を 500 で返さない。この2つが逆になると、通知が鳴るべきでないときに鳴り、鳴るべきときに鳴らない
 - 設定の誤り（API キーの未設定など）は、人が直すものなので、異常として扱い、`error` を出す
 
-画面（ブラウザ）の例外は、想定外に入る。ブラウザの `logger` は console に出すだけでサーバーに届かないので、届けたいものは `reportClientError`（`src/lib/clientErrors.ts`）でサーバーの受け口（`POST /api/client-errors`）に送る。送る元、上限、ログの形は `src/lib/clientErrors.ts` と `src/app/api/client-errors/route.ts` が正で、そこに理由も書いてある。送った値（`message`、`stack`）は利用者が自由に作れるので、ログを読む側と通知の条件に使う側は、信頼できる値として扱わない。
+画面（ブラウザ）の例外は、想定外に入る。ブラウザの `logger` は console に出すだけでサーバーに届かない。そこで、画面の例外は `reportClientError`（`src/lib/clientErrors.ts`）でサーバーの受け口（`POST /api/client-errors`）に送り、サーバーの構造化ログ（`error`）に残す。
+
+- 送るもの: 画面の描画の例外（`dashboard/error.tsx`、`MapErrorBoundary`）と、握りつぶされた例外（`window` の `error`、`unhandledrejection`）。通信失敗など、再試行で足りる異常は送らない。届けたいものだけ、`reportClientError` を呼ぶ
+- 認証: ログイン中のみ。未ログインは 401。利用者 ID は本文でなくセッションから取る。未ログインの画面（`/login` など）の例外は届かない（#429）
+- 回数: 利用者ごとに 1 分 60 件。超えたら 429
+- 大きさ: 本文は 21,724 バイトまで。超えたら 413。この値は、項目の上限をすべて満たした最大の本文（日本語を含む）が必ず通るように決めた。計算の根拠は `src/lib/clientErrors.ts` のコメントにある
+- 形: 項目は `source`、`message`、`name`、`stack`、`componentStack`、`digest`、`path` の 7 つだけ。ほかの項目があれば 400。各項目の長さの上限は、`message` 500、`name` 100、`stack` 4,000、`componentStack` 2,000、`digest` 100、`path` 200 文字で、超えたら 400。値はログの `clientError` の中に閉じ込め、ログの本体メッセージには混ぜない
+- ブラウザ側: 1 回のページ表示で 5 件まで。URL はパスだけ送る（クエリとハッシュにはトークンが載りうる）
+- `digest` があるものは、サーバーの描画で起きた例外で、Next.js がサーバーのログにも出している。`digest` をキーにすると、両方のログを突き合わせられる
+- 送った値（`message`、`stack`）は利用者が自由に作れる。ログを読む側と通知の条件に使う側は、信頼できる値として扱わない
 
 ## ベストプラクティス
 

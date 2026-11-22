@@ -21,7 +21,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | スコア計算のカバレッジと変異テストの結果を知りたい | [perf/2026-11-22-scoring-coverage-mutation.md](./perf/2026-11-22-scoring-coverage-mutation.md) |
 | 外部 API の仕様を知りたい | [reference/api-integration.md](./reference/api-integration.md) ／ [Google Maps](./reference/google-maps-api.md) |
 | API エラーの扱い方と、エラーを正常・異常・想定外に分けた扱い（HTTP・ログ・リトライ・通知）を知りたい | [reference/api-error-handling.md](./reference/api-error-handling.md) |
-| 主要 API の応答時間の実測と、測り方を知りたい | [perf/2026-11-22-api-baseline.md](./perf/2026-11-22-api-baseline.md)（記録の一覧と決まりは [perf/README.md](./perf/README.md)） |
+| 主要 API の応答時間の実測と、測り方を知りたい | [perf/2026-11-22-api-baseline.md](./perf/2026-11-22-api-baseline.md)（記録の決まりは [perf/README.md](./perf/README.md)） |
 | `/api/scores` の並列化・同時要求の相乗りの、直す前後の数値を知りたい | [perf/2026-11-22-scores-parallel-and-dedupe.md](./perf/2026-11-22-scores-parallel-and-dedupe.md) |
 | 性能計測（Server-Timing）の対象を増やしたい／読み方を知りたい | [src/lib/serverTiming.ts](../src/lib/serverTiming.ts)（JSDoc） |
 | 監視の構成と選定理由を知りたい | [adr/005-monitoring-platform.md](./adr/005-monitoring-platform.md) |
