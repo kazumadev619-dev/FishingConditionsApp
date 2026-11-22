@@ -41,7 +41,12 @@ async function one(path) {
   if (res.status >= 500) throw new Stop(`5xx: ${route}`);
   if (ms > 5000) throw new Stop(`5 秒超 (${Math.round(ms)} ms): ${route}`);
   const st = /dur=([\d.]+)/.exec(res.headers.get('server-timing') ?? '');
-  return { status: res.status, ms, st: st ? Number(st[1]) : undefined, hit: res.headers.get('x-from-cache') };
+  return {
+    status: res.status,
+    ms,
+    st: st ? Number(st[1]) : undefined,
+    hit: res.headers.get('x-from-cache'),
+  };
 }
 
 const med = (a) => [...a].sort((x, y) => x - y)[Math.floor(a.length / 2)];
@@ -69,11 +74,16 @@ async function run(label, paths, vus, gapMs) {
       gapMs,
       n: rows.length,
       status: Object.fromEntries(
-        [...new Set(rows.map((r) => r.status))].map((s) => [s, rows.filter((r) => r.status === s).length]),
+        [...new Set(rows.map((r) => r.status))].map((s) => [
+          s,
+          rows.filter((r) => r.status === s).length,
+        ]),
       ),
       withoutServerTiming: rows.length - st.length,
       fromCache: rows.filter((r) => r.hit === 'true').length,
-      serverMs: st.length ? { min: r1(Math.min(...st)), med: r1(med(st)), max: r1(Math.max(...st)) } : undefined,
+      serverMs: st.length
+        ? { min: r1(Math.min(...st)), med: r1(med(st)), max: r1(Math.max(...st)) }
+        : undefined,
       totalMs: { min: r1(Math.min(...ms)), med: r1(med(ms)), max: r1(Math.max(...ms)) },
     }),
   );
@@ -103,7 +113,12 @@ try {
     await run('floor', rep(same.floor, 15), 1, 2000);
     await run('floor', rep(same.floor, 20), 2, 3000);
     for (const name of ['weather', 'tide', 'scores', 'locations']) {
-      await run(`${name}-miss`, [0, 1, 2].map((i) => miss(i)[name]), 1, 3000);
+      await run(
+        `${name}-miss`,
+        [0, 1, 2].map((i) => miss(i)[name]),
+        1,
+        3000,
+      );
       await one(same[name]); // 温め（結果に入れない）
       await sleep(2000);
       await run(`${name}-hit`, rep(same[name], 15), 1, 2000);
