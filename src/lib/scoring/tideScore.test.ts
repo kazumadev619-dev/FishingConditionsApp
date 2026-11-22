@@ -41,6 +41,17 @@ describe('calculateTideScore の潮汐タイミング', () => {
     expect(calculateTideScore(tide, at(now))).toBe(timing + 15);
   });
 
+  // 式は h（分単位）の一次式。整数時間だけでは、段階式の実装と区別できない（PR #431 のレビューで提案）。
+  it.each([
+    ['12:30', 21.875], // 25 - 0.5 * 6.25
+    ['13:30', 15.625], // 25 - 1.5 * 6.25
+    ['10:45', 17.1875], // 25 - 1.25 * 6.25（前側）
+    ['14:30', 9.375], // 12.5 - 0.5 * 6.25
+    ['08:30', 3.125], // 12.5 - 1.5 * 6.25（前側の 2〜4時間）
+  ])('満潮 12:00 に対して %s のとき、タイミングは %s 点（小数の時間）', (now, timing) => {
+    expect(calculateTideScore(tide, at(now))).toBe(timing + 15);
+  });
+
   it('干潮の時刻もタイミングの基準になる', () => {
     const lowAtNoon = tideOf([{ time: '00:00', cm: 200 }], [{ time: '12:00', cm: 0 }]);
     expect(calculateTideScore(lowAtNoon, at('12:00'))).toBe(25 + 15);
@@ -76,6 +87,59 @@ describe('calculateTideScore の潮の大きさ', () => {
     expect(calculateTideScore(tide, at('12:00'))).toBe(25 + size);
   });
 
+  // 「現在時刻に最も近い満潮・干潮」は、現在より前と後ろの両方から選ぶ（PR #431 のレビューで提案）。
+  it('最も近い満潮・干潮が現在より後ろにあり、配列の2番目にあるとき', () => {
+    const tide = tideOf(
+      [
+        { time: '06:00', cm: 200 },
+        { time: '13:00', cm: 120 },
+      ],
+      [
+        { time: '00:00', cm: 0 },
+        { time: '14:00', cm: 100 },
+      ],
+    );
+    // 最も近い極値 13:00（1時間）で 18.75、潮位差 0.2m で 5点。前だけから選ぶと 2.0m で 15点
+    expect(calculateTideScore(tide, at('12:00'))).toBe(18.75 + 5);
+  });
+
+  it('最も近い満潮・干潮が現在より前にあり、後ろにもっと遠いものがあるとき', () => {
+    const tide = tideOf(
+      [
+        { time: '11:00', cm: 120 },
+        { time: '18:00', cm: 200 },
+      ],
+      [
+        { time: '11:30', cm: 100 },
+        { time: '23:00', cm: 0 },
+      ],
+    );
+    // 最も近い極値 11:30（0.5時間）で 21.875、潮位差 0.2m で 5点。後ろから優先して選ぶと 2.0m で 15点
+    expect(calculateTideScore(tide, at('12:00'))).toBe(21.875 + 5);
+  });
+
+  // 同じ表を、最も近い極値が配列の先頭にある並びでも確かめる（遠い極値が後ろにあっても選ばない）。
+  it('最も近い満潮と干潮が先に並び、遠いものが後ろにあるときも、近いほうから潮位差を作る', () => {
+    const tide = tideOf(
+      [
+        { time: '12:00', cm: 120 }, // 最も近い満潮
+        { time: '20:00', cm: 200 },
+      ],
+      [
+        { time: '13:00', cm: 100 }, // 最も近い干潮
+        { time: '23:00', cm: 0 },
+      ],
+    );
+    // 潮位差 0.2m で 5点。遠いほうを使うと 2.0m で 15点
+    expect(calculateTideScore(tide, at('12:00'))).toBe(25 + 5);
+  });
+
+  // 「0.5m 未満 → 5点」の表。満潮が干潮より低い（差が負）ときも 0.5m 未満に入る。
+  it('満潮が干潮より低く、潮位差が負のとき、潮の大きさは 5点', () => {
+    const tide = tideOf([{ time: '12:00', cm: 0 }], [{ time: '00:00', cm: 50 }]);
+    expect(calculateTideScore(tide, at('12:00'))).toBe(25 + 5);
+  });
+
   // 「現在時刻に最も近い満潮の高さ − 現在時刻に最も近い干潮の高さ。その日の最高満潮と最低干潮ではない」
   it('潮位差は、その日の最高・最低ではなく、現在時刻に最も近い満潮と干潮から作る', () => {
     const tide = tideOf(
@@ -107,5 +171,21 @@ describe('calculateTideScore の潮汐データなし', () => {
 
   it('干潮が当日にないとき 20点', () => {
     expect(calculateTideScore(tideOf([{ time: '12:00', cm: 200 }], []), at('12:00'))).toBe(20);
+  });
+});
+
+// 守る状態: 潮汐データに複数の日があっても、当日（JST）の分だけで計算する。
+// 期待値: 「潮汐データがないとき」「潮の大きさ評価」の「どちらも、当日の潮汐データの中から選ぶ」。
+describe('calculateTideScore は当日の潮汐だけを使う', () => {
+  // 前日・翌日は 12:00 に満潮で潮位差 2.0m（40点）、当日は 00:00・01:00 で潮位差 0.2m（12:00 からは遠く、5点）
+  const strong = [{ time: '12:00', cm: 200 }];
+  const weak = [{ time: '00:00', cm: 0 }];
+  const yesterday = tideOf(strong, weak, '2026-10-16').tides;
+  const today = tideOf([{ time: '00:00', cm: 20 }], [{ time: '01:00', cm: 0 }]).tides;
+  const tomorrow = tideOf(strong, weak, '2026-10-18').tides;
+
+  it('前日と翌日があっても、当日の潮汐を使う', () => {
+    const tide = { tides: [...yesterday, ...today, ...tomorrow] } as FormattedTideData;
+    expect(calculateTideScore(tide, at('12:00'))).toBe(5);
   });
 });
