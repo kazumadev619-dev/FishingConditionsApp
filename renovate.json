@@ -7,6 +7,8 @@
   "commitMessagePrefix": "⬆️ package:",
   "minimumReleaseAge": "3 days",
   "prConcurrentLimit": 5,
+  "labels": ["dependencies"],
+  "assignees": ["kazumadev619-dev"],
   "osvVulnerabilityAlerts": true,
   "customManagers": [
     {
