@@ -6,7 +6,13 @@ import process from 'node:process';
 import { URL } from 'node:url';
 
 const STUB = process.env.PERF_STUB_ORIGIN ?? 'http://stub:4000';
-const UPSTREAM_HOSTS = new Set(['api.openweathermap.org', 'tide736.net', 'maps.googleapis.com']);
+const UPSTREAM_HOSTS = new Set([
+  'api.openweathermap.org',
+  'tide736.net',
+  'maps.googleapis.com',
+  // E2E の登録メール用。perf では送信しないので影響しない
+  'api.resend.com',
+]);
 const originalFetch = globalThis.fetch;
 
 globalThis.fetch = (input, init) => {

@@ -102,7 +102,11 @@ steps:
 
 `ubuntu-26.04-arm` で migrator と runner の2つのイメージをビルドし、Dockerfile の退行を PR の時点で検出します（push はしません）。Quality Check には従属させず、並列で走ります。
 
-#### ジョブ5: CI Summary
+#### ジョブ5: E2E Environment
+
+Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E 用の環境を立てて `npm run e2e:smoke` で確かめる。CI Summary の対象には入れていない（安定してから必須にする）。詳細は [e2e-env.md](./e2e-env.md)。
+
+#### ジョブ6: CI Summary
 
 Quality Check、Build、Manifests、Docker Images の結果を集約し、GitHub Actions Summaryに表示します。失敗したジョブがあれば、このジョブも失敗します。
 
@@ -244,8 +248,8 @@ npm run prisma:generate
 - [x] Vitestセットアップ
 - [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
 - ~~コードカバレッジ計測~~（不採用。[testing-policy.md](./testing-policy.md) の8節）
-- [ ] E2Eテスト（Playwright）
-- [ ] 実 DB（PostgreSQL・Redis）を使うテスト（CI にサービスコンテナが無い。#354）
+- [ ] E2Eテスト（Playwright。環境は `e2e-env` ジョブで検証済み。テスト本体は #439）
+- [ ] 実 DB（PostgreSQL・Redis）を使うテスト（service container は `e2e-env` ジョブにある。テストの切り替えは #354）
 
 ### Phase 3: Prismaマイグレーション検証
 - [ ] `prisma-check.yml` ワークフロー作成

@@ -1,12 +1,16 @@
 // 性能測定用: OpenWeatherMap・tide736・Google Geocoding の代わりに答えるスタブ。
 // 応答の形は実物に合わせた最小限（アプリの整形が読む項目だけ）。遅延と呼び出し回数のリセットは /__delay?ms=N。
 // 呼び出し回数は /__stats で読める（キャッシュなしの測定で上流が何回呼ばれたかを確かめる）。
+import { Buffer } from 'node:buffer';
 import { createServer } from 'node:http';
+import process from 'node:process';
 import { setTimeout } from 'node:timers';
 import { URL } from 'node:url';
 
 let delayMs = 0;
-const calls = { openweather: 0, tide736: 0, geocode: 0 };
+const calls = { openweather: 0, tide736: 0, geocode: 0, resend: 0 };
+// E2E 用: Resend に送られたメールの本文を記録する（/__mails）。perf では使わない
+const mails = [];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const pad = (n) => String(n).padStart(2, '0');
@@ -122,6 +126,18 @@ createServer((req, res) => {
   if (url.pathname === '/__stats') {
     return json({ delayMs, calls });
   }
+  if (url.pathname === '/__mails') {
+    return json(mails);
+  }
+  if (url.pathname === '/api.resend.com/emails' && req.method === 'POST') {
+    calls.resend++;
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    return req.on('end', () => {
+      mails.push(JSON.parse(Buffer.concat(chunks).toString() || '{}'));
+      json({ id: `stub-mail-${mails.length}` });
+    });
+  }
   let body;
   if (url.pathname === '/api.openweathermap.org/data/2.5/weather') {
     calls.openweather++;
@@ -137,4 +153,4 @@ createServer((req, res) => {
     return res.end();
   }
   setTimeout(() => json(body), delayMs);
-}).listen(4000);
+}).listen(Number(process.env.STUB_PORT ?? 4000));
