@@ -104,7 +104,7 @@ steps:
 
 #### ジョブ5: E2E Environment
 
-Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E 用の環境を立てて `npm run e2e:smoke` で確かめる。CI Summary の対象には入れていない（安定してから必須にする）。詳細は [e2e-env.md](./e2e-env.md)。
+Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E 用の環境を立てて `npm run e2e:smoke` で確かめる。CI Summary の対象には入れていない（安定してから必須にする）。`services:` はジョブをまたいで共有できないので、実 DB のテスト（#354）は、このジョブにステップを足すか、同じ定義を写して使う。詳細は [e2e-env.md](./e2e-env.md)。
 
 #### ジョブ6: CI Summary
 

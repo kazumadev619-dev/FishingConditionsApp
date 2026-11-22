@@ -153,4 +153,5 @@ createServer((req, res) => {
     return res.end();
   }
   setTimeout(() => json(body), delayMs);
-}).listen(Number(process.env.STUB_PORT ?? 4000));
+  // STUB_HOST は E2E 用（127.0.0.1 に絞る）。perf はコンテナ間で届く必要があるので、未指定なら全インターフェース
+}).listen(Number(process.env.STUB_PORT ?? 4000), process.env.STUB_HOST);

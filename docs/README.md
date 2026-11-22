@@ -11,7 +11,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | Kubernetes にデプロイしたい | [../k8s/README.md](../k8s/README.md) |
 | CI が落ちた原因を知りたい | [guides/ci-cd.md](./guides/ci-cd.md) |
 | 依存の自動更新（Renovate）の PR を扱いたい | [guides/renovate.md](./guides/renovate.md) |
-| E2E 用の環境（DB・Redis・上流スタブ付き）を立てたい | [guides/e2e-env.md](./guides/e2e-env.md) |
+| E2E 用の環境（DB・Redis・上流スタブ付き）を立てたい | [guides/e2e-env.md](./guides/e2e-env.md)（手順） ／ [adr/012-e2e-dev-env-per-worktree.md](./adr/012-e2e-dev-env-per-worktree.md)（選んだ理由） |
 | テストを書きたい | [guides/testing-policy.md](./guides/testing-policy.md)（方針） ／ [guides/development.md](./guides/development.md#テスト戦略)（置き場所・コマンド） |
 | 仕様の正がどこにあるかを知りたい | [adr/010-spec-source-of-truth.md](./adr/010-spec-source-of-truth.md) |
 | テストの方針・基盤を選んだ理由を知りたい | [adr/009-testing-quality-policy.md](./adr/009-testing-quality-policy.md)（方針） ／ [adr/003-testing-strategy.md](./adr/003-testing-strategy.md)（ランナー） |

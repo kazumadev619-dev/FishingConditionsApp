@@ -337,7 +337,9 @@ jobs:
   # ============================================
   # Postgres・Redis を service container で用意し、scripts/e2e/up.sh で E2E 用の環境
   # （migrate・seed・E2E ユーザー・ビルド・アプリ・上流スタブ）を立てて smoke.sh で確かめる。
-  # service container は #354（実 DB のテスト）と共通にする。Playwright の実行は #439 がここに足す。
+  # services: はジョブをまたいで共有できないので、#354（実 DB のテスト）はこのジョブにステップを足すか、
+  # 同じ定義を写して使う。Playwright の実行は #439 がここに足す。
+  # 失敗したときのログは、up.sh が片付ける前に出す。
   # 安定するまで必須にしない（ci-summary の needs には入れない）。
   e2e-env:
     name: E2E Environment
@@ -393,10 +395,6 @@ jobs:
 
       - name: Smoke check
         run: npm run e2e:smoke
-
-      - name: Show logs on failure
-        if: failure()
-        run: tail -n 50 .e2e/app.log .e2e/stub.log
 
       - name: Stop E2E environment
         if: always()

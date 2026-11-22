@@ -5,12 +5,15 @@ import bcrypt from 'bcrypt';
 import console from 'node:console';
 import process from 'node:process';
 import pg from 'pg';
+import { assertLocal } from './assert-local.mjs';
 import { E2E_USERS } from './users.mjs';
 
 if (!process.env.DATABASE_URL) {
   console.error('DATABASE_URL が要る');
   process.exit(2);
 }
+// 本番の DATABASE_URL を出したままのシェルで流しても、どこにも入らないようにする
+assertLocal(process.env.DATABASE_URL);
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 try {
   for (const u of Object.values(E2E_USERS)) {
