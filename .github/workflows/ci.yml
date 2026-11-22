@@ -340,7 +340,7 @@ jobs:
   # services: はジョブをまたいで共有できないので、#354（実 DB のテスト）はこのジョブにステップを足すか、
   # 同じ定義を写して使う。
   # 失敗したときのログとレポートは、e2e:down で .e2e/ が消える前に出す。
-  # ci-summary の必須判定に含めるのは main 向け PR のみ（github.base_ref == 'main'）。
+  # ci-summary の必須判定に含めるのは main 向け PR のみ（github.event_name == 'pull_request' && github.base_ref == 'main'）。
   e2e-env:
     name: E2E Environment
     runs-on: ubuntu-26.04
@@ -444,7 +444,9 @@ jobs:
           MANIFESTS_RESULT: ${{ needs.manifests.result }}
           DOCKER_RESULT: ${{ needs.docker.result }}
           E2E_RESULT: ${{ needs.e2e-env.result }}
-          E2E_REQUIRED: ${{ github.base_ref == 'main' }}
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          E2E_REQUIRED: ${{ github.event_name == 'pull_request' && github.base_ref == 'main' }}
         run: |
           set -euo pipefail
           icon() { [ "$1" = "success" ] && echo "🟢" || echo "❌"; }
@@ -461,6 +463,15 @@ jobs:
             e2e_ok=false
           fi
 
+          e2e_note=""
+          if [ "$E2E_REQUIRED" != "true" ]; then
+            if [ "$EVENT_NAME" = "pull_request" ]; then
+              e2e_note=" (${BASE_REF} PR では参考結果)"
+            else
+              e2e_note=" (参考結果)"
+            fi
+          fi
+
           {
             echo "## CI Results"
             echo ""
@@ -471,20 +482,18 @@ jobs:
               else
                 echo "🟢 Required checks passed! (E2E Environment: ${E2E_RESULT})"
               fi
-              echo ""
-              echo "- $(icon "$QUALITY_RESULT") Code Quality Check"
-              echo "- $(icon "$BUILD_RESULT") Build Verification"
-              echo "- $(icon "$MANIFESTS_RESULT") Kubernetes Manifests"
-              echo "- $(icon "$DOCKER_RESULT") Docker Images"
-              echo "- $(icon "$E2E_RESULT") E2E Environment$([ "$E2E_REQUIRED" != "true" ] && echo ' (develop PR では参考結果)' || true)"
             else
               echo "❌ Some checks failed"
-              echo ""
-              echo "- $(icon "$QUALITY_RESULT") Code Quality Check"
-              echo "- $(icon "$BUILD_RESULT") Build Verification"
-              echo "- $(icon "$MANIFESTS_RESULT") Kubernetes Manifests"
-              echo "- $(icon "$DOCKER_RESULT") Docker Images"
-              echo "- $(icon "$E2E_RESULT") E2E Environment$([ "$E2E_REQUIRED" != "true" ] && echo ' (develop PR では参考結果)' || true)"
+            fi
+
+            echo ""
+            echo "- $(icon "$QUALITY_RESULT") Code Quality Check"
+            echo "- $(icon "$BUILD_RESULT") Build Verification"
+            echo "- $(icon "$MANIFESTS_RESULT") Kubernetes Manifests"
+            echo "- $(icon "$DOCKER_RESULT") Docker Images"
+            echo "- $(icon "$E2E_RESULT") E2E Environment${e2e_note}"
+
+            if [ "$core_ok" != "true" ] || [ "$e2e_ok" != "true" ]; then
               exit 1
             fi
           } >> "$GITHUB_STEP_SUMMARY"

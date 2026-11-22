@@ -85,7 +85,7 @@ Playwright からは `scripts/e2e/session-cookie.mjs` の `sessionCookie()` を 
 
 `.github/workflows/ci.yml` の `e2e-env` ジョブが、Postgres・Redis を service container で用意し、同じ `up.sh` / `smoke.sh` に続けて Playwright（Chromium）の `npm run test:e2e` を流す。`E2E_DATABASE_URL` と `E2E_REDIS_URL` が両方あると、`up.sh` は compose を使わずそのサービスに接続する。使い捨てで、`localhost` か `127.0.0.1` のものだけを受け付ける。2つの URL を1つずつ判定し、クエリの `host` / `hostaddr` も同じ判定にかける（pg は URL のホストよりクエリを優先する）。どちらかが別のホストなら、`.e2e/` も作らずに終了コード 2 で止まる。`seed-users.mjs` も、`DATABASE_URL` が別のホストなら入れない。
 
-`ci-summary` は `e2e-env` の結果を参照し、`main` 向け PR（`github.base_ref == 'main'`）のときだけ `e2e-env` の失敗で `ci-summary` を落とす（`develop` 向け PR では結果の表示のみ）。
+`ci-summary` は `e2e-env` の結果を参照し、`main` 向け PR（`github.event_name == 'pull_request' && github.base_ref == 'main'`）のときだけ `e2e-env` の失敗で `ci-summary` を落とす（`develop` 向け PR や `push` では参考結果の表示のみ）。
 
 GitHub Actions の `services:` はジョブをまたいで共有できない。実 DB のテスト（#354）は、この `e2e-env` ジョブにステップを足すか、同じ `services:` の定義を写して使う。
 

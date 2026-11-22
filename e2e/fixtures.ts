@@ -122,15 +122,25 @@ export async function expectDashboard(page: Page): Promise<void> {
   await expect(tideCard).toContainText('12.8');
 
   // 天気カード: スタブの固定値（晴天、18 °C、3.5 m/s、60 %、1015 hPa）
+  // 気温は日の出・日の入り時刻（例: 18:00）と衝突しないよう単位付きで検証する
   const weatherCard = page
     .locator('[data-slot="card"]')
     .filter({ has: page.locator('[data-slot="card-title"]', { hasText: /^天気$/ }) });
   await expect(weatherCard).toBeVisible();
   await expect(weatherCard).toContainText('晴天');
-  await expect(weatherCard).toContainText('18');
-  await expect(weatherCard).toContainText('3.5');
-  await expect(weatherCard).toContainText('60');
-  await expect(weatherCard).toContainText('1015');
+  await expect(weatherCard).toContainText('18 °C');
+  await expect(weatherCard).toContainText('3.5 m/s');
+  await expect(weatherCard).toContainText('60 %');
+  await expect(weatherCard).toContainText('1015 hPa');
+
+  // 時間帯カード: 表示されており、現在時刻・日の出・日の入りのラベルが出ていること
+  const timeCard = page
+    .locator('[data-slot="card"]')
+    .filter({ has: page.locator('[data-slot="card-title"]', { hasText: /^時間帯$/ }) });
+  await expect(timeCard).toBeVisible();
+  await expect(timeCard.getByText('現在時刻', { exact: true })).toBeVisible();
+  await expect(timeCard.getByText('日の出', { exact: true })).toBeVisible();
+  await expect(timeCard.getByText('日の入り', { exact: true })).toBeVisible();
 
   // 説明文: 表示されており、風速 3.5m/s <= 6m/s のため風の注意が含まれないこと
   const explanationHeading = page.getByRole('heading', { name: 'スコアの説明' });

@@ -110,7 +110,7 @@ Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E �
 
 #### ジョブ6: CI Summary
 
-Code Quality Check、Build、Manifests、Docker Images、E2E Environment の結果を集約し、GitHub Actions Summaryに表示します。前4ジョブのいずれかが失敗すると失敗します。E2E Environment は `main` 向け PR（`github.base_ref == 'main'`）のときだけ合否に含め、`develop` 向け PR では結果のみ表示します。
+Code Quality Check、Build、Manifests、Docker Images、E2E Environment の結果を集約し、GitHub Actions Summaryに表示します。前4ジョブのいずれかが失敗すると失敗します。E2E Environment は `main` 向け PR（`github.event_name == 'pull_request' && github.base_ref == 'main'`）のときだけ合否に含め、`develop` 向け PR や `push` では参考結果として表示のみ行います。
 
 ```
 ✅ 成功時: "🟢 All checks passed!"
