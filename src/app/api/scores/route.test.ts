@@ -10,7 +10,12 @@ vi.mock('@/lib/rateLimit', () => ({
 }));
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
 vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));
-vi.mock('@/lib/tideService', () => ({ getTideData: tideMock }));
+// vi.fn() は返した Promise に then をつなぐので、reject が「処理済み」になってしまう。
+// 未処理の reject を確かめるテスト用に、素の関数で包む（holder.impl があればそちらを呼ぶ）。
+const tideHolder = vi.hoisted(() => ({ impl: null as null | (() => Promise<unknown>) }));
+vi.mock('@/lib/tideService', () => ({
+  getTideData: (...args: unknown[]) => (tideHolder.impl ?? tideMock)(...args),
+}));
 const loggerMock = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ logger: loggerMock }));
 
@@ -60,6 +65,7 @@ async function scoreAt(nowIso: string, date?: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  tideHolder.impl = null;
   vi.useFakeTimers({ toFake: ['Date'] });
   cacheMock.get.mockResolvedValue({ hit: false });
   cacheMock.set.mockResolvedValue(true);
@@ -198,19 +204,10 @@ describe('GET /api/scores の取得失敗', () => {
 // 「異常なエラー」と「想定外」を後で見分けるとき、どちらの失敗が選ばれるかが変わらないようにする）。
 // 呼び出しの前後関係を見るのは、並べて呼ぶこと自体が仕様のため（testing-policy 5節の例外に準じる）。
 describe('GET /api/scores の上流の呼び出し（#432）', () => {
-  const deferred = <T>() => {
-    let resolve!: (v: T) => void;
-    let reject!: (e: unknown) => void;
-    const promise = new Promise<T>((res, rej) => {
-      resolve = res;
-      reject = rej;
-    });
-    return { promise, resolve, reject };
-  };
   const flush = () => new Promise<void>((r) => setImmediate(r));
 
   it('天気の応答を待たずに、潮汐も呼ぶ', async () => {
-    const w = deferred<{ data: FormattedWeatherData; fromCache: boolean }>();
+    const w = Promise.withResolvers<{ data: FormattedWeatherData; fromCache: boolean }>();
     weatherMock.mockReturnValue(w.promise);
 
     const res = GET(request());
@@ -232,7 +229,7 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
 
   it('両方が失敗したら、潮汐のほうが先に失敗しても、天気の失敗を理由にする', async () => {
     const weatherError = new Error('weather failed');
-    const w = deferred<never>();
+    const w = Promise.withResolvers<never>();
     weatherMock.mockReturnValue(w.promise);
     tideMock.mockRejectedValue(new Error('tide failed'));
 
@@ -247,14 +244,14 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
   it('片方が失敗したあとで、もう片方が失敗しても、未処理の reject にならない', async () => {
     const unhandled = vi.fn();
     process.on('unhandledRejection', unhandled);
-    const t = deferred<never>();
+    const t = Promise.withResolvers<never>();
     weatherMock.mockRejectedValue(new Error('weather failed'));
-    tideMock.mockReturnValue(t.promise);
+    tideHolder.impl = () => t.promise;
 
     const res = GET(request());
     await flush();
     t.reject(new Error('tide failed'));
-    await res;
+    expect((await res).status).toBe(500);
     await flush();
     process.off('unhandledRejection', unhandled);
 
