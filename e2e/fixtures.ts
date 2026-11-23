@@ -100,7 +100,10 @@ export async function isUserVerifiedInDb(email: string): Promise<boolean> {
       'SELECT email_verified_at FROM users WHERE email = $1',
       [normalized],
     );
-    return Boolean(res.rows[0]?.email_verified_at);
+    if (res.rows.length === 0) {
+      throw new Error(`ユーザーが見つかりません: ${normalized}`);
+    }
+    return Boolean(res.rows[0].email_verified_at);
   });
 }
 

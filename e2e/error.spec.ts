@@ -13,12 +13,34 @@ test.describe('上流 API エラー時の表示（docs/reference/api-error-handl
     await expect(page.getByRole('heading', { name: '一時的に利用できません' })).toBeVisible({
       timeout: 15_000,
     });
-    await expect(page.getByRole('button', { name: '再試行' })).toBeVisible();
+    const retryButton = page.getByRole('button', { name: '再試行' });
+    await expect(retryButton).toBeVisible();
 
     const mainContent = page.locator('main');
-    await expect(mainContent).not.toContainText('STUB_UPSTREAM_ERROR_BODY_DO_NOT_LEAK');
-    await expect(mainContent).not.toContainText(
-      'An error occurred in the Server Components render',
+    const assertNoLeakedErrorDetails = async () => {
+      await expect(mainContent).not.toContainText('STUB_UPSTREAM_ERROR_BODY_DO_NOT_LEAK');
+      // Next.js 16 + React 19 本番ビルドでは ErrorBoundary の error.message が Minified React error になる
+      await expect(mainContent).not.toContainText('Minified React error');
+      await expect(mainContent).not.toContainText('https://react.dev/errors/');
+      await expect(mainContent).not.toContainText(
+        'An error occurred in the Server Components render',
+      );
+    };
+
+    await assertNoLeakedErrorDetails();
+
+    // 「再試行」押下で /dashboard への RSC 再取得が走り、引き続きエラー画面が表示される（#189）
+    const retryResponsePromise = page.waitForResponse(
+      (res) => new URL(res.url()).pathname === '/dashboard' && res.request().headers().rsc === '1',
+      { timeout: 10_000 },
     );
+    await retryButton.click();
+    await retryResponsePromise;
+
+    await expect(page.getByRole('heading', { name: '一時的に利用できません' })).toBeVisible({
+      timeout: 15_000,
+    });
+    await expect(retryButton).toBeVisible();
+    await assertNoLeakedErrorDetails();
   });
 });
