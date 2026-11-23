@@ -29,7 +29,7 @@ env:
   # ズレると「CI では通るが本番で出力が変わる」が起こりうる（#157）
   # renovate: datasource=github-releases depName=kubernetes-sigs/kustomize extractVersion=^kustomize/(?<version>.+)$
   KUSTOMIZE_VERSION: v5.8.3
-  KUSTOMIZE_SHA256: 029a7f0f4e1932c52a0476cf02a0fd855c0bb85694b82c338fc648dcb53a819d
+  KUSTOMIZE_SHA256: cb9e31198d3f63b44848bd0afc4c8efc56e6cfef9c93a4a39a211940e6decd61
   # ローカルで YAML を切り出すだけなので、版を固定して出力を安定させる
   # renovate: datasource=github-releases depName=mikefarah/yq
   YQ_VERSION: v4.48.1
