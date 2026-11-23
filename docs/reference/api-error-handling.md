@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`、`src/instrumentation-client.ts`、`src/components/molecules/FishingLocationMap.tsx`
-> - **最終確認**: 2026-11-23（仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **最終確認**: 2026-11-23（`/api/scores` が天気と潮汐を並べて呼ぶこと、両方が失敗したときの扱いを、実装に合わせて足した。仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -241,6 +241,16 @@ tide736 も、応答の `status` が 1 でなければ `createApiError(502, …)
 | `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
 
 応答には、不正だった値も上流の本文も入れない（`message` はログにだけ残る）。点を付けられない値を 0 点として扱う案は採らない（点と説明文が食い違うため）。
+
+## `/api/scores` の上流の呼び出し
+
+`/api/scores` は、スコアを計算するとき（キャッシュのミス、または `skipCache=true`）に、天気（OpenWeather）と潮汐（tide736）を並べて呼ぶ（`src/app/api/scores/route.ts`、#432）。互いに依存しないので、待ち時間は遅いほう 1 つぶんで済む。キャッシュにヒットしたときは、どちらも呼ばない。
+
+失敗の扱い:
+
+- どちらかが失敗したら、成功した側の結果は使わず、失敗を返す。HTTP ステータスとログは、下の[「エラーの分類と扱い」](#エラーの分類と扱い)に従う。失敗した結果はキャッシュに書かない
+- 両方が失敗したら、潮汐でなく天気の失敗を理由にする。先に失敗したほうを選ぶと、同じ障害でも、エラーの分類が揺れるため、順番に呼んでいた頃に合わせて固定する
+- 片方が失敗しても、もう片方が終わるまで待つ。成功した側は各サービスのキャッシュに載るので、再試行で無駄にならない
 
 ## エラーの分類と扱い
 
