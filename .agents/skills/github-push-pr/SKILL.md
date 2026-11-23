@@ -129,6 +129,7 @@ gh pr create \
 ### ラベル・担当者・マイルストーン
 
 - **Labels**: issue のラベルのうち、種類（`bug`・`enhancement`・`documentation`・`refactor`・`infra`・`security`・`dependencies`）と `priority:*` を写す。`priority:*` は issue に無ければ付けない。issue に種類がなければ、タイトルの種類から決める（fix・hotfix→`bug`、feat・improve・update・style・test→`enhancement`、docs→`documentation`、refactor・delete・move→`refactor`、chore・WIP→付けない、package→`dependencies`）。`agent:*` や `done` などは付けない
+- **ci・build を `infra` に対応させない理由**: commitlint の type-enum に `ci`・`build` が無く、この表に載せる type が無いため（#459 の案にあった対応は、PR #460 のレビューで外した）。`infra` は issue のラベルを写すときだけ付く
 - **Milestone**: issue と同じ。issue に無ければ付けない
 - **Assignees**: `@me`。Reviewers は付けない
 - **Development**: `develop` 向けでは空のまま（`Refs` で表す）。main 昇格 PR は `Closes` で埋まる

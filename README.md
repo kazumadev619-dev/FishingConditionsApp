@@ -49,7 +49,7 @@
 
 ### 直近の対応方針
 
-本番デプロイ・ベースライン計測・テスト基盤導入（Vitest）・TypeScript 7 対応（`type-check`）は完了済みです。現在は E2E テスト（Playwright）の導入を進めつつ、バックエンド分離（Go API への切替）と比較計測へ進みます。
+本番デプロイ・ベースライン計測・テスト基盤導入（Vitest）・TypeScript 7 対応（`type-check`）は完了済みです。E2E テスト（Playwright）も導入済みです。現在は、バックエンド分離（Go API への切替）と比較計測へ進みます。
 
 ---
 
@@ -74,6 +74,7 @@
 | データベース   | PostgreSQL (Neon)            | 17                      | マネージドクラウド、Go バックエンドと共用                          |
 | キャッシュ     | Redis (k3s Pod)              | 7.x                     | 外部API結果のキャッシュ、レート制限                                |
 | テスト         | Vitest                       | 5.1.1                   | 単体・Route Handler・コンポーネントテスト（`npm run test`）        |
+| E2E テスト     | Playwright                   | 1.65.1                  | ブラウザ操作の E2E（Chromium のみ。`npm run test:e2e`）            |
 | デプロイ       | Raspberry Pi 5 + k3s         | -                       | Cloudflare Tunnel + Traefik、arm64 本番                            |
 | CI/CD          | GitHub Actions → GHCR / k3s  | -                       | PR で品質・ビルド・k8s・Docker を検証、`main` push で自動デプロイ |
 
@@ -150,6 +151,7 @@ npm run docker:down
 | `npm run type-check`      | TypeScript型チェック（`typescript-7` を使用）     |
 | `npm run test`            | Vitestでテスト実行（CI と同じワンショット実行）   |
 | `npm run test:watch`      | Vitestをウォッチモードで実行                      |
+| `npm run test:e2e`        | Playwright E2E テスト（先に `npm run e2e:up`）    |
 | `npm run check-code`      | Lint + フォーマット確認 + 型チェック + テスト一括 |
 
 ### データベース操作
@@ -169,6 +171,7 @@ DB・Redis・外部 API スタブを含むローカル E2E 環境の起動・検
 ```bash
 npm run e2e:up      # 起動（migrate / seed / E2E ユーザー作成 / ビルド / 起動）
 npm run e2e:smoke   # スモークチェック実行
+npm run test:e2e    # Playwright E2E テスト実行（Chromium のみ）
 npm run e2e:down    # 停止・クリーンアップ
 ```
 
@@ -277,9 +280,9 @@ npm run check-code
 
 ### 品質保証
 
-- **テスト戦略**: Vitest を導入済み（単体・Route Handler・コンポーネントテスト、CI で毎回実行）。E2E 用の開発環境（Postgres・Redis・上流スタブ）も整備済みで、Playwright による E2E テスト本体は導入予定（#439 進行中）。方針の詳細は [docs/guides/testing-policy.md](docs/guides/testing-policy.md)
+- **テスト戦略**: Vitest を導入済み（単体・Route Handler・コンポーネントテスト、CI で毎回実行）。E2E 用の開発環境（Postgres・Redis・上流スタブ）も整備済みで、Playwright の E2E テストは 10 シナリオを CI の `e2e-env` ジョブで実行している（`npm run test:e2e`）。方針の詳細は [docs/guides/testing-policy.md](docs/guides/testing-policy.md)
 - **CI/CD**: GitHub Actions で構築済み（詳細は [docs/guides/ci-cd.md](docs/guides/ci-cd.md)）
-  - CI（`.github/workflows/ci.yml`）: PR および `main` / `develop` push で ESLint / Biome / TypeScript 型チェック / Vitest / actionlint / Next.js ビルド / k8s マニフェスト検証 / Docker イメージビルド / E2E 環境スモークを実行
+  - CI（`.github/workflows/ci.yml`）: PR および `main` / `develop` push で ESLint / Biome / TypeScript 型チェック / Vitest / actionlint / Next.js ビルド / k8s マニフェスト検証 / Docker イメージビルド / E2E 環境スモークと Playwright E2E を実行
   - CD（`.github/workflows/deploy.yml`）: `main` push（および手動実行）で arm64 イメージをビルド・GHCR へ push し、Raspberry Pi 5 上の k3s へ自動デプロイ
 - **監視**: 導入予定（Grafana Cloud + Alloy の構成を選定済み。[ADR-005](docs/adr/005-monitoring-platform.md)）
 

@@ -32,6 +32,7 @@ FOO_VERSION: v1.2.3
 - 脆弱性の修正は OSV のデータで検知し、スケジュールを待たずに PR になる（リポジトリの Dependabot alerts は無効のため）
 - Dockerfile の Node は `node:26.13.1-alpine` のように版まで固定している。Node のセキュリティリリースは、月曜の実行と3日の待ちを経て Renovate の PR になる（OSV の即時 PR が Node 本体のベースイメージに効くかは確かめていない）。急ぐときは Dockerfile の4か所を手で上げる
 - 同時に開く PR は5本まで。ベースは `develop`
+- PR には `dependencies` ラベルと、担当者（`kazumadev619-dev`）が付く（`renovate.json`、#464）
 - コミットと PR タイトルは `⬆️ package: Update ...` の形になる（commitlint の規則に合わせてある）
 
 ## ツールの PR は SHA256 も書き換える

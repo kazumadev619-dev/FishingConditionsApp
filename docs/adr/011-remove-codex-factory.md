@@ -1,7 +1,7 @@
 # ADR-011: Codex 版 AI factory（Watcher）と Codex 向けの写しを削除する
 
 **日付:** 2026-11-20
-**ステータス:** 採用済み
+**ステータス:** 一部を [ADR-013](./013-multi-agent-customizations.md) で置き換え（`.claude/skills/` を実体のまま残す点。[ADR-013](./013-multi-agent-customizations.md) が `.agents/skills/` を実体にした）
 
 ## 決定
 
