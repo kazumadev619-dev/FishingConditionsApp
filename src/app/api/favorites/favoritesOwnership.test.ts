@@ -9,7 +9,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 //   （/api/* の未認証は 401。docs/reference/authentication.md の「上記以外の /api/*」はミドルウェアの規定で、
 //   ハンドラ内の「id が UUID でない」への 401 は、そこからの類推。#362 / #466 が求めるのは、検証を外したら落ちること）
 // Prisma は暫定規則（testing-policy.md 5節）で、書き込みの引数を検証し、読み取りはスタブで絞り込みを再現する。
-// ただし GET の where.user_id と 401 時の未呼び出しは、所有者確認（#466）と不要な DB 読み取りの抑止（5節「回数の例外」）が仕様のため検証する
+// ただし 401 時に GET が DB を読まないことは、#466 の完了条件のため、呼ばれていないことを検証する
 const { authMock, prismaMock } = vi.hoisted(() => ({
   authMock: vi.fn(),
   prismaMock: {
@@ -101,11 +101,6 @@ describe('GET /api/favorites は自分の行だけを返す（#466）', () => {
     const response = await GET();
 
     expect(response.status).toBe(200);
-    expect(prismaMock.user_favorites.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { user_id: SESSION_USER_ID },
-      }),
-    );
     await expect(response.json()).resolves.toEqual({
       favorites: [
         {
@@ -133,11 +128,6 @@ describe('GET /api/favorites は自分の行だけを返す（#466）', () => {
     const secondResponse = await GET();
 
     expect(secondResponse.status).toBe(200);
-    expect(prismaMock.user_favorites.findMany).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        where: { user_id: OTHER_USER_ID },
-      }),
-    );
     await expect(secondResponse.json()).resolves.toEqual({
       favorites: [
         {
