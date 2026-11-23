@@ -160,7 +160,7 @@ Secret を扱えず、暗号文のまま Secret を上書きして全 Pod を起
 
 `configMapGenerator` の `envs:` は、各行を最初の `=` で切って左右を**ほぼそのまま**
 キーと値にする。dotenv や シェルの感覚で書くと、値が静かに変わる。
-kustomize v5.8.1（CI の固定版）と v5.8.3 で実測した結果:
+kustomize v5.8.1 と v5.8.3（CI の固定版）で実測した結果:
 
 | `config.env` の行 | ConfigMap の値 | 備考 |
 |---|---|---|

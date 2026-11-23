@@ -1,8 +1,8 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`
-> - **最終確認**: 2026-11-23（#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`、`src/instrumentation-client.ts`、`src/components/molecules/FishingLocationMap.tsx`
+> - **最終確認**: 2026-11-23（仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -52,6 +52,7 @@ export class ApiError extends Error {
 ```typescript
 import { openWeatherMapClient } from '@/lib/api/client';
 import { ApiError, ApiErrorType } from '@/lib/api/types';
+import { getErrorMessage } from '@/lib/apiErrorUtils';
 
 try {
   const weather = await openWeatherMapClient.get('/weather', {
@@ -64,32 +65,22 @@ try {
   console.log('天気データを取得しました:', weather);
 } catch (error) {
   if (error instanceof ApiError) {
+    // ログは種別ごとに分ける
     switch (error.type) {
       case ApiErrorType.TIMEOUT:
         console.error('リクエストがタイムアウトしました');
-        // ユーザーに「通信が遅い」メッセージを表示
         break;
 
       case ApiErrorType.RATE_LIMITED:
         console.error('API のレート制限に達しました');
-        // ユーザーに「しばらく待ってから再度お試しください」と通知
         break;
 
-      case ApiErrorType.SERVER_ERROR:
-        console.error(`サーバーエラーが発生しました: ${error.statusCode}`);
-        // ユーザーに「サーバーエラー」と通知
-        break;
-
-      case ApiErrorType.CLIENT_ERROR:
-        console.error(`クライアントエラー: ${error.message}`);
-        // ユーザーに「リクエストが無効です」と通知
-        break;
-
-      case ApiErrorType.NETWORK_ERROR:
-        console.error('ネットワークエラーが発生しました');
-        // ユーザーに「インターネット接続を確認してください」と通知
-        break;
+      default:
+        console.error(`API エラー: ${error.type} (${error.statusCode})`);
     }
+
+    // 利用者に出す文言は、種別によらず getErrorMessage を使う
+    const userMessage = getErrorMessage(error); // 画面に表示する
   } else {
     // ApiError 以外の予期しないエラー
     console.error('予期しないエラー:', error);
@@ -125,8 +116,8 @@ try {
 'use server';
 
 import { openWeatherMapClient } from '@/lib/api/client';
-import { ApiError, ApiErrorType } from '@/lib/api/types';
-import { logApiError } from '@/lib/apiErrorUtils';
+import { ApiError } from '@/lib/api/types';
+import { getErrorMessage, logApiError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 
 export async function fetchWeatherData(lat: number, lon: number) {
@@ -144,14 +135,8 @@ export async function fetchWeatherData(lat: number, lon: number) {
       // 構造化ログに記録する（`src/lib/apiErrorUtils.ts`。詳細は後述）
       logApiError(error, { operation: 'fetchWeatherData' });
 
-      // ユーザーフレンドリーなメッセージを返す
-      let userMessage = '天気情報の取得に失敗しました。';
-
-      if (error.type === ApiErrorType.TIMEOUT) {
-        userMessage = 'リクエストがタイムアウトしました。通信速度を確認してください。';
-      } else if (error.type === ApiErrorType.RATE_LIMITED) {
-        userMessage = 'API の使用制限に達しました。しばらく後にお試しください。';
-      }
+      // 利用者向けの文言は自分で書かず、getErrorMessage を使う
+      const userMessage = getErrorMessage(error);
 
       return {
         success: false,
@@ -236,7 +221,7 @@ const RETRYABLE_STATUS_CODES = [
 - `getErrorMessage(error: ApiError): string`: `ApiErrorType` から、利用者向けの日本語のメッセージを返す。
 - `logApiError(error: ApiError, context?)`: `{ ...context, type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp }` を、メッセージ `API request failed` で `logger.error` に出す。`type`・`errorType`・`statusCode`・`message`・`retryable`・`timestamp` は context で上書きできない（固定フィールドが後に来る）。
 - `createApiErrorResponse(error: ApiError, context?, extraFields?)`: `logApiError` で記録したうえで、タイムアウト（`TIMEOUT`）は HTTP 504、それ以外（4xx・429 を含む）は HTTP 502 で固定文言を返す。
-- `createDatabaseErrorResponse(error, context?)`: Prisma の接続・到達不能・認証・初期化失敗（`P1000`・`P1001`・`P1002`・`P1003`・`P1008`・`P1010`・`P1011`・`P1017`・`P2024`・`P2037`、`ECONNREFUSED` 等のソケットコード、`P2039`（例外、下記）、`PrismaClientInitializationError`、および `pg`/`pg-pool` の接続タイムアウト・プール枯渇・切断メッセージ）を判定して `{ type: 'DB_ERROR', code, err, ...context }` を `logger.error` に出し、HTTP 503 の固定文言を返す。該当しない例外は `null` を返し、呼び出し元で 500（想定外）として扱う。
+- `createDatabaseErrorResponse(error, context?)`: Prisma の接続・到達不能・認証・初期化失敗（`P1000`・`P1001`・`P1002`・`P1003`・`P1008`・`P1010`・`P1011`・`P1017`・`P2024`・`P2037`、`ECONNREFUSED` 等のソケットコード、`P2039`（例外、下記）、`PrismaClientInitializationError`、および `pg`/`pg-pool` の接続タイムアウト・プール枯渇・切断メッセージ）を判定して `{ ...context, type: 'DB_ERROR', code, err }`（固定の項目が context より後に来るので、context では上書きできない。`code` は取れないときは出さない）を `logger.error` に出し、HTTP 503 の固定文言を返す。該当しない例外は `null` を返し、呼び出し元で 500（想定外）として扱う。
   - `P2039` の例外: `P2039` は DB 停止もクエリの誤りも同じコードで返るため、ここだけ `error.code` で判定できない（#428 に記録済み）。`error.meta.driverAdapterError.cause.originalCode`（SQLSTATE）だけを読み、`08` で始まるもの、`57P01`〜`57P03`、`53` で始まるものは 503、それ以外（`42601` など）は 500 にする。`error.message` は解析しない。meta が読めないときは 500 に倒す。
 
 上流 API を呼ぶルート（`/api/weather`、`/api/scores`、`/api/conditions/tide`、`/api/locations/search`）が `createApiErrorResponse` を、DB を使うルート（`/api/ports`、`/api/favorites`）が `createDatabaseErrorResponse` を使っている。
@@ -245,10 +230,13 @@ const RETRYABLE_STATUS_CODES = [
 
 OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
 
+tide736 も、応答の `status` が 1 でなければ `createApiError(502, …)` を投げる（`SERVER_ERROR`、`src/lib/tideService.ts`、#470）。弾いた応答はキャッシュに書かない。
+
 | 入口 | 利用者に出るもの |
 |---|---|
 | `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/api/scores` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
+| `/api/conditions/tide`（tide736） | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
 | `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
 

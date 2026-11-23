@@ -140,6 +140,7 @@ src/
 │   ├── weather/       # 天気
 │   ├── scores/        # 釣りやすさスコア
 │   ├── ports/         # 港
+│   ├── client-errors/ # ブラウザの例外の受け口（POST）
 │   └── favorites/     # お気に入り
 ├── lib/
 │   ├── openWeatherService.ts / tideService.ts / locationService.ts
@@ -392,6 +393,8 @@ erDiagram
 | **キー**     | `weather:lang:ja:lat:<緯度>:lon:<経度>:units:metric`（座標は小数2桁に丸める）。予報（`/forecast`）は `weather:forecast:lang:ja:lat:<緯度>:lon:<経度>:units:metric` | `tide:day:<日>:month:<月>:port:<港>:prefecture:<県>:range:<範囲>:year:<年>` | `location:limit:<件数>:query:<日本に絞った検索語>` | `score:date:<日付>:lat:<緯度>:lon:<経度>:port:<港>:prefecture:<県>`（今日は `slot:HH:mm` が付く。座標は小数2桁） |
 | **TTL**      | 30分                           | 6時間                          | 1時間                 | 30分                           |
 | **実装**     | `src/lib/openWeatherService.ts` | `src/lib/tideService.ts`      | `src/lib/locationService.ts` | `src/app/api/scores/route.ts` |
+
+同じ Pod の中で、同じキーの取得が進行中なら、あとから来た要求は新しく取りに行かず、その結果を待って共有する（`src/lib/cache/helpers.ts`、#442）。
 
 ---
 

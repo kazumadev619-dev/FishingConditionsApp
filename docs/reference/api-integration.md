@@ -1,8 +1,8 @@
 # 🔌 外部API統合ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/portMappingService.ts`、`src/lib/googleMapsClient.ts`、`src/lib/api/client.ts`
-> - **最終確認**: 2026-11-20（#388 で、読んで実装と突き合わせて直した。状態を「仕様（正）」のままにするかは #392 で決める）
+> - **対応する実装**: `src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/portMappingService.ts`、`src/lib/googleMapsClient.ts`、`src/lib/api/client.ts`、`src/components/molecules/FishingLocationMap.tsx`
+> - **最終確認**: 2026-11-23（仕様と実装の突き合わせで、対応する実装に `FishingLocationMap.tsx` を、tide736 の `status` が 1 でないときの扱いを足した）。2026-11-20（#388 で、読んで実装と突き合わせて直した。状態を「仕様（正）」のままにするかは #392 で決める）
 
 ## 使用しているAPI一覧
 
@@ -81,6 +81,8 @@
   }
 }
 ```
+
+`status` が 1 でないときの扱いは、[api-error-handling.md](./api-error-handling.md#上流の応答が不正なとき) にある。
 
 ### 🗺️ 地図・位置情報 - Google Maps API
 
