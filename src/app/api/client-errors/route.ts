@@ -8,7 +8,6 @@
 
 import { type NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import { auth } from '@/auth';
 import { CLIENT_ERROR_LIMITS, CLIENT_ERROR_SOURCES } from '@/lib/clientErrors';
 import { logger } from '@/lib/logger';
 import { withUserRateLimit } from '@/lib/rateLimit';
@@ -43,9 +42,9 @@ async function readBodyWithin(request: NextRequest, maxBytes: number): Promise<s
 }
 
 export const POST = (request: NextRequest) =>
-  withUserRateLimit('client-errors', () => handlePost(request));
+  withUserRateLimit('client-errors', (userId) => handlePost(request, userId));
 
-async function handlePost(request: NextRequest): Promise<NextResponse> {
+async function handlePost(request: NextRequest, userId: string): Promise<NextResponse> {
   const body = await readBodyWithin(request, CLIENT_ERROR_LIMITS.bodyBytes);
   if (body === null) {
     return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
@@ -63,8 +62,6 @@ async function handlePost(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
   }
 
-  // withUserRateLimit を通っているので、セッションの id はある
-  const userId = (await auth())?.user?.id;
   // 本文の値は利用者が自由に作れる。ログの本体（msg）には混ぜず、clientError の中に閉じ込める
   logger.error({ userId, clientError: parsed.data }, 'Client-side error reported');
 

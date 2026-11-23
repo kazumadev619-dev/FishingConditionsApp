@@ -16,7 +16,7 @@ vi.mock('@/lib/cache/client', () => ({ cache: { increment: vi.fn() } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('next/headers', () => ({ headers: vi.fn() }));
 
-const handler = vi.fn(async () => NextResponse.json({ ok: true }));
+const handler = vi.fn(async (userId: string) => NextResponse.json({ ok: true, userId }));
 
 afterEach(() => vi.clearAllMocks());
 
@@ -78,7 +78,7 @@ describe('withUserRateLimit', () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('上限ちょうどまでは通し、ルートとユーザーごとに数える', async () => {
+  it('上限ちょうどまでは通し、ルートとユーザーごとに数えて userId をハンドラへ渡す（#435）', async () => {
     asUser('user-1');
     vi.mocked(cache.increment).mockResolvedValue(60);
 
@@ -86,6 +86,7 @@ describe('withUserRateLimit', () => {
 
     expect(response.status).toBe(200);
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:weather:user-1', 60);
+    expect(handler).toHaveBeenCalledWith('user-1');
   });
 });
 

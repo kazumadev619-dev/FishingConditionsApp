@@ -99,7 +99,7 @@ export async function isSignupRateLimited(email: string): Promise<boolean> {
  */
 export async function withUserRateLimit<T extends NextResponse>(
   routeName: string,
-  handler: () => Promise<T>,
+  handler: (userId: string) => Promise<T>,
 ): Promise<T | NextResponse<{ error: string }>> {
   const session = await auth();
   const userId = session?.user?.id;
@@ -116,5 +116,5 @@ export async function withUserRateLimit<T extends NextResponse>(
     );
   }
 
-  return handler();
+  return handler(userId);
 }

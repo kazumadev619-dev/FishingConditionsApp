@@ -46,6 +46,18 @@ describe('POST /api/client-errors（#247）', () => {
     );
   });
 
+  it('1回のリクエストで auth() は1回しか呼ばれない（#435: withUserRateLimit から userId を引き継ぐ）', async () => {
+    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する
+    const res = await post(valid);
+
+    expect(res.status).toBe(204);
+    expect(auth).toHaveBeenCalledTimes(1);
+    expect(logger.error).toHaveBeenCalledWith(
+      { userId: 'user-1', clientError: valid },
+      'Client-side error reported',
+    );
+  });
+
   it('未ログインは 401 で、ログに残さない', async () => {
     vi.mocked(auth).mockResolvedValue(null as never);
 
