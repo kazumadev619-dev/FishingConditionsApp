@@ -4,6 +4,7 @@ import { NextResponse } from 'next/server';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { auth } from '@/auth';
 import { cache } from '@/lib/cache/client';
+import { logger } from '@/lib/logger';
 import {
   isRateLimited,
   isSignupRateLimited,
@@ -16,7 +17,7 @@ vi.mock('@/lib/cache/client', () => ({ cache: { increment: vi.fn() } }));
 vi.mock('@/lib/logger', () => ({ logger: { warn: vi.fn() } }));
 vi.mock('next/headers', () => ({ headers: vi.fn() }));
 
-const handler = vi.fn(async () => NextResponse.json({ ok: true }));
+const handler = vi.fn(async (userId: string) => NextResponse.json({ ok: true, userId }));
 
 afterEach(() => vi.clearAllMocks());
 
@@ -58,16 +59,26 @@ describe('isUserRateLimited', () => {
 });
 
 describe('withUserRateLimit', () => {
-  it('id が空なら 401 を返し、ハンドラを呼ばない', async () => {
-    asUser('');
+  it.each([
+    ['null', null],
+    ['空オブジェクト', {}],
+    ['user.id が無い', { user: {} }],
+    ['user.id が空文字', { user: { id: '' } }],
+  ])(
+    '無効セッション（%s）なら 401 を返し、回数確認・ハンドラ・warn ログを呼ばない',
+    async (_label, session) => {
+      vi.mocked(auth).mockResolvedValue(session as never);
 
-    const response = await withUserRateLimit('weather', handler);
+      const response = await withUserRateLimit('weather', handler);
 
-    expect(response.status).toBe(401);
-    expect(handler).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(401);
+      expect(cache.increment).not.toHaveBeenCalled();
+      expect(handler).not.toHaveBeenCalled();
+      expect(logger.warn).not.toHaveBeenCalled();
+    },
+  );
 
-  it('上限を超えたら 429 と Retry-After を返し、ハンドラを呼ばない', async () => {
+  it('上限を超えたら 429 と Retry-After を返し、warn ログを1回残してハンドラを呼ばない', async () => {
     asUser('user-1');
     vi.mocked(cache.increment).mockResolvedValue(61);
 
@@ -75,10 +86,13 @@ describe('withUserRateLimit', () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('60');
+    // 仕様: docs/reference/api-error-handling.md「エラーの分類と扱い」の表。回数制限は warn を出す。
+    // ログの項目や文言は仕様にないので検証しない（1回の 429 につき 1 回、だけを確かめる）
+    expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(handler).not.toHaveBeenCalled();
   });
 
-  it('上限ちょうどまでは通し、ルートとユーザーごとに数える', async () => {
+  it('上限ちょうどまでは通し、ルートとユーザーごとに数えて userId をハンドラへ渡す（#435）', async () => {
     asUser('user-1');
     vi.mocked(cache.increment).mockResolvedValue(60);
 
@@ -86,6 +100,31 @@ describe('withUserRateLimit', () => {
 
     expect(response.status).toBe(200);
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:weather:user-1', 60);
+    expect(handler).toHaveBeenCalledWith('user-1');
+  });
+
+  it('別のルートと別のユーザー ID でもそれぞれのキーで数えて userId を渡し、応答をそのまま返す（#435）', async () => {
+    asUser('user-2');
+    vi.mocked(cache.increment).mockResolvedValue(1);
+    const customResponse = NextResponse.json({ ok: true, userId: 'user-2' }, { status: 201 });
+    handler.mockResolvedValueOnce(customResponse);
+
+    const response = await withUserRateLimit('scores', handler);
+
+    expect(response).toBe(customResponse);
+    expect(cache.increment).toHaveBeenCalledWith('ratelimit:scores:user-2', 60);
+    expect(handler).toHaveBeenCalledWith('user-2');
+  });
+
+  it('Redis 障害時（increment が null）は制限せず、userId をハンドラへ渡す（#435）', async () => {
+    asUser('user-2');
+    vi.mocked(cache.increment).mockResolvedValue(null);
+
+    const response = await withUserRateLimit('scores', handler);
+
+    expect(response.status).toBe(200);
+    expect(handler).toHaveBeenCalledWith('user-2');
+    expect(logger.warn).not.toHaveBeenCalled();
   });
 });
 
