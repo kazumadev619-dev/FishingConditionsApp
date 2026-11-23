@@ -451,10 +451,11 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         for (const dbErr of [
           knownDbError('ECONNREFUSED'),
           new Error('Connection terminated due to connection timeout'),
-          new Prisma.PrismaClientKnownRequestError(
-            'Database error. Code: `57P01`. Message: `terminating connection`',
-            { code: 'P2039', clientVersion: '7.10.1' },
-          ),
+          new Prisma.PrismaClientKnownRequestError('Database error', {
+            code: 'P2039',
+            clientVersion: '7.10.1',
+            meta: { driverAdapterError: { cause: { originalCode: '57P01' } } },
+          }),
         ]) {
           vi.clearAllMocks();
           dependency().mockRejectedValue(dbErr as never);
@@ -469,15 +470,25 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         }
 
         vi.clearAllMocks();
-        const syntaxErr = new Prisma.PrismaClientKnownRequestError(
-          'Database error. Code: `42601`. Message: `syntax error`',
-          { code: 'P2039', clientVersion: '7.10.1' },
-        );
-        dependency().mockRejectedValue(syntaxErr as never);
+        // 42601（構文エラー）と、meta が読めない P2039 は 500 に倒す
+        for (const unexpectedErr of [
+          new Prisma.PrismaClientKnownRequestError('Database error', {
+            code: 'P2039',
+            clientVersion: '7.10.1',
+            meta: { driverAdapterError: { cause: { originalCode: '42601' } } },
+          }),
+          new Prisma.PrismaClientKnownRequestError('Database error', {
+            code: 'P2039',
+            clientVersion: '7.10.1',
+          }),
+        ]) {
+          vi.clearAllMocks();
+          dependency().mockRejectedValue(unexpectedErr as never);
 
-        const unexpectedRes = await call();
-        expect(unexpectedRes.status).toBe(500);
-        expect(loggedMetaTypes()).not.toContain('DB_ERROR');
+          const unexpectedRes = await call();
+          expect(unexpectedRes.status).toBe(500);
+          expect(loggedMetaTypes()).not.toContain('DB_ERROR');
+        }
       });
     });
 

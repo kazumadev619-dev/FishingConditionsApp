@@ -236,7 +236,8 @@ const RETRYABLE_STATUS_CODES = [
 - `getErrorMessage(error: ApiError): string`: `ApiErrorType` から、利用者向けの日本語のメッセージを返す。
 - `logApiError(error: ApiError, context?)`: `{ ...context, type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp }` を、メッセージ `API request failed` で `logger.error` に出す。`type`・`errorType`・`statusCode`・`message`・`retryable`・`timestamp` は context で上書きできない（固定フィールドが後に来る）。
 - `createApiErrorResponse(error: ApiError, context?, extraFields?)`: `logApiError` で記録したうえで、タイムアウト（`TIMEOUT`）は HTTP 504、それ以外（4xx・429 を含む）は HTTP 502 で固定文言を返す。
-- `createDatabaseErrorResponse(error, context?)`: Prisma の接続・到達不能・認証・初期化失敗（`P1000`・`P1001`・`P1002`・`P1003`・`P1008`・`P1010`・`P1011`・`P1017`・`P2024`・`P2037`、`ECONNREFUSED` 等のソケットコード、`P2039` のうち `57P01`/`57P02`/`57P03`/`53300`/`53400`、`PrismaClientInitializationError`、および `pg`/`pg-pool` の接続タイムアウト・プール枯渇・切断メッセージ）を判定して `{ type: 'DB_ERROR', code, err, ...context }` を `logger.error` に出し、HTTP 503 の固定文言を返す。該当しない例外は `null` を返し、呼び出し元で 500（想定外）として扱う。
+- `createDatabaseErrorResponse(error, context?)`: Prisma の接続・到達不能・認証・初期化失敗（`P1000`・`P1001`・`P1002`・`P1003`・`P1008`・`P1010`・`P1011`・`P1017`・`P2024`・`P2037`、`ECONNREFUSED` 等のソケットコード、`P2039`（例外、下記）、`PrismaClientInitializationError`、および `pg`/`pg-pool` の接続タイムアウト・プール枯渇・切断メッセージ）を判定して `{ type: 'DB_ERROR', code, err, ...context }` を `logger.error` に出し、HTTP 503 の固定文言を返す。該当しない例外は `null` を返し、呼び出し元で 500（想定外）として扱う。
+  - `P2039` の例外: `P2039` は DB 停止もクエリの誤りも同じコードで返るため、ここだけ `error.code` で判定できない（#428 に記録済み）。`error.meta.driverAdapterError.cause.originalCode`（SQLSTATE）だけを読み、`08` で始まるもの、`57P01`〜`57P03`、`53` で始まるものは 503、それ以外（`42601` など）は 500 にする。`error.message` は解析しない。meta が読めないときは 500 に倒す。
 
 上流 API を呼ぶルート（`/api/weather`、`/api/scores`、`/api/conditions/tide`、`/api/locations/search`）が `createApiErrorResponse` を、DB を使うルート（`/api/ports`、`/api/favorites`）が `createDatabaseErrorResponse` を使っている。
 

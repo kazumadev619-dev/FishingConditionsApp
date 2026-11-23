@@ -43,9 +43,16 @@ const DATABASE_UNAVAILABLE_ERROR_CODES = new Set([
 
 /**
  * `@prisma/adapter-pg` が `P2039`（汎用 postgres エラー）で包む SQLSTATE のうち、
- * クエリの誤り（42601 構文エラー等）ではなく DB 停止・起動中・資源枯渇を表すもの。
+ * クエリの誤り（42601 構文エラー等）ではなく一時的な障害を表すもの。
+ * 08xxx（接続例外）、57P01〜57P03（停止・起動中）、53xxx（資源枯渇）。
  */
-const DB_UNAVAILABLE_SQLSTATES = new Set(['57P01', '57P02', '57P03', '53300', '53400']);
+function isTransientSqlState(sqlState: string): boolean {
+  return (
+    sqlState.startsWith('08') ||
+    sqlState.startsWith('53') ||
+    ['57P01', '57P02', '57P03'].includes(sqlState)
+  );
+}
 
 /**
  * `pg` / `pg-pool` が PrismaClientKnownRequestError に包まれず生の `Error` として投げる
@@ -58,28 +65,22 @@ const PG_CONNECTION_ERROR_MESSAGES = new Set([
   'timeout exceeded when trying to connect',
 ]);
 
-interface P2039DriverMeta {
-  driverAdapterError?: {
-    cause?: {
-      code?: unknown;
-      originalCode?: unknown;
-    };
-  };
-}
-
+/**
+ * P2039 は `error.code` だけでは一時的な障害とクエリの誤りを区別できないため、例外として
+ * `error.meta.driverAdapterError.cause.originalCode`（SQLSTATE）だけを読む（#428）。
+ * `error.message` は解析しない。meta が読めなければ false（想定外の 500）に倒す。
+ */
 function isUnavailableP2039(error: Prisma.PrismaClientKnownRequestError): boolean {
   if (error.code !== 'P2039') {
     return false;
   }
 
-  const meta = error.meta as P2039DriverMeta | undefined;
-  const cause = meta?.driverAdapterError?.cause;
-  const messageSqlState = error.message.match(/Database error\. Code: `([0-9A-Z]{5})`/)?.[1];
-  const candidates = [cause?.code, cause?.originalCode, messageSqlState];
+  const meta = error.meta as
+    | { driverAdapterError?: { cause?: { originalCode?: unknown } } }
+    | undefined;
+  const sqlState = meta?.driverAdapterError?.cause?.originalCode;
 
-  return candidates.some(
-    (candidate) => typeof candidate === 'string' && DB_UNAVAILABLE_SQLSTATES.has(candidate),
-  );
+  return typeof sqlState === 'string' && isTransientSqlState(sqlState);
 }
 
 // エラー型から日本語のメッセージを生成

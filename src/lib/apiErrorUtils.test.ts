@@ -99,6 +99,13 @@ const pgSyntaxError42601 = knownError(
   },
 );
 
+// meta.driverAdapterError.cause.originalCode にだけ SQLSTATE を持つ P2039（message には SQLSTATE を入れない）
+function p2039WithSqlState(sqlState: string) {
+  return knownError('P2039', 'Database error', {
+    driverAdapterError: { cause: { originalCode: sqlState } },
+  });
+}
+
 describe('apiErrorUtils（#428）', () => {
   it('logApiError は context に同名キー（timestamp 含む）が含まれていても固定フィールドを上書きさせない', () => {
     const error = new ApiError('upstream failed', ApiErrorType.SERVER_ERROR, 502, true);
@@ -187,30 +194,17 @@ describe('apiErrorUtils（#428）', () => {
     ['SQLSTATE 57P01 (P2039 / admin_shutdown)', pgAdminShutdown57P01],
     ['SQLSTATE 57P03 (P2039 / cannot_connect_now)', pgCannotConnectNow57P03],
     [
-      'meta なしの P2039（メッセージ内 SQLSTATE 57P01）',
-      knownError('P2039', 'Database error. Code: `57P01`. Message: `terminating`'),
-    ],
-    [
       'pg TCP 接続タイムアウト（生の Error）',
       new Error('Connection terminated due to connection timeout'),
     ],
     ['pg-pool プール枯渇（生の Error）', new Error('timeout exceeded when trying to connect')],
     ['pg 途中切断（生の Error）', new Error('Connection terminated unexpectedly')],
     ['pg 明示終了時の切断（生の Error）', new Error('Connection terminated')],
-    [
-      'SQLSTATE 57P02 (P2039 / crash_shutdown)',
-      knownError('P2039', 'Database error. Code: `57P02`. Message: `crash`'),
-    ],
-    [
-      'SQLSTATE 53400 (P2039 / configuration_limit_exceeded)',
-      knownError('P2039', 'Database error. Code: `53400`. Message: `limit`'),
-    ],
-    [
-      'P2039 で SQLSTATE が meta の cause.originalCode にだけある',
-      knownError('P2039', 'Database error', {
-        driverAdapterError: { cause: { originalCode: '57P01' } },
-      }),
-    ],
+    ['P2039 / SQLSTATE 57P02', p2039WithSqlState('57P02')],
+    ['P2039 / SQLSTATE 53400', p2039WithSqlState('53400')],
+    ['P2039 / SQLSTATE 53300', p2039WithSqlState('53300')],
+    ['P2039 / SQLSTATE 08006', p2039WithSqlState('08006')],
+    ['P2039 / SQLSTATE 08001', p2039WithSqlState('08001')],
   ])('実測の DB 障害形状を 503 / DB_ERROR として捕捉する: %s', (_label, err) => {
     expect(isDatabaseUnavailableError(err)).toBe(true);
 
@@ -244,6 +238,9 @@ describe('apiErrorUtils（#428）', () => {
     const notFoundErr = knownError('P2025', 'not found');
     const tableMissingErr = knownError('P2021', 'table does not exist');
     const emptyP2039Err = knownError('P2039', 'Database error');
+    // message に一時的な障害の SQLSTATE があっても、meta が無ければ解析せず 500 に倒す
+    const messageOnlyP2039Err = knownError('P2039', 'Database error. Code: `57P01`. Message: `x`');
+    const nonTransientP2039Err = p2039WithSqlState('23505');
     const unknownErr = new Prisma.PrismaClientUnknownRequestError('unknown', {
       clientVersion: '7.10.1',
     });
@@ -260,6 +257,8 @@ describe('apiErrorUtils（#428）', () => {
       tableMissingErr,
       pgSyntaxError42601,
       emptyP2039Err,
+      messageOnlyP2039Err,
+      nonTransientP2039Err,
       unknownErr,
       validationErr,
       plainErr,
