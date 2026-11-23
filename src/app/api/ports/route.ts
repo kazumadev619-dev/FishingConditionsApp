@@ -5,6 +5,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import { createDatabaseErrorResponse } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 
@@ -39,6 +40,9 @@ export async function GET(request: Request) {
       total: ports.length,
     });
   } catch (error) {
+    const dbResponse = createDatabaseErrorResponse(error, { endpoint: '/api/ports' });
+    if (dbResponse) return dbResponse;
+
     logger.error({ error }, '港マスタ取得エラー');
     return NextResponse.json({ error: '港情報の取得に失敗しました' }, { status: 500 });
   }

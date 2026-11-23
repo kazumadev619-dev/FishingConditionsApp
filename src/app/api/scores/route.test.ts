@@ -19,6 +19,8 @@ vi.mock('@/lib/tideService', () => ({
 const loggerMock = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
 vi.mock('@/lib/logger', () => ({ logger: loggerMock }));
 
+import { createApiError } from '@/lib/api/errorHandler';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
 import type { FormattedTideData } from '@/lib/tideService';
 import { GET } from './route';
@@ -256,5 +258,43 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
     process.off('unhandledRejection', unhandled);
 
     expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  // 根拠: docs/reference/api-error-handling.md「エラーの分類と扱い」（#428）
+  it('天気または潮汐が ApiError を投げたら 502/504 と API_ERROR ログを返し、上流本文は出さない', async () => {
+    tideMock.mockRejectedValue(createApiError(502, 'secret tide error body'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(502);
+    await expect(res.json()).resolves.toEqual({
+      error: 'サーバーで問題が発生しました。サポートに連絡してください。',
+      code: ApiErrorType.SERVER_ERROR,
+      retryable: true,
+    });
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'API_ERROR',
+        errorType: ApiErrorType.SERVER_ERROR,
+        message: 'secret tide error body',
+        endpoint: '/api/scores',
+      }),
+      'API request failed',
+    );
+  });
+
+  it('上流タイムアウト（TIMEOUT）は 504 を返す', async () => {
+    weatherMock.mockRejectedValue(
+      new ApiError('Request timeout after 10000ms', ApiErrorType.TIMEOUT, undefined, true),
+    );
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(504);
+    await expect(res.json()).resolves.toEqual({
+      error: '通信がタイムアウトしました。インターネット接続を確認して、もう一度お試しください。',
+      code: ApiErrorType.TIMEOUT,
+      retryable: true,
+    });
   });
 });

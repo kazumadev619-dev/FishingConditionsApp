@@ -59,7 +59,10 @@ async function isDatabaseReachable(): Promise<boolean> {
     lastReachableAt = Date.now();
     return true;
   } catch (error) {
-    logger.warn({ err: error }, 'Readiness check failed: database is not reachable');
+    logger.error(
+      { type: 'DB_ERROR', err: error },
+      'Readiness check failed: database is not reachable',
+    );
     return false;
   } finally {
     clearTimeout(timer);

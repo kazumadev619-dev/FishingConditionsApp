@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { ApiError } from '@/lib/api/types';
+import { createApiErrorResponse } from '@/lib/apiErrorUtils';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { logger } from '@/lib/logger';
 import { withUserRateLimit } from '@/lib/rateLimit';
@@ -68,6 +70,9 @@ async function handleGet(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (error instanceof ApiError) {
+      return createApiErrorResponse(error, { endpoint: '/api/conditions/tide' });
+    }
     logger.error({ err: error }, 'Tide API error');
     return createErrorResponse('Failed to fetch tide data', 500);
   }

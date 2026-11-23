@@ -1,5 +1,33 @@
+import { NextResponse } from 'next/server';
+import { Prisma } from '@/generated/prisma/client';
 import { type ApiError, ApiErrorType } from './api/types';
 import { logger } from './logger';
+
+/**
+ * Prisma が DB 接続・到達不能・プール枯渇などの障害時に返すエラーコード。
+ *
+ * `error.meta` の形は `@prisma/adapter-pg` の有無とバージョンで変わる（#161）ため、
+ * `error.code` のみで判定する（#428）。
+ *
+ * - P1000: AuthenticationFailed
+ * - P1001: DatabaseNotReachable（ENOTFOUND / ECONNREFUSED）
+ * - P1002: Database server timed out
+ * - P1008: Operations timed out / SocketTimeout（ETIMEDOUT）
+ * - P1011: TlsConnectionError
+ * - P1017: ConnectionClosed（ECONNRESET）
+ * - P2024: Timed out fetching a new connection from the connection pool
+ * - P2037: TooManyConnections（PostgreSQL 53300）
+ */
+const DATABASE_UNAVAILABLE_ERROR_CODES = new Set([
+  'P1000',
+  'P1001',
+  'P1002',
+  'P1008',
+  'P1011',
+  'P1017',
+  'P2024',
+  'P2037',
+]);
 
 // エラー型から日本語のメッセージを生成
 export function getErrorMessage(error: ApiError): string {
@@ -29,13 +57,96 @@ export function getErrorMessage(error: ApiError): string {
  */
 export function logApiError(error: ApiError, context?: Record<string, unknown>): void {
   const logData = {
+    ...context,
     type: 'API_ERROR',
     errorType: error.type,
     statusCode: error.statusCode,
     message: error.message,
     retryable: error.retryable,
     timestamp: new Date().toISOString(),
-    ...context,
   };
   logger.error(logData, 'API request failed');
+}
+
+/**
+ * ApiError の種別に応じた利用者向け HTTP ステータスを返す。
+ * 上流の 4xx（API キーの設定誤りや上流のレート制限など）も利用者には 502 を返し、
+ * タイムアウトは 504 を返す（docs/reference/api-error-handling.md）。
+ */
+export function getApiErrorHttpStatus(error: ApiError): 502 | 504 {
+  return error.type === ApiErrorType.TIMEOUT ? 504 : 502;
+}
+
+/**
+ * 上流 API 障害（ApiError）を構造化ログに記録し、固定文言の HTTP 応答を生成する。
+ * 上流の応答本文（error.message）はログにのみ残し、レスポンスには含めない。
+ */
+export function createApiErrorResponse(
+  error: ApiError,
+  context?: Record<string, unknown>,
+  extraFields?: Record<string, unknown>,
+): NextResponse<{ error: string; code: ApiErrorType; retryable: boolean }> {
+  logApiError(error, context);
+
+  return NextResponse.json(
+    {
+      ...extraFields,
+      error: getErrorMessage(error),
+      code: error.type,
+      retryable: error.retryable,
+    },
+    { status: getApiErrorHttpStatus(error) },
+  );
+}
+
+/**
+ * Prisma の接続・到達不能・初期化失敗（異常なエラー）かどうかを判定する。
+ * クエリやデータ不整合のエラー（想定外）とはここで見分ける。
+ */
+export function isDatabaseUnavailableError(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientInitializationError) {
+    return true;
+  }
+  return (
+    error instanceof Prisma.PrismaClientKnownRequestError &&
+    DATABASE_UNAVAILABLE_ERROR_CODES.has(error.code)
+  );
+}
+
+/**
+ * DB 障害（異常なエラー）であれば構造化ログに記録して 503 応答を返し、
+ * それ以外の例外（想定外のエラー）であれば null を返す。
+ */
+export function createDatabaseErrorResponse(
+  error: unknown,
+  context?: Record<string, unknown>,
+): NextResponse<{ error: string; code: string }> | null {
+  if (!isDatabaseUnavailableError(error)) {
+    return null;
+  }
+
+  const code =
+    error instanceof Prisma.PrismaClientKnownRequestError
+      ? error.code
+      : error instanceof Prisma.PrismaClientInitializationError
+        ? error.errorCode
+        : undefined;
+
+  logger.error(
+    {
+      ...context,
+      type: 'DB_ERROR',
+      ...(code !== undefined && { code }),
+      err: error,
+    },
+    'Database request failed',
+  );
+
+  return NextResponse.json(
+    {
+      error: '一時的に利用できません。時間をおいて再度お試しください。',
+      code: 'DB_UNAVAILABLE',
+    },
+    { status: 503 },
+  );
 }

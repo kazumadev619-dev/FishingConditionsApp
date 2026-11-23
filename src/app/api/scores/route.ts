@@ -4,6 +4,8 @@
  */
 
 import { type NextRequest, NextResponse } from 'next/server';
+import { ApiError } from '@/lib/api/types';
+import { createApiErrorResponse } from '@/lib/apiErrorUtils';
 import { CACHE_PREFIX, CACHE_TTL } from '@/lib/cache/config';
 import { generateCacheKey, type Jsonified, reviveDate, withCache } from '@/lib/cache/helpers';
 import { logger } from '@/lib/logger';
@@ -184,6 +186,9 @@ async function handleGet(
       },
     });
   } catch (error) {
+    if (error instanceof ApiError) {
+      return createApiErrorResponse(error, { endpoint: '/api/scores' });
+    }
     logger.error({ err: error }, 'Scores API error');
     return NextResponse.json({ error: 'Failed to calculate fishing score' }, { status: 500 });
   }
