@@ -58,6 +58,21 @@ describe('POST /api/client-errors（#247）', () => {
     );
   });
 
+  it('別ユーザーでも auth() は1回のみで、利用者ごとのキーで数えてログにその userId を残す（#435）', async () => {
+    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する
+    vi.mocked(auth).mockResolvedValue({ user: { id: 'user-2' } } as never);
+
+    const res = await post(valid);
+
+    expect(res.status).toBe(204);
+    expect(auth).toHaveBeenCalledTimes(1);
+    expect(cache.increment).toHaveBeenCalledWith('ratelimit:client-errors:user-2', 60);
+    expect(logger.error).toHaveBeenCalledWith(
+      { userId: 'user-2', clientError: valid },
+      'Client-side error reported',
+    );
+  });
+
   it('未ログインは 401 で、ログに残さない', async () => {
     vi.mocked(auth).mockResolvedValue(null as never);
 
@@ -74,10 +89,49 @@ describe('POST /api/client-errors（#247）', () => {
     expect(logger.error).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['不正 JSON', 'not json'],
+    [
+      'サイズ上限超過',
+      JSON.stringify({ ...valid, message: 'x'.repeat(CLIENT_ERROR_LIMITS.bodyBytes) }),
+    ],
+  ])(
+    '未ログイン時は %s でも 400/413 より先に 401 を返し、auth() 1 回でログに残さない（#435）',
+    async (_label, body) => {
+      vi.mocked(auth).mockResolvedValue(null as never);
+
+      const res = await post(body);
+
+      expect(res.status).toBe(401);
+      expect(auth).toHaveBeenCalledTimes(1);
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ['不正 JSON', 'not json'],
+    [
+      'サイズ上限超過',
+      JSON.stringify({ ...valid, message: 'x'.repeat(CLIENT_ERROR_LIMITS.bodyBytes) }),
+    ],
+  ])(
+    '上限超過時は %s でも 400/413 より先に 429 を返し、auth() 1 回でログに残さない（#435）',
+    async (_label, body) => {
+      vi.mocked(cache.increment).mockResolvedValue(61);
+
+      const res = await post(body);
+
+      expect(res.status).toBe(429);
+      expect(auth).toHaveBeenCalledTimes(1);
+      expect(logger.error).not.toHaveBeenCalled();
+    },
+  );
+
   it('利用者 ID は本文ではなくセッションから取る（本文の userId は受け付けない）', async () => {
     const res = await post({ ...valid, userId: 'someone-else' });
 
     expect(res.status).toBe(400);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
@@ -89,15 +143,18 @@ describe('POST /api/client-errors（#247）', () => {
     ['message が上限超え', { ...valid, message: 'm'.repeat(CLIENT_ERROR_LIMITS.message + 1) }],
     ['stack が上限超え', { ...valid, stack: 's'.repeat(CLIENT_ERROR_LIMITS.stack + 1) }],
     ['文字列でない stack', { ...valid, stack: { a: 1 } }],
-  ])('入力が不正（%s）なら 400 で、ログに残さない', async (_name, body) => {
+  ])('入力が不正（%s）なら 400 で、auth() 1 回かつログに残さない（#435）', async (_name, body) => {
+    // testing-policy 5節「回数の例外」: 400 分岐でも auth() が二重に呼ばれないことを検証する
     expect((await post(body)).status).toBe(400);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('本文が上限（CLIENT_ERROR_LIMITS.bodyBytes）を超えたら 413 で、ログに残さない', async () => {
+  it('本文が上限（CLIENT_ERROR_LIMITS.bodyBytes）を超えたら 413 で、auth() 1 回かつログに残さない（#435）', async () => {
     const big = JSON.stringify({ ...valid, message: 'x'.repeat(CLIENT_ERROR_LIMITS.bodyBytes) });
 
     expect((await post(big)).status).toBe(413);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 });
