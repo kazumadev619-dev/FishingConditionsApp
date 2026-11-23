@@ -86,11 +86,9 @@ describe('withUserRateLimit', () => {
 
     expect(response.status).toBe(429);
     expect(response.headers.get('Retry-After')).toBe('60');
+    // 仕様: docs/reference/api-error-handling.md「エラーの分類と扱い」の表。回数制限は warn を出す。
+    // ログの項目や文言は仕様にないので検証しない（1回の 429 につき 1 回、だけを確かめる）
     expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(logger.warn).toHaveBeenCalledWith(
-      { routeName: 'weather', userId: 'user-1' },
-      'Rate limit exceeded',
-    );
     expect(handler).not.toHaveBeenCalled();
   });
 
