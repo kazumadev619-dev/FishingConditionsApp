@@ -82,7 +82,7 @@
 }
 ```
 
-応答の `status` が 1 でないときは、`createApiError(502, …)` を投げる（`ApiErrorType.SERVER_ERROR`。`src/lib/tideService.ts`）。応答の本文は利用者に返さない（[api-error-handling.md](./api-error-handling.md)）。
+`status` が 1 でないときの扱いは、[api-error-handling.md](./api-error-handling.md#上流の応答が不正なとき) にある。
 
 ### 🗺️ 地図・位置情報 - Google Maps API
 

@@ -280,7 +280,7 @@ npm run check-code
 
 ### 品質保証
 
-- **テスト戦略**: Vitest を導入済み（単体・Route Handler・コンポーネントテスト、CI で毎回実行）。E2E 用の開発環境（Postgres・Redis・上流スタブ）も整備済みで、Playwright の E2E テストは 10 シナリオを CI の `e2e-env` ジョブで実行している（`npm run test:e2e`）。方針の詳細は [docs/guides/testing-policy.md](docs/guides/testing-policy.md)
+- **テスト戦略**: Vitest を導入済み（単体・Route Handler・コンポーネントテスト、CI で毎回実行）。E2E 用の開発環境（Postgres・Redis・上流スタブ）も整備済みで、Playwright の E2E テストを CI の `e2e-env` ジョブで実行している（`npm run test:e2e`。シナリオは [docs/guides/e2e-env.md](docs/guides/e2e-env.md)）。方針の詳細は [docs/guides/testing-policy.md](docs/guides/testing-policy.md)
 - **CI/CD**: GitHub Actions で構築済み（詳細は [docs/guides/ci-cd.md](docs/guides/ci-cd.md)）
   - CI（`.github/workflows/ci.yml`）: PR および `main` / `develop` push で ESLint / Biome / TypeScript 型チェック / Vitest / actionlint / Next.js ビルド / k8s マニフェスト検証 / Docker イメージビルド / E2E 環境スモークと Playwright E2E を実行
   - CD（`.github/workflows/deploy.yml`）: `main` push（および手動実行）で arm64 イメージをビルド・GHCR へ push し、Raspberry Pi 5 上の k3s へ自動デプロイ

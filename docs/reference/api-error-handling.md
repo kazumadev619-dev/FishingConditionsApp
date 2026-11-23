@@ -52,6 +52,7 @@ export class ApiError extends Error {
 ```typescript
 import { openWeatherMapClient } from '@/lib/api/client';
 import { ApiError, ApiErrorType } from '@/lib/api/types';
+import { getErrorMessage } from '@/lib/apiErrorUtils';
 
 try {
   const weather = await openWeatherMapClient.get('/weather', {
@@ -64,32 +65,22 @@ try {
   console.log('天気データを取得しました:', weather);
 } catch (error) {
   if (error instanceof ApiError) {
+    // ログは種別ごとに分ける
     switch (error.type) {
       case ApiErrorType.TIMEOUT:
         console.error('リクエストがタイムアウトしました');
-        // 利用者には getErrorMessage(error) の文言を表示
         break;
 
       case ApiErrorType.RATE_LIMITED:
         console.error('API のレート制限に達しました');
-        // 利用者には getErrorMessage(error) の文言を表示
         break;
 
-      case ApiErrorType.SERVER_ERROR:
-        console.error(`サーバーエラーが発生しました: ${error.statusCode}`);
-        // 利用者には getErrorMessage(error) の文言を表示
-        break;
-
-      case ApiErrorType.CLIENT_ERROR:
-        console.error(`クライアントエラー: ${error.message}`);
-        // 利用者には getErrorMessage(error) の文言を表示
-        break;
-
-      case ApiErrorType.NETWORK_ERROR:
-        console.error('ネットワークエラーが発生しました');
-        // 利用者には getErrorMessage(error) の文言を表示
-        break;
+      default:
+        console.error(`API エラー: ${error.type} (${error.statusCode})`);
     }
+
+    // 利用者に出す文言は、種別によらず getErrorMessage を使う
+    const userMessage = getErrorMessage(error); // 画面に表示する
   } else {
     // ApiError 以外の予期しないエラー
     console.error('予期しないエラー:', error);
@@ -125,7 +116,7 @@ try {
 'use server';
 
 import { openWeatherMapClient } from '@/lib/api/client';
-import { ApiError, ApiErrorType } from '@/lib/api/types';
+import { ApiError } from '@/lib/api/types';
 import { getErrorMessage, logApiError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 
@@ -239,12 +230,13 @@ const RETRYABLE_STATUS_CODES = [
 
 OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
 
-tide736 も、応答の `status` が 1 でなければ `createApiError(502, …)` を投げる（`src/lib/tideService.ts:127`、#470）。
+tide736 も、応答の `status` が 1 でなければ `createApiError(502, …)` を投げる（`SERVER_ERROR`、`src/lib/tideService.ts`、#470）。弾いた応答はキャッシュに書かない。
 
 | 入口 | 利用者に出るもの |
 |---|---|
 | `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/api/scores` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
+| `/api/conditions/tide`（tide736） | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
 | `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
 
