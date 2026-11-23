@@ -1,8 +1,8 @@
 # スコア計算のテストケース表
 
 > - **状態**: 説明（参考）。期待値の出どころは [scoring-algorithm.md](./scoring-algorithm.md)（仕様（正））
-> - **対応する実装**: `src/lib/scoring/`、`src/lib/utils/scoreRank.ts`（[testing-policy.md](../guides/testing-policy.md) 7節②のうち、純粋な計算の部分）
-> - **最終確認**: 2026-11-22（[#426](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/426) で作成。[#446](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/446) で、テスト名の列とカバレッジ・変異テストの数値を外し、ID に改めた）
+> - **対応する実装**: `src/lib/scoring/`、`src/lib/utils/scoreRank.ts`、`src/lib/openWeatherService.test.ts`（T-WIND-07・T-PRES-06）（[testing-policy.md](../guides/testing-policy.md) 7節②のうち、純粋な計算の部分）
+> - **最終確認**: 2026-11-23（仕様と実装の突き合わせで、対応する実装に `openWeatherService.test.ts` を足した）。2026-11-22（[#426](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/426) で作成。[#446](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/446) で、テスト名の列とカバレッジ・変異テストの数値を外し、ID に改めた）
 
 スコア計算の入力ごとに、仕様から決まる同値クラスと境界値を洗い出した表。期待値は [scoring-algorithm.md](./scoring-algorithm.md) の節から決めたもので、実装の式や出力は写していない（[testing-policy.md](../guides/testing-policy.md) 4節）。
 
