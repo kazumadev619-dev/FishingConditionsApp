@@ -1,0 +1,40 @@
+// 接続先がすべて localhost / 127.0.0.1 であることを確かめる。そうでなければ終了コード 2。
+// 本番や共有の DB に、migrate・seed・パスワードが公開された E2E ユーザーの投入をしてしまう事故を防ぐ。
+// up.sh（E2E_DATABASE_URL / E2E_REDIS_URL）と seed-users.mjs（DATABASE_URL）が使う。URL は1つずつ判定する。
+import console from 'node:console';
+import process from 'node:process';
+import { pathToFileURL, URL } from 'node:url';
+
+/**
+ * @param {...string} urls
+ */
+export function assertLocal(...urls) {
+  for (const u of urls) {
+    let url;
+    try {
+      url = new URL(u);
+    } catch {
+      throw new Error('接続先の URL として読めない（値は出さない）');
+    }
+    // pg は、クエリの host / hostaddr があると URL のホストより優先する（?host=prod.example.com）。
+    // ioredis など他のドライバも同じ名前で上書きしうるので、どれも同じ判定にかける
+    const hosts = [
+      url.hostname,
+      ...['host', 'hostaddr'].flatMap((k) => url.searchParams.getAll(k)),
+    ];
+    for (const host of hosts) {
+      if (host !== 'localhost' && host !== '127.0.0.1') {
+        throw new Error(`接続先が localhost / 127.0.0.1 ではない: ${host}`);
+      }
+    }
+  }
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1]).href) {
+  try {
+    assertLocal(...process.argv.slice(2));
+  } catch (e) {
+    console.error(e.message);
+    process.exit(2);
+  }
+}

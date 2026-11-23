@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect } from 'react';
+import { reportClientError } from '@/lib/clientErrors';
+
 export default function DashboardError({
   error,
   retry,
@@ -7,6 +10,10 @@ export default function DashboardError({
   error: Error & { digest?: string };
   retry: () => void;
 }) {
+  useEffect(() => {
+    reportClientError(error, 'dashboard-error');
+  }, [error]);
+
   return (
     <div className="container mx-auto px-4 py-8 max-w-7xl">
       <div className="bg-card rounded-lg border p-8 text-center">

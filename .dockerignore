@@ -13,6 +13,7 @@ node_modules
 # ビルドに不要なもの（ビルドコンテキストの転送量を減らす）
 .github
 .claude
+.agents
 .vscode
 docs
 k8s

@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { createDatabaseErrorResponse } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { isValidUUID } from '@/lib/validators';
@@ -38,6 +39,12 @@ export async function DELETE(
 
     return NextResponse.json({ success: true });
   } catch (error) {
+    const dbResponse = createDatabaseErrorResponse(error, {
+      endpoint: '/api/favorites',
+      method: 'DELETE',
+    });
+    if (dbResponse) return dbResponse;
+
     logger.error({ error }, 'Failed to delete favorite');
     return NextResponse.json({ error: 'Failed to delete favorite' }, { status: 500 });
   }

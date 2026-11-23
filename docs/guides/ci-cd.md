@@ -29,7 +29,9 @@ PR作成/push → GitHub Actions CI起動
   │
   ├─ Docker Images（migrator と runner のイメージをビルド。Quality Check とは独立に並列実行）
   │
-  └─ CI Summary（上の4ジョブすべての結果を集約。ブランチ保護の必須チェック）
+  ├─ E2E Environment（PostgreSQL・Redis の service container + 上流スタブでスモークと Playwright E2E を実行）
+  │
+  └─ CI Summary（上の5ジョブを集約。ブランチ保護の必須チェック。E2E Environment は main 向け PR のみ合否に含める）
 ```
 
 ## 🚀 実装済みCI
@@ -102,12 +104,17 @@ steps:
 
 `ubuntu-26.04-arm` で migrator と runner の2つのイメージをビルドし、Dockerfile の退行を PR の時点で検出します（push はしません）。Quality Check には従属させず、並列で走ります。
 
-#### ジョブ5: CI Summary
+#### ジョブ5: E2E Environment
 
-Quality Check、Build、Manifests、Docker Images の結果を集約し、GitHub Actions Summaryに表示します。失敗したジョブがあれば、このジョブも失敗します。
+Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E 用の環境を立てて `npm run e2e:smoke` と `npm run test:e2e`（Playwright / Chromium）を流す。失敗時は `e2e:down` で `.e2e/` を消す前に `.e2e/app.log`・`.e2e/stub.log` の末尾をログに出し、`playwright-report/` と `test-results/` を 7 日間 artifact として残す。`services:` はジョブをまたいで共有できないので、実 DB のテスト（#354）は、このジョブにステップを足すか、同じ定義を写して使う。詳細は [e2e-env.md](./e2e-env.md)。
+
+#### ジョブ6: CI Summary
+
+Code Quality Check、Build、Manifests、Docker Images、E2E Environment の結果を集約し、GitHub Actions Summaryに表示します。前4ジョブのいずれかが失敗すると失敗します。E2E Environment は `main` 向け PR（`github.event_name == 'pull_request' && github.base_ref == 'main'`）のときだけ合否に含め、`develop` 向け PR や `push` では参考結果として表示のみ行います。
 
 ```
 ✅ 成功時: "🟢 All checks passed!"
+🟢 E2E だけ失敗（必須でないとき）: "🟢 Required checks passed! (E2E Environment: failure)"
 ❌ 失敗時: 各ジョブの結果を個別表示
 ```
 
@@ -244,8 +251,8 @@ npm run prisma:generate
 - [x] Vitestセットアップ
 - [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
 - ~~コードカバレッジ計測~~（不採用。[testing-policy.md](./testing-policy.md) の8節）
-- [ ] E2Eテスト（Playwright）
-- [ ] 実 DB（PostgreSQL・Redis）を使うテスト（CI にサービスコンテナが無い。#354）
+- [x] E2Eテスト（Playwright。`e2e-env` ジョブで全10シナリオを実行。#439）
+- [ ] 実 DB（PostgreSQL・Redis）を使うテスト（service container は `e2e-env` ジョブにある。テストの切り替えは #354）
 
 ### Phase 3: Prismaマイグレーション検証
 - [ ] `prisma-check.yml` ワークフロー作成
@@ -288,5 +295,5 @@ CI構築完了の確認:
 
 ---
 
-**Last Updated**: 2026-11-20
+**Last Updated**: 2026-11-22
 **Maintained by**: @kazumadev619-dev

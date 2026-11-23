@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/lib/scoring/`、`src/app/api/scores/route.ts`
-> - **最終確認**: 2026-11-20（#414 で、風速と気圧が数値でないときの扱いを足した。天気スコアと潮の大きさ・潮汐データなしの節は 2026-11-08 に実装に合わせて書き直し、ユーザーが承認した。風速はユーザーの指示で 2/4/6m/s の段階に変え、実装も合わせた。時間帯スコアと表示・解釈は、#388 で実装と突き合わせて直した。表示・解釈の「説明文の風の注意」の節は #401 で足した）
+> - **最終確認**: 2026-11-23（仕様と実装の突き合わせで、擬似コードの関数名と型を実装に合わせた。式と点数は変えていない）。2026-11-20（#414 で、風速と気圧が数値でないときの扱いを足した。天気スコアと潮の大きさ・潮汐データなしの節は 2026-11-08 に実装に合わせて書き直し、ユーザーが承認した。風速はユーザーの指示で 2/4/6m/s の段階に変え、実装も合わせた。時間帯スコアと表示・解釈は、#388 で実装と突き合わせて直した。表示・解釈の「説明文の風の注意」の節は #401 で足した）
 
 ## スコア算出概要
 
@@ -33,16 +33,15 @@
 ### 計算方法
 
 ```typescript
-calculateTideScore(tide: TideData, currentTime: Date): number {
-  let score = 0;
-
+// src/lib/scoring/tideScore.ts の calculateTideScore（擬似コード。1つの関数の中で2つを足す）
+calculateTideScore(tideData: FormattedTideData, currentTime: Date): number {
   // 1. 潮汐タイミングスコア (0-25点)
-  const tideTimingScore = this.calculateTideTimingScore(tide, currentTime);
+  const timingScore = /* 下の「潮汐タイミング評価」 */;
 
   // 2. 潮の大きさスコア (0-15点)
-  const tideSizeScore = this.calculateTideSizeScore(tide);
+  const sizeScore = /* 下の「潮の大きさ評価」 */;
 
-  return Math.min(40, tideTimingScore + tideSizeScore);
+  return Math.min(40, timingScore + sizeScore);
 }
 ```
 
@@ -51,29 +50,27 @@ calculateTideScore(tide: TideData, currentTime: Date): number {
 時刻と日付はすべて日本時間（`Asia/Tokyo`）で扱う。潮汐データ（tide736）の日付と `HH:mm` は JST なので、実行環境のタイムゾーン（本番のコンテナは UTC）で `getHours()` や `toISOString()` を使うと、時刻がずれたり JST の 0〜9 時に前日の潮汐を引いたりする（#296）。`src/lib/utils/dateUtils.ts` の `getJapanDateTimeParts` / `formatDateInJapan` を使う。
 
 ```typescript
-private calculateTideTimingScore(tide: TideData, currentTime: Date): number {
-  const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
-  const currentTotalMinutes = currentHour * 60 + currentMinutes;
-  let maxScore = 0;
+// dailyTide は当日の daily。flood（満潮）と edd（干潮）の時刻を、あわせて見る
+const { hours: currentHour, minutes: currentMinutes } = getJapanDateTimeParts(currentTime);
+const currentTotalMinutes = currentHour * 60 + currentMinutes;
 
-  // 満潮・干潮時刻の前後2時間を高評価
-  for (const extreme of [...tide.highTides, ...tide.lowTides]) {
-    const extremeTotalMinutes = /* 極値の時刻を分単位に変換 */;
-    const minDiff = Math.abs(extremeTotalMinutes - currentTotalMinutes);
-    const hoursFromExtreme = minDiff / 60;
+// 満潮・干潮時刻のうち、現在時刻にいちばん近いものとの差で決める
+let minDiff = Infinity;
+for (const extreme of [...dailyTide.flood, ...dailyTide.edd]) {
+  const extremeTotalMinutes = /* 極値の時刻（HH:mm）を分単位に変換 */;
+  minDiff = Math.min(minDiff, Math.abs(extremeTotalMinutes - currentTotalMinutes));
+}
+const hoursFromExtreme = minDiff / 60;
 
-    if (hoursFromExtreme <= 2) {
-      // 前後2時間以内: 高スコア
-      const score = 25 - hoursFromExtreme * 6.25; // 2時間で25点から12.5点に減少
-      maxScore = Math.max(maxScore, score);
-    } else if (hoursFromExtreme <= 4) {
-      // 前後4時間以内: 中スコア
-      const score = 12.5 - (hoursFromExtreme - 2) * 6.25; // 4時間で12.5点から0点に減少
-      maxScore = Math.max(maxScore, score);
-    }
-  }
-
-  return maxScore;
+let timingScore: number;
+if (hoursFromExtreme <= 2) {
+  // 前後2時間以内: 高スコア
+  timingScore = 25 - hoursFromExtreme * 6.25; // 2時間で25点から12.5点に減少
+} else if (hoursFromExtreme <= 4) {
+  // 前後4時間以内: 中スコア
+  timingScore = 12.5 - (hoursFromExtreme - 2) * 6.25; // 4時間で12.5点から0点に減少
+} else {
+  timingScore = 0;
 }
 ```
 
@@ -103,15 +100,16 @@ private calculateTideTimingScore(tide: TideData, currentTime: Date): number {
 ### 計算方法
 
 ```typescript
-calculateWeatherScore(weather: WeatherData): number {
-  // 1. 風速スコア (0-15点)
-  const windScore = this.calculateWindScore(weather.windSpeed);
+// src/lib/scoring/weatherScore.ts の calculateWeatherScore（擬似コード。1つの関数の中で3つを足す）
+calculateWeatherScore(weatherData: FormattedWeatherData): number {
+  // 1. 風速スコア (0-15点)。weatherData.windSpeed を、下の「風速評価」の表で点にする
+  const windScore = /* 下の「風速評価」 */;
 
-  // 2. 天候スコア (0-12点)
-  const conditionScore = this.calculateConditionScore(weather.condition);
+  // 2. 天候スコア (0-12点)。weatherData.weather.main を、下の「天候評価」の表で点にする
+  const conditionScore = /* 下の「天候評価」 */;
 
-  // 3. 気圧スコア (0-8点)
-  const pressureScore = this.calculatePressureScore(weather.pressure);
+  // 3. 気圧スコア (0-8点)。weatherData.pressure を、下の「気圧評価」の表で点にする
+  const pressureScore = /* 下の「気圧評価」 */;
 
   return Math.min(35, windScore + conditionScore + pressureScore);
 }

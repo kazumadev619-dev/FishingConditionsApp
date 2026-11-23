@@ -56,6 +56,7 @@
 - 各文書の冒頭に、状態・対応する実装・最終確認を書く。まだ突き合わせていないので、最終確認は「未確認」で始める。突き合わせは [#370](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/370) で行う。
 - PR テンプレート（`.github/pull_request_template.md`）に、「仕様に触れたか／触れたなら文書とテストの期待値を更新したか」のチェックを入れる。
 - `github-push-pr` は、PR 本文をテンプレートから作る。`issue-delivery` の昇格の手順に、突合を足す（`.claude/skills/`。当時は `.agents/skills/` の写しにも足す決定だったが、写しはやめた。[ADR-011](./011-remove-codex-factory.md)）。
+  - 追記（2026-11-23）: [ADR-013](./013-multi-agent-customizations.md) で、スキルの実体は `.agents/skills/` に移り、`.claude/skills` はそこへのリンクになった。
 - `docs/README.md` の `reference/` の説明に、仕様の正であることを書く。
 - 429 と `/auth/*` の文書は、[#368](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/368) で直した。天気スコアと潮位差は #367 で扱う。
 

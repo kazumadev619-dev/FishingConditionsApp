@@ -6,17 +6,17 @@ import { getScoreRank } from './scoreRank';
 // 守る状態: 各ランクの下限（80・60・40・20）のちょうどが上のランクに入り、1 下は下のランクに入る。
 describe('getScoreRank', () => {
   it.each([
-    [100, 'excellent'],
-    [80, 'excellent'],
-    [79, 'good'],
-    [60, 'good'],
-    [59, 'fair'],
-    [40, 'fair'],
-    [39, 'poor'],
-    [20, 'poor'],
-    [19, 'bad'],
-    [0, 'bad'],
-  ])('スコア %s のとき %s', (score, rank) => {
+    ['T-RANK-01', 100, 'excellent'],
+    ['T-RANK-01', 80, 'excellent'],
+    ['T-RANK-02', 79, 'good'],
+    ['T-RANK-02', 60, 'good'],
+    ['T-RANK-03', 59, 'fair'],
+    ['T-RANK-03', 40, 'fair'],
+    ['T-RANK-04', 39, 'poor'],
+    ['T-RANK-04', 20, 'poor'],
+    ['T-RANK-05', 19, 'bad'],
+    ['T-RANK-05', 0, 'bad'],
+  ])('[%s] スコア %s のとき %s', (_id, score, rank) => {
     expect(getScoreRank(score)).toBe(rank);
   });
 });

@@ -66,6 +66,7 @@ Qiita の記事は、守る条件をプロンプトだけに置かず、CI の R
 - [`docs/guides/testing-policy.md`](../guides/testing-policy.md) が、テストの方針の本体になる。
 - `CLAUDE.md` と `AGENTS.md` に要点とリンクを置く。`docs/README.md` の「テストを書きたい」の行と、`docs/guides/development.md` のテスト戦略の節を、このポリシーに合わせて更新する。
 - `github-push-pr` の PR テンプレートの「テスト計画」と、`issue-delivery` のレビューの手順に、高リスク箇所の要件を足す（`.claude/skills/`。Codex 用の写し `.agents/skills/` は、当時は両方に置く決定だったが、のちにやめた。[ADR-011](./011-remove-codex-factory.md)）。
+  - 追記（2026-11-23）: [ADR-013](./013-multi-agent-customizations.md) で、スキルの実体は `.agents/skills/` に移り、`.claude/skills` はそこへのリンクになった。
 - 既存テストの見直し（[#353](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/353)）、実DB基盤と暫定規則の解除（[#354](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/354)）、CI での強制（[#355](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/355)）は、別の issue で扱う。
 
 ## 補足: 番号と、この決定を見直すべきタイミング

@@ -10,9 +10,17 @@ vi.mock('@/lib/rateLimit', () => ({
 }));
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
 vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));
-vi.mock('@/lib/tideService', () => ({ getTideData: tideMock }));
-vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() } }));
+// vi.fn() は返した Promise に then をつなぐので、reject が「処理済み」になってしまう。
+// 未処理の reject を確かめるテスト用に、素の関数で包む（holder.impl があればそちらを呼ぶ）。
+const tideHolder = vi.hoisted(() => ({ impl: null as null | (() => Promise<unknown>) }));
+vi.mock('@/lib/tideService', () => ({
+  getTideData: (...args: unknown[]) => (tideHolder.impl ?? tideMock)(...args),
+}));
+const loggerMock = vi.hoisted(() => ({ error: vi.fn(), warn: vi.fn(), info: vi.fn() }));
+vi.mock('@/lib/logger', () => ({ logger: loggerMock }));
 
+import { createApiError } from '@/lib/api/errorHandler';
+import { ApiError, ApiErrorType } from '@/lib/api/types';
 import type { FormattedWeatherData } from '@/lib/openWeatherService';
 import type { FormattedTideData } from '@/lib/tideService';
 import { GET } from './route';
@@ -59,6 +67,7 @@ async function scoreAt(nowIso: string, date?: string) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  tideHolder.impl = null;
   vi.useFakeTimers({ toFake: ['Date'] });
   cacheMock.get.mockResolvedValue({ hit: false });
   cacheMock.set.mockResolvedValue(true);
@@ -188,5 +197,137 @@ describe('GET /api/scores の取得失敗', () => {
 
     expect(res.status).toBe(500);
     expect(JSON.stringify(await res.json())).not.toContain('secret upstream detail');
+  });
+});
+
+// 守る状態（#432）: ミスのとき、天気と潮汐を並べて呼ぶ（応答の待ちが、遅い上流 1 つぶんで済む）。
+// 失敗の扱いは今のまま: どちらかが失敗したら 500。両方が失敗したときは、順番に呼んでいた頃と同じく
+// 天気の失敗を理由にする（エラーの3分類。docs/reference/api-error-handling.md の「エラーの分類と扱い」の
+// 「異常なエラー」と「想定外」を後で見分けるとき、どちらの失敗が選ばれるかが変わらないようにする）。
+// 呼び出しの前後関係を見るのは、並べて呼ぶこと自体が仕様のため（testing-policy 5節の例外に準じる）。
+describe('GET /api/scores の上流の呼び出し（#432）', () => {
+  const flush = () => new Promise<void>((r) => setImmediate(r));
+
+  it('天気の応答を待たずに、潮汐も呼ぶ', async () => {
+    const w = Promise.withResolvers<{ data: FormattedWeatherData; fromCache: boolean }>();
+    weatherMock.mockReturnValue(w.promise);
+
+    const res = GET(request());
+    await flush();
+
+    expect(tideMock).toHaveBeenCalledOnce();
+    w.resolve({ data: weather, fromCache: false });
+    expect((await res).status).toBe(200);
+  });
+
+  it('潮汐が失敗したら 500 を返し、内部のエラー文を出さない', async () => {
+    tideMock.mockRejectedValue(new Error('secret tide detail'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(500);
+    expect(JSON.stringify(await res.json())).not.toContain('secret tide detail');
+  });
+
+  it('両方が失敗したら、潮汐のほうが先に失敗しても、天気の失敗を理由にする', async () => {
+    const weatherError = new Error('weather failed');
+    const w = Promise.withResolvers<never>();
+    weatherMock.mockReturnValue(w.promise);
+    tideMock.mockRejectedValue(new Error('tide failed'));
+
+    const res = GET(request());
+    await flush();
+    w.reject(weatherError);
+
+    expect((await res).status).toBe(500);
+    expect(loggerMock.error).toHaveBeenCalledWith({ err: weatherError }, 'Scores API error');
+  });
+
+  it('片方が失敗したあとで、もう片方が失敗しても、未処理の reject にならない', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const t = Promise.withResolvers<never>();
+    weatherMock.mockRejectedValue(new Error('weather failed'));
+    tideHolder.impl = () => t.promise;
+
+    const res = GET(request());
+    await flush();
+    t.reject(new Error('tide failed'));
+    expect((await res).status).toBe(500);
+    await flush();
+    process.off('unhandledRejection', unhandled);
+
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+
+  // 根拠: docs/reference/api-error-handling.md「エラーの分類と扱い」（#428）
+  it('天気または潮汐が ApiError を投げたら 502/504 と API_ERROR ログを返し、キャッシュに保存せず上流本文は出さない', async () => {
+    tideMock.mockRejectedValue(createApiError(502, 'secret tide error body'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(502);
+    await expect(res.json()).resolves.toEqual({
+      error: 'サーバーで問題が発生しました。サポートに連絡してください。',
+      code: ApiErrorType.SERVER_ERROR,
+      retryable: true,
+    });
+    expect(cacheMock.set).not.toHaveBeenCalled();
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'API_ERROR',
+        errorType: ApiErrorType.SERVER_ERROR,
+        message: 'secret tide error body',
+        endpoint: '/api/scores',
+      }),
+      'API request failed',
+    );
+  });
+
+  it('上流タイムアウト（TIMEOUT）は 504 を返し、キャッシュに保存しない', async () => {
+    weatherMock.mockRejectedValue(
+      new ApiError('Request timeout after 10000ms', ApiErrorType.TIMEOUT, undefined, true),
+    );
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(504);
+    await expect(res.json()).resolves.toEqual({
+      error: '通信がタイムアウトしました。インターネット接続を確認して、もう一度お試しください。',
+      code: ApiErrorType.TIMEOUT,
+      retryable: true,
+    });
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
+  it('天気が想定外エラーで潮汐が ApiError なら 500 を優先する（天気優先の直列互換、#432）', async () => {
+    const weatherError = new Error('weather bug');
+    weatherMock.mockRejectedValue(weatherError);
+    tideMock.mockRejectedValue(createApiError(503, 'tide unavailable'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(500);
+    expect(loggerMock.error).toHaveBeenCalledWith({ err: weatherError }, 'Scores API error');
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
+  it('天気が ApiError で潮汐が想定外エラーなら 502 と API_ERROR を優先する（天気優先の直列互換、#432）', async () => {
+    weatherMock.mockRejectedValue(createApiError(503, 'weather unavailable'));
+    tideMock.mockRejectedValue(new Error('tide bug'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(502);
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'API_ERROR',
+        errorType: ApiErrorType.SERVER_ERROR,
+        message: 'weather unavailable',
+        endpoint: '/api/scores',
+      }),
+      'API request failed',
+    );
+    expect(cacheMock.set).not.toHaveBeenCalled();
   });
 });

@@ -54,6 +54,9 @@ export function reviveDate(value: unknown, field: string): Date {
   return revived;
 }
 
+/** キーごとの、進行中の取得（withCache）。終わったら消す。 */
+const inFlight = new Map<string, Promise<unknown>>();
+
 /**
  * キャッシュを通してデータを取得するヘルパー関数
  * キャッシュミス時はfetcherを実行してキャッシュに保存
@@ -64,30 +67,42 @@ export function reviveDate(value: unknown, field: string): Date {
  * 書き間違いは型エラーになる（以前は「キャッシュヒットしたときだけ
  * `getHours is not a function`」という実行時エラーになっていた）。
  */
-export async function withCache<T extends Cacheable>(
+export function withCache<T extends Cacheable>(
   key: string,
   ttlSeconds: number,
   fetcher: () => Promise<T>,
   ...[revive]: ReviverArgument<T>
 ): Promise<{ data: T; fromCache: boolean }> {
-  // キャッシュから取得を試みる
-  const cached = await cache.get<T>(key);
+  // 同じキーの取得が進行中なら、それに相乗りする（#433）。相乗りした要求は fetcher を呼ばない。
+  // ponytail: プロセス内だけ。Pod が複数になると Pod ごとに 1 回ずつ呼ぶ。そのときは Redis のロックを検討する。
+  // 失敗も相乗りした全員に同じものが返り、終わると消えるので、次の要求は取得をやり直せる。
+  const running = inFlight.get(key) as Promise<{ data: T; fromCache: boolean }> | undefined;
+  if (running) return running;
 
-  if (cached.hit) {
-    // revive を省けるのは ReviverArgument が `Jsonified<T> extends T` を確かめた型だけなので、
-    // このキャストは JSON 往復で型が変わらない場合に限られる
-    return { data: revive ? revive(cached.value) : (cached.value as T), fromCache: true };
-  }
+  // 後片付けは .finally につなぐ。try/finally だと、最初の await より前に同期で例外が起きたとき、
+  // 削除が set より先に走り、失敗した Promise がそのキーに残り続ける。
+  const promise = (async () => {
+    // キャッシュから取得を試みる
+    const cached = await cache.get<T>(key);
 
-  // fetcherでデータを取得
-  const data = await fetcher();
+    if (cached.hit) {
+      // revive を省けるのは ReviverArgument が `Jsonified<T> extends T` を確かめた型だけなので、
+      // このキャストは JSON 往復で型が変わらない場合に限られる
+      return { data: revive ? revive(cached.value) : (cached.value as T), fromCache: true };
+    }
 
-  // キャッシュに保存（非同期、エラーは無視）
-  cache.set(key, data, ttlSeconds).catch((error) => {
-    logger.error({ key, error }, 'Failed to cache data');
-  });
+    // fetcherでデータを取得
+    const data = await fetcher();
 
-  return { data, fromCache: false };
+    // キャッシュに保存（非同期、エラーは無視）
+    cache.set(key, data, ttlSeconds).catch((error) => {
+      logger.error({ key, error }, 'Failed to cache data');
+    });
+
+    return { data, fromCache: false };
+  })().finally(() => inFlight.delete(key));
+  inFlight.set(key, promise);
+  return promise;
 }
 
 /**

@@ -19,18 +19,18 @@ const generate = (windSpeed: number) =>
   );
 
 describe('generateExplanation の風の注意', () => {
-  it.each([0, 2, 6])('風速 %sm/s では注意を出さない', (windSpeed) => {
+  it.each([0, 2, 6])('[T-EXPL-01] 風速 %sm/s では注意を出さない', (windSpeed) => {
     expect(generate(windSpeed)).not.toContain(WIND_WARNING);
   });
 
-  it.each([6.0001, 6.1, 8, 10, 10.1, 20])('風速 %sm/s では注意を出す', (windSpeed) => {
+  it.each([6.0001, 6.1, 8, 10, 10.1, 20])('[T-EXPL-02] 風速 %sm/s では注意を出す', (windSpeed) => {
     expect(generate(windSpeed)).toContain(WIND_WARNING);
   });
 });
 
 // 反証テスト（PR #413）。仕様と差分だけを渡した別のエージェント（Opus: claude-opus-5-5）が提案し、取り込んだ。
 // 仕様「0 点になる境目と同じ」: 注意の有無 = 風の点が 0 点か。Rain は 2 点、気圧 1013hPa は 8 点で、上限 35 に当たらない。
-describe('generateExplanation の風の注意は、風の点が 0 点になる境目と一致する', () => {
+describe('[T-EXPL-03] generateExplanation の風の注意は、風の点が 0 点になる境目と一致する', () => {
   const rainy = (windSpeed: number) =>
     ({ windSpeed, pressure: 1013, weather: { main: 'Rain' } }) as FormattedWeatherData;
   // リテラルの境界（6 と 6 超）は上の describe が持つ。ここは weatherScore との一致だけを見る。
@@ -65,7 +65,7 @@ describe('generateExplanation の風の注意と、ほかの文の組み合わ�
       new Date('2026-01-01T03:00:00Z'),
     );
 
-  it('潮名の文があっても、風の注意はちょうど 1 回足され、潮名の文は消えない', () => {
+  it('[T-EXPL-04] 潮名の文があっても、風の注意はちょうど 1 回足され、潮名の文は消えない', () => {
     const explanation = at(7);
     expect(explanation.split(WIND_WARNING)).toHaveLength(2);
     expect(explanation).toContain('大潮');

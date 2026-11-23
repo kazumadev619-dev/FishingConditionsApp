@@ -5,6 +5,7 @@
 
 import type { DailyTide, TideApiResponse, TideEvent } from '@/types/tide';
 import { tide736Client } from './api/client';
+import { createApiError } from './api/errorHandler';
 import { CACHE_PREFIX, CACHE_TTL } from './cache/config';
 import {
   type CacheResponse,
@@ -124,7 +125,7 @@ export async function getTideData(
     });
 
     if (rawData.status !== 1) {
-      throw new Error(`tide736 API Error: ${rawData.message}`);
+      throw createApiError(502, `tide736 API Error: ${rawData.message}`);
     }
 
     return formatTideData(rawData);

@@ -3,6 +3,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('@/lib/logger', () => ({ logger: { error: vi.fn() } }));
+vi.mock('@/lib/clientErrors', () => ({ reportClientError: vi.fn() }));
 
 // API キーと Map ID はモジュールの読み込み時に読まれるので、設定してから import する
 async function load() {
@@ -38,5 +39,22 @@ describe('FishingLocationMap（#237）', () => {
 
     expect(html).not.toContain('MAP');
     expect(html).toContain('マップを表示できませんでした');
+  });
+
+  // #247: 境界が受け止めた例外は、ブラウザのコンソールだけでなくサーバーのログにも残す
+  it('受け止めた例外を map-boundary として、コンポーネントの位置つきで報告する', async () => {
+    const { MapErrorBoundary } = await load();
+    const { reportClientError } = await import('@/lib/clientErrors');
+    const error = new TypeError("Cannot read properties of undefined (reading 'get')");
+
+    new MapErrorBoundary({ children: null }).componentDidCatch(error, {
+      componentStack: '\n    at AdvancedMarker',
+    });
+
+    expect(reportClientError).toHaveBeenCalledWith(
+      error,
+      'map-boundary',
+      '\n    at AdvancedMarker',
+    );
   });
 });
