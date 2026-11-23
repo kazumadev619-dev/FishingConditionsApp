@@ -79,6 +79,10 @@ test.describe('認証とアクセス制御（docs/reference/authentication.md）
   test('E2E-AUTH-03 新規登録から確認メール・確認確定を経てログインできる（docs/reference/authentication.md 1. ユーザー登録・2. ログイン）', async ({
     page,
   }) => {
+    // 文言（「確認メールを送信しました」「メールアドレスが確認できていません…」「メールアドレスを確認する」
+    // 「メール検証完了」など）の出どころは docs/reference/authentication-diagrams.md〈説明（参考）〉と実装。
+    // 仕様（正）の authentication.md が決めているのは、遷移（/auth/check-email → /auth/verify-email →
+    // /auth/verification-success → /login → /dashboard）と「リンクを開くだけでは確定しない」こと。
     // `+` 以降を除いたアドレスごとの登録回数制限（1時間3回）に当たらないよう、`+` より前を毎回一意にする
     const email = `e2e-reg-${randomUUID()}+e2e@example.test`;
     const password = 'E2e-Reg-Pass1!';
@@ -152,7 +156,7 @@ test.describe('認証とアクセス制御（docs/reference/authentication.md）
     await page.goto('/dashboard');
     await expect(page).toHaveURL((url) => url.pathname === '/dashboard');
 
-    await page.getByRole('button', { name: 'ユーザーメニュー' }).click();
+    await page.getByRole('button', { name: /@example\.test$/ }).click();
     await page.getByRole('menuitem', { name: 'ログアウト' }).click();
 
     await expect(page).toHaveURL((url) => url.pathname === '/login');
