@@ -142,7 +142,7 @@ function GoogleRedirectError() {
 
   return (
     <div
-      className="flex items-center space-x-2 text-sm text-red-500"
+      className="flex items-center space-x-2 text-sm text-destructive"
       aria-live="polite"
       aria-atomic="true"
     >

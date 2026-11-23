@@ -13,7 +13,7 @@ export default async function VerifyEmailPage({
   const { token = '' } = await searchParams;
 
   return (
-    <div className="flex items-center justify-center min-h-screen bg-gray-100 dark:bg-gray-950">
+    <div className="flex items-center justify-center min-h-screen bg-background">
       <Card className="mx-auto max-w-md">
         <CardHeader>
           <CardTitle className="text-2xl text-center">メールアドレスの確認</CardTitle>
