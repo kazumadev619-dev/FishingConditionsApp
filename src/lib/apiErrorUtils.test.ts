@@ -241,6 +241,8 @@ describe('apiErrorUtils（#428）', () => {
     // message に一時的な障害の SQLSTATE があっても、meta が無ければ解析せず 500 に倒す
     const messageOnlyP2039Err = knownError('P2039', 'Database error. Code: `57P01`. Message: `x`');
     const nonTransientP2039Err = p2039WithSqlState('23505');
+    // 57 クラスでも 57P01〜57P03 以外（57014 query_canceled など）は一時的な障害にしない
+    const queryCanceledP2039Err = p2039WithSqlState('57014');
     const unknownErr = new Prisma.PrismaClientUnknownRequestError('unknown', {
       clientVersion: '7.10.1',
     });
@@ -259,6 +261,7 @@ describe('apiErrorUtils（#428）', () => {
       emptyP2039Err,
       messageOnlyP2039Err,
       nonTransientP2039Err,
+      queryCanceledP2039Err,
       unknownErr,
       validationErr,
       plainErr,
