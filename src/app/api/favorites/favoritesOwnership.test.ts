@@ -122,6 +122,38 @@ describe('GET /api/favorites は自分の行だけを返す（#466）', () => {
       count: 1,
     });
   });
+
+  // 1 ユーザーのみのテストでは where.user_id の定数固定やリクエスト跨ぎのキャッシュ混線を見逃すため、
+  // 別ユーザーへ切り替えたときに前のユーザーの行が混じらないことも検証する
+  it('セッションを別ユーザーに切り替えると、前のユーザーの行を混ぜずそのユーザーの行だけを返す', async () => {
+    const firstResponse = await GET();
+    expect(firstResponse.status).toBe(200);
+
+    authMock.mockResolvedValue({ user: { id: OTHER_USER_ID } });
+    const secondResponse = await GET();
+
+    expect(secondResponse.status).toBe(200);
+    expect(prismaMock.user_favorites.findMany).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        where: { user_id: OTHER_USER_ID },
+      }),
+    );
+    await expect(secondResponse.json()).resolves.toEqual({
+      favorites: [
+        {
+          id: '77777777-7777-4777-8777-777777777777',
+          locationId: OTHER_LOCATION_ID,
+          name: '他ユーザーの港',
+          latitude: 34.7,
+          longitude: 135.5,
+          region: '関西',
+          prefecture: '大阪府',
+          createdAt: '2026-11-02T00:00:00.000Z',
+        },
+      ],
+      count: 1,
+    });
+  });
 });
 
 describe('POST /api/favorites はセッションのユーザーで登録する（#362）', () => {
@@ -166,6 +198,7 @@ describe('セッションの id が UUID でなければ、DB に読書きせず
     ['セッションが無い', null],
     ['user が無い', {}],
     ['id が無い', { user: {} }],
+    ['id が空文字（sessionCallback の不正トークン時）', { user: { id: '' } }],
     ['id が UUID でない', { user: { id: 'not-a-uuid' } }],
   ] as const;
 
