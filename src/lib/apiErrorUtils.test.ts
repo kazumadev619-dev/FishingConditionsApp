@@ -176,6 +176,8 @@ describe('apiErrorUtils（#428）', () => {
     'ETIMEDOUT',
     'ENOTFOUND',
     'ECONNRESET',
+    'EHOSTUNREACH',
+    'ENETUNREACH',
   ])('isDatabaseUnavailableError は Prisma/ソケット接続系エラー %s を true と判定する', (code) => {
     expect(isDatabaseUnavailableError(knownError(code, 'db error'))).toBe(true);
   });
@@ -195,6 +197,20 @@ describe('apiErrorUtils（#428）', () => {
     ['pg-pool プール枯渇（生の Error）', new Error('timeout exceeded when trying to connect')],
     ['pg 途中切断（生の Error）', new Error('Connection terminated unexpectedly')],
     ['pg 明示終了時の切断（生の Error）', new Error('Connection terminated')],
+    [
+      'SQLSTATE 57P02 (P2039 / crash_shutdown)',
+      knownError('P2039', 'Database error. Code: `57P02`. Message: `crash`'),
+    ],
+    [
+      'SQLSTATE 53400 (P2039 / configuration_limit_exceeded)',
+      knownError('P2039', 'Database error. Code: `53400`. Message: `limit`'),
+    ],
+    [
+      'P2039 で SQLSTATE が meta の cause.originalCode にだけある',
+      knownError('P2039', 'Database error', {
+        driverAdapterError: { cause: { originalCode: '57P01' } },
+      }),
+    ],
   ])('実測の DB 障害形状を 503 / DB_ERROR として捕捉する: %s', (_label, err) => {
     expect(isDatabaseUnavailableError(err)).toBe(true);
 
@@ -236,6 +252,7 @@ describe('apiErrorUtils（#428）', () => {
     });
     const plainErr = new Error('bug');
     const partialPgLikeErr = new Error('unexpected error: Connection terminated unexpectedly');
+    const subclassErr = new TypeError('Connection terminated');
 
     for (const err of [
       uniqueErr,
@@ -247,6 +264,7 @@ describe('apiErrorUtils（#428）', () => {
       validationErr,
       plainErr,
       partialPgLikeErr,
+      subclassErr,
     ]) {
       expect(isDatabaseUnavailableError(err)).toBe(false);
       expect(createDatabaseErrorResponse(err)).toBeNull();

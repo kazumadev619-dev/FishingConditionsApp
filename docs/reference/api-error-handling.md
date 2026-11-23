@@ -234,7 +234,7 @@ const RETRYABLE_STATUS_CODES = [
 ## エラー表示とログのヘルパー（`src/lib/apiErrorUtils.ts`）
 
 - `getErrorMessage(error: ApiError): string`: `ApiErrorType` から、利用者向けの日本語のメッセージを返す。
-- `logApiError(error: ApiError, context?)`: `{ type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp, ...context }` を、メッセージ `API request failed` で `logger.error` に出す。
+- `logApiError(error: ApiError, context?)`: `{ ...context, type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp }` を、メッセージ `API request failed` で `logger.error` に出す。`type`・`errorType`・`statusCode`・`message`・`retryable`・`timestamp` は context で上書きできない（固定フィールドが後に来る）。
 - `createApiErrorResponse(error: ApiError, context?, extraFields?)`: `logApiError` で記録したうえで、タイムアウト（`TIMEOUT`）は HTTP 504、それ以外（4xx・429 を含む）は HTTP 502 で固定文言を返す。
 - `createDatabaseErrorResponse(error, context?)`: Prisma の接続・到達不能・認証・初期化失敗（`P1000`・`P1001`・`P1002`・`P1003`・`P1008`・`P1010`・`P1011`・`P1017`・`P2024`・`P2037`、`ECONNREFUSED` 等のソケットコード、`P2039` のうち `57P01`/`57P02`/`57P03`/`53300`/`53400`、`PrismaClientInitializationError`、および `pg`/`pg-pool` の接続タイムアウト・プール枯渇・切断メッセージ）を判定して `{ type: 'DB_ERROR', code, err, ...context }` を `logger.error` に出し、HTTP 503 の固定文言を返す。該当しない例外は `null` を返し、呼び出し元で 500（想定外）として扱う。
 

@@ -122,17 +122,10 @@ export function logApiError(error: ApiError, context?: Record<string, unknown>):
 }
 
 /**
- * ApiError の種別に応じた利用者向け HTTP ステータスを返す。
- * 上流の 4xx（API キーの設定誤りや上流のレート制限など）も利用者には 502 を返し、
- * タイムアウトは 504 を返す（docs/reference/api-error-handling.md）。
- */
-export function getApiErrorHttpStatus(error: ApiError): 502 | 504 {
-  return error.type === ApiErrorType.TIMEOUT ? 504 : 502;
-}
-
-/**
  * 上流 API 障害（ApiError）を構造化ログに記録し、固定文言の HTTP 応答を生成する。
  * 上流の応答本文（error.message）はログにのみ残し、レスポンスには含めない。
+ * 上流の 4xx（API キーの設定誤りや上流のレート制限など）も利用者には 502、タイムアウトは 504
+ * を返す（docs/reference/api-error-handling.md）。
  */
 export function createApiErrorResponse(
   error: ApiError,
@@ -148,7 +141,7 @@ export function createApiErrorResponse(
       code: error.type,
       retryable: error.retryable,
     },
-    { status: getApiErrorHttpStatus(error) },
+    { status: error.type === ApiErrorType.TIMEOUT ? 504 : 502 },
   );
 }
 
