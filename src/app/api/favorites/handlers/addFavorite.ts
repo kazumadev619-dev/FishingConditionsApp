@@ -1,6 +1,7 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/auth';
 import { Prisma } from '@/generated/prisma/client';
+import { createDatabaseErrorResponse, isDatabaseUnavailableError } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { CONSTRAINTS, isViolationOf } from '@/lib/prismaConstraints';
@@ -43,6 +44,9 @@ function toKnownErrorResponse(error: unknown, locationId: string): AddFavoriteRe
     }
 
     default:
+      if (isDatabaseUnavailableError(error)) {
+        return null;
+      }
       logger.error({ code: error.code }, 'Unhandled Prisma error code');
       return null;
   }
@@ -91,6 +95,12 @@ export async function POST(request: NextRequest): Promise<AddFavoriteResponse> {
 
     return NextResponse.json({ success: true, locationId: result.locationId });
   } catch (error) {
+    const dbResponse = createDatabaseErrorResponse(error, {
+      endpoint: '/api/favorites',
+      method: 'POST',
+    });
+    if (dbResponse) return dbResponse;
+
     logger.error({ error }, 'Failed to add favorite');
     return NextResponse.json({ error: 'Failed to add favorite' }, { status: 500 });
   }

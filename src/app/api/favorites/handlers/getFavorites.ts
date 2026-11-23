@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { auth } from '@/auth';
+import { createDatabaseErrorResponse } from '@/lib/apiErrorUtils';
 import { logger } from '@/lib/logger';
 import prisma from '@/lib/prisma';
 import { isValidUUID } from '@/lib/validators';
@@ -37,6 +38,12 @@ export async function GET(): Promise<NextResponse<FavoritesResponse | { error: s
       count: favoriteLocations.length,
     });
   } catch (error) {
+    const dbResponse = createDatabaseErrorResponse(error, {
+      endpoint: '/api/favorites',
+      method: 'GET',
+    });
+    if (dbResponse) return dbResponse;
+
     logger.error({ error }, 'Failed to fetch favorites');
     return NextResponse.json({ error: 'Failed to fetch favorites' }, { status: 500 });
   }

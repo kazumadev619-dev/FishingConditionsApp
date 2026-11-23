@@ -1,4 +1,6 @@
 import { type NextRequest, NextResponse } from 'next/server';
+import { ApiError } from '@/lib/api/types';
+import { createApiErrorResponse } from '@/lib/apiErrorUtils';
 import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
@@ -13,6 +15,7 @@ export const GET = withServerTiming('locations-search', (request: NextRequest) =
 async function handleGet(request: NextRequest) {
   try {
     if (!isLocationSearchConfigured()) {
+      logger.error('GOOGLE_MAPS_API_KEY is not configured');
       return createErrorResponse(
         'Location search is not configured. Please set GOOGLE_MAPS_API_KEY.',
         503,
@@ -71,6 +74,9 @@ async function handleGet(request: NextRequest) {
       },
     );
   } catch (error) {
+    if (error instanceof ApiError) {
+      return createApiErrorResponse(error, { endpoint: '/api/locations/search' });
+    }
     logger.error({ err: error }, 'Location search API error');
     return createErrorResponse('Failed to search locations', 500);
   }

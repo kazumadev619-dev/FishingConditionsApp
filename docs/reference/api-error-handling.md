@@ -1,8 +1,8 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/dashboard/error.tsx`
-> - **最終確認**: 2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`
+> - **最終確認**: 2026-11-23（#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -234,9 +234,12 @@ const RETRYABLE_STATUS_CODES = [
 ## エラー表示とログのヘルパー（`src/lib/apiErrorUtils.ts`）
 
 - `getErrorMessage(error: ApiError): string`: `ApiErrorType` から、利用者向けの日本語のメッセージを返す。
-- `logApiError(error: ApiError, context?)`: `{ type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp, ...context }` を、メッセージ `API request failed` で `logger.error` に出す。
+- `logApiError(error: ApiError, context?)`: `{ ...context, type: 'API_ERROR', errorType, statusCode, message, retryable, timestamp }` を、メッセージ `API request failed` で `logger.error` に出す。`type`・`errorType`・`statusCode`・`message`・`retryable`・`timestamp` は context で上書きできない（固定フィールドが後に来る）。
+- `createApiErrorResponse(error: ApiError, context?, extraFields?)`: `logApiError` で記録したうえで、タイムアウト（`TIMEOUT`）は HTTP 504、それ以外（4xx・429 を含む）は HTTP 502 で固定文言を返す。
+- `createDatabaseErrorResponse(error, context?)`: Prisma の接続・到達不能・認証・初期化失敗（`P1000`・`P1001`・`P1002`・`P1003`・`P1008`・`P1010`・`P1011`・`P1017`・`P2024`・`P2037`、`ECONNREFUSED` 等のソケットコード、`P2039`（例外、下記）、`PrismaClientInitializationError`、および `pg`/`pg-pool` の接続タイムアウト・プール枯渇・切断メッセージ）を判定して `{ type: 'DB_ERROR', code, err, ...context }` を `logger.error` に出し、HTTP 503 の固定文言を返す。該当しない例外は `null` を返し、呼び出し元で 500（想定外）として扱う。
+  - `P2039` の例外: `P2039` は DB 停止もクエリの誤りも同じコードで返るため、ここだけ `error.code` で判定できない（#428 に記録済み）。`error.meta.driverAdapterError.cause.originalCode`（SQLSTATE）だけを読み、`08` で始まるもの、`57P01`〜`57P03`、`53` で始まるものは 503、それ以外（`42601` など）は 500 にする。`error.message` は解析しない。meta が読めないときは 500 に倒す。
 
-`/api/weather` の Route Handler が `getErrorMessage` と `logApiError` を使っている。
+上流 API を呼ぶルート（`/api/weather`、`/api/scores`、`/api/conditions/tide`、`/api/locations/search`）が `createApiErrorResponse` を、DB を使うルート（`/api/ports`、`/api/favorites`）が `createDatabaseErrorResponse` を使っている。
 
 ## 上流の応答が不正なとき
 
@@ -245,7 +248,7 @@ OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧
 | 入口 | 利用者に出るもの |
 |---|---|
 | `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
-| `/api/scores` | HTTP 500。`error` は「Failed to calculate fishing score」。上流の障害を 502 にする決まりとは合っていない（#428） |
+| `/api/scores` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
 | `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
 
@@ -255,7 +258,7 @@ OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧
 
 アプリで起きるエラーを3つに分け、分けごとに HTTP ステータス、利用者への表示、ログのレベル、リトライ、通知の扱いを決める。分ける目的は、人が気づくべきエラーだけを通知の対象にし、通知を増やしすぎないことにある。
 
-API ルートごとの現状は、ここに書かない（コードが変わるたびに食い違うため）。決まりと合っていないルートは issue で追う（上流の障害と DB 障害は #428、未ログインの画面の例外は #429）。
+API ルートごとの現状は、ここに書かない（コードが変わるたびに食い違うため）。決まりと合っていないルートは issue で追う（未ログインの画面の例外は #429）。
 
 | | 正常なエラー | 異常なエラー | 想定外のエラー |
 |---|---|---|---|
