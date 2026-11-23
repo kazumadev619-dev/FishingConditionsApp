@@ -360,13 +360,13 @@ erDiagram
 ```
 1. ユーザーが釣り場Aを選択
    ↓
-2. 天気データ取得
+2. 天気データ取得（3 と並べて呼ぶ）
    - locations(A).latitude, longitude取得
    - Redisキャッシュ確認: [weather:…] で30分以内のデータ？
    - 有効 → 返す
    - 期限切れ → OpenWeatherMap API呼び出し → Redisにキャッシュ保存
    ↓
-3. 潮汐データ取得
+3. 潮汐データ取得（2 と並べて呼ぶ）
    - locations(A).port_id取得
    - ports(port_id).port_code, prefecture_code取得
    - Redisキャッシュ確認: [tide:…] で6時間以内のデータ？
@@ -379,6 +379,8 @@ erDiagram
 5. UI表示
    - スコア、天気、潮汐情報をダッシュボードに表示
 ```
+
+2 と 3 は互いに依存しないので、`/api/scores` は並べて呼ぶ。失敗したときの扱いは [api-error-handling.md の「`/api/scores` の上流の呼び出し」](./api-error-handling.md#apiscores-の上流の呼び出し)。
 
 ---
 
