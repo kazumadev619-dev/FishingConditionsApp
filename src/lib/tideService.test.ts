@@ -56,23 +56,65 @@ beforeEach(() => {
 // 根拠: docs/reference/api-error-handling.md「エラーの分類と扱い」および #428
 // tide736 が status !== 1 を返した場合は上流障害（ApiError）として扱い、キャッシュに保存しない
 describe('getTideData のエラー分類（#428）', () => {
-  it('tide736 が status !== 1 を返したら ApiError(502, SERVER_ERROR) を投げ、キャッシュしない', async () => {
+  it.each([
+    ['0', 0],
+    ['2', 2],
+    ['-1', -1],
+    ["'1'（文字列）", '1'],
+    ['undefined', undefined],
+  ])(
+    'tide736 が status=%s（!== 1）を返したら ApiError(502, SERVER_ERROR) を投げ、キャッシュしない',
+    async (_label, status) => {
+      apiMock.tide736Client.get.mockResolvedValue({
+        status,
+        message: 'secret upstream failure',
+      });
+
+      const error = await getTideData('13', '1', '2026-10-12').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        type: ApiErrorType.SERVER_ERROR,
+        statusCode: 502,
+        retryable: true,
+        message: 'tide736 API Error: secret upstream failure',
+      });
+      // 仕様（失敗応答をキャッシュしない）の確認のため呼び出し不在を検証（testing-policy 5節）
+      expect(cacheMock.set).not.toHaveBeenCalled();
+    },
+  );
+
+  it('skipCache: true でも status !== 1 なら ApiError(502) を投げ、キャッシュしない', async () => {
     apiMock.tide736Client.get.mockResolvedValue({
       status: 0,
       message: 'secret upstream failure',
     });
 
-    const error = await getTideData('13', '1', '2026-10-12').catch((e: unknown) => e);
+    const error = await getTideData('13', '1', '2026-10-12', { skipCache: true }).catch(
+      (e: unknown) => e,
+    );
 
     expect(error).toBeInstanceOf(ApiError);
     expect(error).toMatchObject({
       type: ApiErrorType.SERVER_ERROR,
       statusCode: 502,
       retryable: true,
-      message: 'tide736 API Error: secret upstream failure',
     });
-    // 仕様（失敗応答をキャッシュしない）の確認のため呼び出し不在を検証（testing-policy 5節）
     expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
+  it('キャッシュミスで status !== 1 失敗直後でも、次の status === 1 は正常取得してキャッシュ保存する', async () => {
+    apiMock.tide736Client.get
+      .mockResolvedValueOnce({ status: 0, message: 'temporary failure' })
+      .mockResolvedValueOnce(validTideResponse);
+
+    await expect(getTideData('13', '1', '2026-10-12')).rejects.toBeInstanceOf(ApiError);
+    expect(cacheMock.set).not.toHaveBeenCalled();
+
+    const result = await getTideData('13', '1', '2026-10-12');
+
+    expect(result.data.port.port_name).toBe('東京');
+    expect(cacheMock.set).toHaveBeenCalledOnce();
   });
 
   it('tide736Client が投げた ApiError をそのまま伝播し、キャッシュしない', async () => {

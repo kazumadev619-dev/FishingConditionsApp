@@ -3,9 +3,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@/generated/prisma/client';
 import { createApiError } from '@/lib/api/errorHandler';
 import { ApiError, ApiErrorType } from '@/lib/api/types';
-import { searchLocations } from '@/lib/locationService';
+import { isLocationSearchConfigured, searchLocations } from '@/lib/locationService';
 import { logger } from '@/lib/logger';
-import { getCurrentWeather } from '@/lib/openWeatherService';
+import { getCurrentWeather, getForecast, isWeatherApiConfigured } from '@/lib/openWeatherService';
 import prisma from '@/lib/prisma';
 import { getTideData } from '@/lib/tideService';
 import { GET as tide } from './conditions/tide/route';
@@ -33,11 +33,11 @@ vi.mock('@/lib/rateLimit', () => ({
   withUserRateLimit: (_name: string, handler: () => unknown) => handler(),
 }));
 vi.mock('@/lib/locationService', () => ({
-  isLocationSearchConfigured: () => true,
+  isLocationSearchConfigured: vi.fn(() => true),
   searchLocations: vi.fn(),
 }));
 vi.mock('@/lib/openWeatherService', () => ({
-  isWeatherApiConfigured: () => true,
+  isWeatherApiConfigured: vi.fn(() => true),
   getCurrentWeather: vi.fn(),
   getForecast: vi.fn(),
 }));
@@ -139,27 +139,40 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
   // 異常なエラー（上流の 4xx・429・5xx・通信断は 502、タイムアウトは 504）を
   // 想定外のエラー（500）と区別し、上流の応答本文はレスポンスに含めない。
   describe('上流 API 障害の分類（#428）', () => {
-    const upstreamCases = [
+    const upstreamCases: ReadonlyArray<
+      readonly [string, ApiError, 502 | 504, string, boolean, ApiErrorType]
+    > = [
       [
         'SERVER_ERROR',
         createApiError(503, SECRET),
         502,
         'サーバーで問題が発生しました。サポートに連絡してください。',
         true,
+        ApiErrorType.SERVER_ERROR,
       ],
       [
-        'CLIENT_ERROR',
+        'SERVER_ERROR (upstream 504)',
+        createApiError(504, SECRET),
+        502,
+        'サーバーで問題が発生しました。サポートに連絡してください。',
+        true,
+        ApiErrorType.SERVER_ERROR,
+      ],
+      [
+        'CLIENT_ERROR (401)',
         createApiError(401, SECRET),
         502,
         'リクエストが無効です。入力内容を確認してください。',
         false,
+        ApiErrorType.CLIENT_ERROR,
       ],
       [
-        'CLIENT_ERROR',
+        'CLIENT_ERROR (422)',
         createApiError(422, SECRET),
         502,
         'リクエストが無効です。入力内容を確認してください。',
         false,
+        ApiErrorType.CLIENT_ERROR,
       ],
       [
         'RATE_LIMITED',
@@ -167,6 +180,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         502,
         'API の使用制限に達しました。数分後にお試しください。',
         false,
+        ApiErrorType.RATE_LIMITED,
       ],
       [
         'TIMEOUT',
@@ -174,6 +188,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         504,
         '通信がタイムアウトしました。インターネット接続を確認して、もう一度お試しください。',
         true,
+        ApiErrorType.TIMEOUT,
       ],
       [
         'NETWORK_ERROR',
@@ -181,14 +196,21 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         502,
         'ネットワーク接続を確認してください。',
         true,
+        ApiErrorType.NETWORK_ERROR,
       ],
-    ] as const;
+    ];
 
     const upstreamRoutes = [
       [
         'weather',
         () => vi.mocked(getCurrentWeather),
         () => weather(request('/api/weather?lat=35.6&lon=139.7')),
+        true,
+      ],
+      [
+        'weather (forecast)',
+        () => vi.mocked(getForecast),
+        () => weather(request('/api/weather?lat=35.6&lon=139.7&type=forecast')),
         true,
       ],
       ['scores', () => vi.mocked(getCurrentWeather), () => scores(request(scoresUrl)), false],
@@ -209,7 +231,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
     describe.each(upstreamRoutes)('%s', (_routeName, dependency, call, hasSuccessField) => {
       it.each(upstreamCases)(
         '%s は HTTP %i と固定文言を返し、API_ERROR として記録する',
-        async (code, thrown, status, error, retryable) => {
+        async (_label, thrown, status, error, retryable, code) => {
           dependency().mockRejectedValue(thrown as never);
 
           const response = await call();
@@ -230,6 +252,43 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
           );
         },
       );
+    });
+
+    it('weather (forecast) は weatherType: forecast を付けて API_ERROR を記録し、想定外は 500 を返す', async () => {
+      vi.mocked(getForecast).mockRejectedValueOnce(createApiError(502, SECRET));
+
+      const apiErrRes = await weather(request('/api/weather?lat=35.6&lon=139.7&type=forecast'));
+      expect(apiErrRes.status).toBe(502);
+      expect(logger.error).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: 'API_ERROR',
+          weatherType: 'forecast',
+          endpoint: '/api/weather',
+        }),
+        'API request failed',
+      );
+
+      vi.clearAllMocks();
+      const thrown = new Error(SECRET);
+      vi.mocked(getForecast).mockRejectedValueOnce(thrown);
+
+      const unexpectedRes = await weather(request('/api/weather?lat=35.6&lon=139.7&type=forecast'));
+      expect(unexpectedRes.status).toBe(500);
+      expect(loggedErrors()).toContain(thrown);
+      expect(loggedMetaTypes()).not.toContain('API_ERROR');
+    });
+
+    it('API キー未設定（weather / locations/search）は 503 を返し、warn ではなく error ログを出す', async () => {
+      vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
+      const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
+      expect(weatherRes.status).toBe(503);
+      expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
+
+      vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
+      const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
+      expect(locationRes.status).toBe(503);
+      expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
+      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('weather の自前の ApiError でない例外は 500 の固定文言で返す', async () => {
@@ -345,6 +404,24 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         expectNotInHeaders(response);
         expect(logger.error).toHaveBeenCalledWith(
           expect.objectContaining({ type: 'DB_ERROR', code: 'P1001', err: thrown }),
+          'Database request failed',
+        );
+      });
+
+      it('errorCode の無い PrismaClientInitializationError でも 503 と DB_ERROR を返す', async () => {
+        const thrown = new Prisma.PrismaClientInitializationError(SECRET, '7.10.1');
+        dependency().mockRejectedValue(thrown as never);
+
+        const response = await call();
+
+        expect(response.status).toBe(503);
+        await expect(response.json()).resolves.toEqual({
+          error: '一時的に利用できません。時間をおいて再度お試しください。',
+          code: 'DB_UNAVAILABLE',
+        });
+        expectNotInHeaders(response);
+        expect(logger.error).toHaveBeenCalledWith(
+          expect.objectContaining({ type: 'DB_ERROR', err: thrown }),
           'Database request failed',
         );
       });

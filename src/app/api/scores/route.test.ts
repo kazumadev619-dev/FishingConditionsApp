@@ -261,7 +261,7 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
   });
 
   // 根拠: docs/reference/api-error-handling.md「エラーの分類と扱い」（#428）
-  it('天気または潮汐が ApiError を投げたら 502/504 と API_ERROR ログを返し、上流本文は出さない', async () => {
+  it('天気または潮汐が ApiError を投げたら 502/504 と API_ERROR ログを返し、キャッシュに保存せず上流本文は出さない', async () => {
     tideMock.mockRejectedValue(createApiError(502, 'secret tide error body'));
 
     const res = await GET(request());
@@ -272,6 +272,7 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
       code: ApiErrorType.SERVER_ERROR,
       retryable: true,
     });
+    expect(cacheMock.set).not.toHaveBeenCalled();
     expect(loggerMock.error).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'API_ERROR',
@@ -283,7 +284,7 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
     );
   });
 
-  it('上流タイムアウト（TIMEOUT）は 504 を返す', async () => {
+  it('上流タイムアウト（TIMEOUT）は 504 を返し、キャッシュに保存しない', async () => {
     weatherMock.mockRejectedValue(
       new ApiError('Request timeout after 10000ms', ApiErrorType.TIMEOUT, undefined, true),
     );
@@ -296,5 +297,37 @@ describe('GET /api/scores の上流の呼び出し（#432）', () => {
       code: ApiErrorType.TIMEOUT,
       retryable: true,
     });
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
+  it('天気が想定外エラーで潮汐が ApiError なら 500 を優先する（天気優先の直列互換、#432）', async () => {
+    const weatherError = new Error('weather bug');
+    weatherMock.mockRejectedValue(weatherError);
+    tideMock.mockRejectedValue(createApiError(503, 'tide unavailable'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(500);
+    expect(loggerMock.error).toHaveBeenCalledWith({ err: weatherError }, 'Scores API error');
+    expect(cacheMock.set).not.toHaveBeenCalled();
+  });
+
+  it('天気が ApiError で潮汐が想定外エラーなら 502 と API_ERROR を優先する（天気優先の直列互換、#432）', async () => {
+    weatherMock.mockRejectedValue(createApiError(503, 'weather unavailable'));
+    tideMock.mockRejectedValue(new Error('tide bug'));
+
+    const res = await GET(request());
+
+    expect(res.status).toBe(502);
+    expect(loggerMock.error).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: 'API_ERROR',
+        errorType: ApiErrorType.SERVER_ERROR,
+        message: 'weather unavailable',
+        endpoint: '/api/scores',
+      }),
+      'API request failed',
+    );
+    expect(cacheMock.set).not.toHaveBeenCalled();
   });
 });
