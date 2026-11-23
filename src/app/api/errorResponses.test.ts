@@ -140,60 +140,60 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
   // 想定外のエラー（500）と区別し、上流の応答本文はレスポンスに含めない。
   describe('上流 API 障害の分類（#428）', () => {
     const upstreamCases: ReadonlyArray<
-      readonly [string, ApiError, 502 | 504, string, boolean, ApiErrorType]
+      readonly [string, 502 | 504, ApiError, string, boolean, ApiErrorType]
     > = [
       [
         'SERVER_ERROR',
-        createApiError(503, SECRET),
         502,
+        createApiError(503, SECRET),
         'サーバーで問題が発生しました。サポートに連絡してください。',
         true,
         ApiErrorType.SERVER_ERROR,
       ],
       [
         'SERVER_ERROR (upstream 504)',
-        createApiError(504, SECRET),
         502,
+        createApiError(504, SECRET),
         'サーバーで問題が発生しました。サポートに連絡してください。',
         true,
         ApiErrorType.SERVER_ERROR,
       ],
       [
         'CLIENT_ERROR (401)',
-        createApiError(401, SECRET),
         502,
+        createApiError(401, SECRET),
         'リクエストが無効です。入力内容を確認してください。',
         false,
         ApiErrorType.CLIENT_ERROR,
       ],
       [
         'CLIENT_ERROR (422)',
-        createApiError(422, SECRET),
         502,
+        createApiError(422, SECRET),
         'リクエストが無効です。入力内容を確認してください。',
         false,
         ApiErrorType.CLIENT_ERROR,
       ],
       [
         'RATE_LIMITED',
-        createApiError(429, SECRET),
         502,
+        createApiError(429, SECRET),
         'API の使用制限に達しました。数分後にお試しください。',
         false,
         ApiErrorType.RATE_LIMITED,
       ],
       [
         'TIMEOUT',
-        new ApiError(SECRET, ApiErrorType.TIMEOUT, undefined, true),
         504,
+        new ApiError(SECRET, ApiErrorType.TIMEOUT, undefined, true),
         '通信がタイムアウトしました。インターネット接続を確認して、もう一度お試しください。',
         true,
         ApiErrorType.TIMEOUT,
       ],
       [
         'NETWORK_ERROR',
-        new ApiError(SECRET, ApiErrorType.NETWORK_ERROR, undefined, true),
         502,
+        new ApiError(SECRET, ApiErrorType.NETWORK_ERROR, undefined, true),
         'ネットワーク接続を確認してください。',
         true,
         ApiErrorType.NETWORK_ERROR,
@@ -231,7 +231,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
     describe.each(upstreamRoutes)('%s', (_routeName, dependency, call, hasSuccessField) => {
       it.each(upstreamCases)(
         '%s は HTTP %i と固定文言を返し、API_ERROR として記録する',
-        async (_label, thrown, status, error, retryable, code) => {
+        async (_label, status, thrown, error, retryable, code) => {
           dependency().mockRejectedValue(thrown as never);
 
           const response = await call();
@@ -278,15 +278,24 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
       expect(loggedMetaTypes()).not.toContain('API_ERROR');
     });
 
-    it('API キー未設定（weather / locations/search）は 503 を返し、warn ではなく error ログを出す', async () => {
+    it('API キー未設定（weather / locations/search）は 503 と固定文言を返し、warn ではなく error ログを出す', async () => {
       vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
       const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
       expect(weatherRes.status).toBe(503);
+      await expect(weatherRes.json()).resolves.toEqual({
+        error: 'Weather API is not configured',
+        code: 'API_NOT_CONFIGURED',
+        status: 503,
+      });
       expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
 
       vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
       const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
       expect(locationRes.status).toBe(503);
+      await expect(locationRes.json()).resolves.toEqual({
+        error: 'Location search is not configured. Please set GOOGLE_MAPS_API_KEY.',
+        status: 503,
+      });
       expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
       expect(logger.warn).not.toHaveBeenCalled();
     });
@@ -436,6 +445,106 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         await expect(response.json()).resolves.toEqual({ error: unexpectedMessage });
         expectNotInHeaders(response);
         expect(loggedMetaTypes()).not.toContain('DB_ERROR');
+      });
+
+      it('実物の @prisma/adapter-pg / pg 接続障害（ECONNREFUSED・pg タイムアウト・P2039 57P01）も 503 と DB_ERROR になり、P2039 42601（構文エラー）は 500 になる', async () => {
+        for (const dbErr of [
+          knownDbError('ECONNREFUSED'),
+          new Error('Connection terminated due to connection timeout'),
+          new Prisma.PrismaClientKnownRequestError(
+            'Database error. Code: `57P01`. Message: `terminating connection`',
+            { code: 'P2039', clientVersion: '7.10.1' },
+          ),
+        ]) {
+          vi.clearAllMocks();
+          dependency().mockRejectedValue(dbErr as never);
+
+          const res = await call();
+
+          expect(res.status).toBe(503);
+          expect(logger.error).toHaveBeenCalledWith(
+            expect.objectContaining({ type: 'DB_ERROR', err: dbErr }),
+            'Database request failed',
+          );
+        }
+
+        vi.clearAllMocks();
+        const syntaxErr = new Prisma.PrismaClientKnownRequestError(
+          'Database error. Code: `42601`. Message: `syntax error`',
+          { code: 'P2039', clientVersion: '7.10.1' },
+        );
+        dependency().mockRejectedValue(syntaxErr as never);
+
+        const unexpectedRes = await call();
+        expect(unexpectedRes.status).toBe(500);
+        expect(loggedMetaTypes()).not.toContain('DB_ERROR');
+      });
+    });
+
+    // addFavorite.ts の既存既知エラー分岐（P2002 / P2003）が DB 障害判定追加で壊れていないこと
+    describe('favorites POST の既知制約エラー（P2002 / P2003）は従来どおり 409 / 401 / 404 を返す', () => {
+      it('P2002（重複登録）は 409 と locationId を返し、warn ログを残す', async () => {
+        vi.mocked(prisma.user_favorites.create).mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError(
+            'Unique constraint failed on the constraint: `user_favorites_user_id_location_id_key`',
+            { code: 'P2002', clientVersion: '7.10.1' },
+          ),
+        );
+
+        const response = await addFavorite(
+          request('/api/favorites', {
+            method: 'POST',
+            body: JSON.stringify({ locationId: userId }),
+          }),
+        );
+
+        expect(response.status).toBe(409);
+        await expect(response.json()).resolves.toEqual({
+          error: 'Already added to favorites',
+          locationId: userId,
+        });
+        expect(logger.warn).toHaveBeenCalledWith(
+          { locationId: userId },
+          'POST favorites: already in favorites',
+        );
+      });
+
+      it('P2003（user_favorites_user_id_fkey 違反）は 401 を返す', async () => {
+        vi.mocked(prisma.user_favorites.create).mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError(
+            'Foreign key constraint violated on the constraint: `user_favorites_user_id_fkey`',
+            { code: 'P2003', clientVersion: '7.10.1' },
+          ),
+        );
+
+        const response = await addFavorite(
+          request('/api/favorites', {
+            method: 'POST',
+            body: JSON.stringify({ locationId: userId }),
+          }),
+        );
+
+        expect(response.status).toBe(401);
+        await expect(response.json()).resolves.toEqual({ error: 'User not found' });
+      });
+
+      it('P2003（location_id 外部キー違反）は 404 を返す', async () => {
+        vi.mocked(prisma.user_favorites.create).mockRejectedValue(
+          new Prisma.PrismaClientKnownRequestError(
+            'Foreign key constraint violated on the constraint: `user_favorites_location_id_fkey`',
+            { code: 'P2003', clientVersion: '7.10.1' },
+          ),
+        );
+
+        const response = await addFavorite(
+          request('/api/favorites', {
+            method: 'POST',
+            body: JSON.stringify({ locationId: userId }),
+          }),
+        );
+
+        expect(response.status).toBe(404);
+        await expect(response.json()).resolves.toEqual({ error: 'Location not found' });
       });
     });
   });
