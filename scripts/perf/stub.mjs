@@ -11,6 +11,9 @@ let delayMs = 0;
 const calls = { openweather: 0, tide736: 0, geocode: 0, resend: 0 };
 // E2E 用: Resend に送られたメールの本文を記録する（/__mails）。perf では使わない
 const mails = [];
+// E2E 用: 特定の港（0,24: 千島列島・伽藍埼）だけ潮汐の上流 503 を返し、他テストや perf と干渉しない（#439）
+const FAILING_TIDE_PORT = { pc: '0', hc: '24' };
+const UPSTREAM_ERROR_MARKER = 'STUB_UPSTREAM_ERROR_BODY_DO_NOT_LEAK';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const pad = (n) => String(n).padStart(2, '0');
@@ -144,6 +147,15 @@ createServer((req, res) => {
     body = weatherResponse(url.searchParams);
   } else if (url.pathname === '/tide736.net/api/get_tide.php') {
     calls.tide736++;
+    if (
+      url.searchParams.get('pc') === FAILING_TIDE_PORT.pc &&
+      url.searchParams.get('hc') === FAILING_TIDE_PORT.hc
+    ) {
+      return setTimeout(() => {
+        res.writeHead(503, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ message: UPSTREAM_ERROR_MARKER }));
+      }, delayMs);
+    }
     body = tideResponse(url.searchParams);
   } else if (url.pathname === '/maps.googleapis.com/maps/api/geocode/json') {
     calls.geocode++;

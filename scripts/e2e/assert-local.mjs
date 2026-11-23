@@ -5,6 +5,9 @@ import console from 'node:console';
 import process from 'node:process';
 import { pathToFileURL, URL } from 'node:url';
 
+/**
+ * @param {...string} urls
+ */
 export function assertLocal(...urls) {
   for (const u of urls) {
     let url;

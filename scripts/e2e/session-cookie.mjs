@@ -14,14 +14,14 @@ export const COOKIE_NAME = 'authjs.session-token';
 
 /**
  * テスト用のセッション Cookie（JWT）を生成する。
- * @param {'verified' | 'unverified'} [which='verified']
+ * @param {'verified' | 'unverified' | { id: string; email: string }} [which='verified']
  * @param {string} [secret=E2E_AUTH_SECRET]
  * @returns {Promise<{ name: string; value: string }>}
  */
 export async function sessionCookie(which = 'verified', secret = E2E_AUTH_SECRET) {
-  const u = E2E_USERS[which];
+  const u = typeof which === 'string' ? E2E_USERS[which] : which;
   if (!u?.id || !u.email) {
-    throw new Error(`知らない E2E ユーザー: ${which}`);
+    throw new Error(`知らない E2E ユーザー: ${String(which)}`);
   }
   const value = await encode({
     token: { id: u.id, email: u.email, sub: u.id },
