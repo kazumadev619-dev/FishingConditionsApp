@@ -62,6 +62,7 @@ describe('isUserRateLimited', () => {
     ['user.id が数値 0', { user: { id: 0 } }],
     ['user.id がオブジェクト', { user: { id: { bad: true } } }],
     ['user.id が配列', { user: { id: ['user-1'] } }],
+    ['user.id が真偽値 true', { user: { id: true } }],
   ])('無効セッション（%s）なら数えられないので遮断する（#472）', async (_label, session) => {
     vi.mocked(auth).mockResolvedValue(session as never);
 
@@ -83,6 +84,7 @@ describe('withUserRateLimit', () => {
     ['user.id が数値 0', { user: { id: 0 } }],
     ['user.id がオブジェクト', { user: { id: { bad: true } } }],
     ['user.id が配列', { user: { id: ['user-1'] } }],
+    ['user.id が真偽値 true', { user: { id: true } }],
   ])(
     '無効セッション（%s）なら 401 を返し、回数確認・ハンドラ・warn ログを呼ばない',
     async (_label, session) => {
