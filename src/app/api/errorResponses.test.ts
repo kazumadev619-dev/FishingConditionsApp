@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { auth } from '@/auth';
 import { Prisma } from '@/generated/prisma/client';
 import { createApiError } from '@/lib/api/errorHandler';
 import { ApiError, ApiErrorType } from '@/lib/api/types';
@@ -19,7 +20,7 @@ import { GET as weather } from './weather/route';
 
 const userId = '11111111-1111-4111-8111-111111111111';
 
-vi.mock('@/auth', () => ({ auth: async () => ({ user: { id: userId } }) }));
+vi.mock('@/auth', () => ({ auth: vi.fn(async () => ({ user: { id: userId } })) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -66,7 +67,10 @@ const loggedMetaTypes = () =>
 const expectNotInHeaders = (response: Response) =>
   expect([...response.headers.values()].join('\n')).not.toContain(SECRET);
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(auth).mockResolvedValue({ user: { id: userId } } as never);
+});
 
 describe('失敗の応答に例外の message を入れない（#313）', () => {
   it.each([
@@ -79,6 +83,12 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
     [
       'favorites GET',
       () => vi.mocked(prisma.user_favorites.findMany),
+      () => getFavorites(),
+      { error: 'Failed to fetch favorites' },
+    ],
+    [
+      'favorites GET (auth 例外)',
+      () => vi.mocked(auth),
       () => getFavorites(),
       { error: 'Failed to fetch favorites' },
     ],

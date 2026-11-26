@@ -144,6 +144,86 @@ describe('GET /api/favorites は自分の行だけを返す（#466）', () => {
       count: 1,
     });
   });
+
+  it('お気に入りが 0 件のユーザーでは { favorites: [], count: 0 } を返す（#475）', async () => {
+    authMock.mockResolvedValue({ user: { id: '22222222-2222-4222-8222-222222222222' } });
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      favorites: [],
+      count: 0,
+    });
+  });
+
+  it('複数件ある場合は created_at 降順で返し、座標登録地点の region / prefecture は null で整形する（#475）', async () => {
+    const olderRow = SESSION_FAVORITE_ROW;
+    const newerCoordinateRow = {
+      id: '88888888-8888-4888-8888-888888888888',
+      user_id: SESSION_USER_ID,
+      location_id: '99999999-9999-4999-8999-999999999999',
+      created_at: new Date('2026-11-03T00:00:00.000Z'),
+      location: {
+        name: '相模湾沖ポイント',
+        latitude: 35.2,
+        longitude: 139.4,
+        region: null,
+        prefecture: null,
+      },
+    };
+
+    // 古い行が先にある状態で、orderBy.created_at が指定されたときだけ並び替える実 DB の挙動を再現する
+    prismaMock.user_favorites.findMany.mockImplementationOnce(
+      async (args?: {
+        where?: { user_id?: string };
+        orderBy?: { created_at?: 'asc' | 'desc' };
+      }) => {
+        const rows = [olderRow, newerCoordinateRow, OTHER_FAVORITE_ROW];
+        const filtered =
+          args?.where?.user_id === undefined
+            ? rows
+            : rows.filter((row) => row.user_id === args.where?.user_id);
+        const dir = args?.orderBy?.created_at;
+        if (dir === 'desc') {
+          return [...filtered].sort((a, b) => b.created_at.getTime() - a.created_at.getTime());
+        }
+        if (dir === 'asc') {
+          return [...filtered].sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+        }
+        return filtered;
+      },
+    );
+
+    const response = await GET();
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      favorites: [
+        {
+          id: '88888888-8888-4888-8888-888888888888',
+          locationId: '99999999-9999-4999-8999-999999999999',
+          name: '相模湾沖ポイント',
+          latitude: 35.2,
+          longitude: 139.4,
+          region: null,
+          prefecture: null,
+          createdAt: '2026-11-03T00:00:00.000Z',
+        },
+        {
+          id: '55555555-5555-4555-8555-555555555555',
+          locationId: LOCATION_ID,
+          name: '東京湾テスト港',
+          latitude: 35.6,
+          longitude: 139.7,
+          region: '関東',
+          prefecture: '東京都',
+          createdAt: '2026-11-01T00:00:00.000Z',
+        },
+      ],
+      count: 2,
+    });
+  });
 });
 
 describe('POST /api/favorites はセッションのユーザーで登録する（#362）', () => {
@@ -198,6 +278,7 @@ describe('セッションの id が UUID でなければ、DB に読書きせず
     const response = await GET();
 
     expect(response.status).toBe(401);
+    await expect(response.json()).resolves.toEqual({ error: 'Invalid session' });
     expect(prismaMock.user_favorites.findMany).not.toHaveBeenCalled();
   });
 
