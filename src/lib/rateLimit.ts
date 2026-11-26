@@ -29,11 +29,20 @@ export async function isRateLimited(
   return count !== null && count > limit;
 }
 
+/** セッションから取り出した user.id が、計数に使える非空文字列かどうか */
+function isValidUserId(userId: unknown): userId is string {
+  return typeof userId === 'string' && userId.trim().length > 0;
+}
+
 /** ログイン中のユーザーがこの経路の上限を超えたかどうか。ユーザーが不明なら通さない */
 export async function isUserRateLimited(routeName: string): Promise<boolean> {
   const userId = (await auth())?.user?.id;
 
-  return !userId || isRateLimited(`${routeName}:${userId}`, USER_LIMIT_PER_MINUTE, WINDOW_SECONDS);
+  if (!isValidUserId(userId)) {
+    return true;
+  }
+
+  return isRateLimited(`${routeName}:${userId}`, USER_LIMIT_PER_MINUTE, WINDOW_SECONDS);
 }
 
 /**
@@ -104,7 +113,7 @@ export async function withUserRateLimit<T extends NextResponse>(
   const session = await auth();
   const userId = session?.user?.id;
 
-  if (!userId) {
+  if (!isValidUserId(userId)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

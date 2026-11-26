@@ -50,8 +50,20 @@ describe('isUserRateLimited', () => {
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:dashboard:user-1', 60);
   });
 
-  it('id が空なら数えられないので通さない', async () => {
-    asUser('');
+  // 仕様（#472）: 空文字・空白のみ・非文字列の user.id は未認証と同じく遮断し、Redis 計数を行わない
+  it.each([
+    ['null', null],
+    ['空オブジェクト', {}],
+    ['user.id が無い', { user: {} }],
+    ['user.id が空文字', { user: { id: '' } }],
+    ['user.id が半角スペースのみ', { user: { id: '   ' } }],
+    ['user.id がタブ・改行のみ', { user: { id: '\t\n' } }],
+    ['user.id が数値', { user: { id: 123 } }],
+    ['user.id が数値 0', { user: { id: 0 } }],
+    ['user.id がオブジェクト', { user: { id: { bad: true } } }],
+    ['user.id が配列', { user: { id: ['user-1'] } }],
+  ])('無効セッション（%s）なら数えられないので遮断する（#472）', async (_label, session) => {
+    vi.mocked(auth).mockResolvedValue(session as never);
 
     await expect(isUserRateLimited('dashboard')).resolves.toBe(true);
     expect(cache.increment).not.toHaveBeenCalled();
@@ -59,11 +71,18 @@ describe('isUserRateLimited', () => {
 });
 
 describe('withUserRateLimit', () => {
+  // 仕様（#472）: 空文字・空白のみ・非文字列の user.id は未認証と同じく 401 を返し、計数・ハンドラ・warn ログを呼ばない
   it.each([
     ['null', null],
     ['空オブジェクト', {}],
     ['user.id が無い', { user: {} }],
     ['user.id が空文字', { user: { id: '' } }],
+    ['user.id が半角スペースのみ', { user: { id: '   ' } }],
+    ['user.id がタブ・改行のみ', { user: { id: '\t\n' } }],
+    ['user.id が数値', { user: { id: 123 } }],
+    ['user.id が数値 0', { user: { id: 0 } }],
+    ['user.id がオブジェクト', { user: { id: { bad: true } } }],
+    ['user.id が配列', { user: { id: ['user-1'] } }],
   ])(
     '無効セッション（%s）なら 401 を返し、回数確認・ハンドラ・warn ログを呼ばない',
     async (_label, session) => {
