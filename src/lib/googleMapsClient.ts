@@ -11,7 +11,7 @@ function createGeocodingApiError(
 
   switch (status) {
     case 'OVER_QUERY_LIMIT':
-      return new ApiError(message, ApiErrorType.RATE_LIMITED, undefined, true);
+      return new ApiError(message, ApiErrorType.RATE_LIMITED, undefined, false);
     case 'REQUEST_DENIED':
     case 'INVALID_REQUEST':
       return new ApiError(message, ApiErrorType.CLIENT_ERROR, undefined, false);

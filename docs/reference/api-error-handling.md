@@ -234,7 +234,7 @@ tide736 も、応答の `status` が 1 でなければ `createApiError(502, …)
 
 Google Maps Geocoding API は、`ZERO_RESULTS` を 0 件の正常応答（`[]`）として扱い、異常 `status` は種別ごとに `ApiError` に分類する（`src/lib/googleMapsClient.ts`、#471）。弾いた応答はキャッシュに書かない。
 
-- `OVER_QUERY_LIMIT`: `ApiErrorType.RATE_LIMITED`（`retryable: true`）
+- `OVER_QUERY_LIMIT`: `ApiErrorType.RATE_LIMITED`（`retryable: false`。429 と同じく、上流が絞っているときはリトライしない（#317））
 - `REQUEST_DENIED` / `INVALID_REQUEST`: `ApiErrorType.CLIENT_ERROR`（`retryable: false`）
 - `UNKNOWN_ERROR` 等: `ApiErrorType.SERVER_ERROR`（`retryable: true`、502）
 

@@ -73,7 +73,7 @@ describe('GET /api/locations/search の Geocoding ステータス処理 (#471)',
     [
       'OVER_QUERY_LIMIT',
       ApiErrorType.RATE_LIMITED,
-      true,
+      false,
       'API の使用制限に達しました。数分後にお試しください。',
     ],
     [

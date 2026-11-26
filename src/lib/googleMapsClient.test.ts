@@ -55,7 +55,7 @@ describe('geocode のステータス分類とログ抑制（#471）', () => {
   });
 
   it.each([
-    ['OVER_QUERY_LIMIT', ApiErrorType.RATE_LIMITED, true, undefined],
+    ['OVER_QUERY_LIMIT', ApiErrorType.RATE_LIMITED, false, undefined],
     ['REQUEST_DENIED', ApiErrorType.CLIENT_ERROR, false, undefined],
     ['INVALID_REQUEST', ApiErrorType.CLIENT_ERROR, false, undefined],
     ['UNKNOWN_ERROR', ApiErrorType.SERVER_ERROR, true, 502],
