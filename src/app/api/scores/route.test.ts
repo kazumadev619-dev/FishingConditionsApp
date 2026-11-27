@@ -6,7 +6,8 @@ const weatherMock = vi.hoisted(() => vi.fn());
 const tideMock = vi.hoisted(() => vi.fn());
 
 vi.mock('@/lib/rateLimit', () => ({
-  withUserRateLimit: (_routeName: string, handler: () => Promise<Response>) => handler(),
+  withUserRateLimit: (_routeName: string, handler: (userId: string) => Promise<Response>) =>
+    handler('user-1'),
 }));
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
 vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));

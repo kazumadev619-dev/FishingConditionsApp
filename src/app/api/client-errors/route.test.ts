@@ -73,19 +73,23 @@ describe('POST /api/client-errors（#247）', () => {
     );
   });
 
-  it('未ログインは 401 で、ログに残さない', async () => {
+  it('未ログインは 401 で、auth() 1 回かつログに残さない（#476）', async () => {
+    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する
     vi.mocked(auth).mockResolvedValue(null as never);
 
     expect((await post(valid)).status).toBe(401);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('1 分の上限（60 件）を超えたら 429 で、ログに残さない', async () => {
+  it('1 分の上限（60 件）を超えたら 429 で、auth() 1 回かつログに残さない（#476）', async () => {
+    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する
     vi.mocked(cache.increment).mockResolvedValue(61);
 
     const res = await post(valid);
 
     expect(res.status).toBe(429);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
