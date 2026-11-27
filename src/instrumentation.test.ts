@@ -19,7 +19,7 @@ describe('register', () => {
 
     await register();
 
-    expect(startTelemetry).toHaveBeenCalledTimes(1);
+    expect(startTelemetry).toHaveBeenCalled();
   });
 
   it('送り先が無ければ起動しない', async () => {

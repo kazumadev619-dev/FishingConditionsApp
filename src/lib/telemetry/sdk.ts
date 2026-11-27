@@ -8,13 +8,15 @@ import {
   type SpanProcessor,
 } from '@opentelemetry/sdk-trace';
 
+const withoutQuery = (value: string) => value.split('?')[0] as string;
+
 // プローブ（10秒おき）のスパンは送らない（#283）。子のスパンも親に従って落ちる。
 const EXCLUDED_PATHS = ['/healthz', '/readyz'];
 
 const excludeHealthChecks: Sampler = {
   shouldSample(_context, _traceId, _name, _kind, attributes) {
     // Next の handleRequest のスパンは、開始時に http.target（パス + クエリ）を持つ
-    const path = String(attributes['http.target'] ?? '').split('?')[0] as string;
+    const path = withoutQuery(String(attributes['http.target'] ?? ''));
     return {
       decision: EXCLUDED_PATHS.includes(path)
         ? SamplingDecision.NOT_RECORD
@@ -41,10 +43,10 @@ export const stripUrlQuery: SpanProcessor = {
   onStart(span) {
     for (const [key, value] of Object.entries(span.attributes)) {
       if (typeof value === 'string' && value.includes('?')) {
-        span.setAttribute(key, value.split('?')[0] as string);
+        span.setAttribute(key, withoutQuery(value));
       }
     }
-    if (span.name.includes('?')) span.updateName(span.name.split('?')[0] as string);
+    if (span.name.includes('?')) span.updateName(withoutQuery(span.name));
   },
   onEnd() {},
   forceFlush: async () => {},

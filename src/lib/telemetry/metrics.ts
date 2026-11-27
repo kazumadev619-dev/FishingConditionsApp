@@ -1,10 +1,11 @@
 import { type Counter, type Histogram, metrics } from '@opentelemetry/api';
+import type { ApiErrorType } from '../api/types';
 
-// 名前とラベルは PR（#283 の1本目）の本文に一覧がある。ラベルにスポット（港コードなど）を入れない。
+// 名前とラベルの一覧は PR #283 の1本目の本文にある（docs/reference/observability.md は次の PR で書く）。ラベルにスポット（港コードなど）を入れない。
 // metrics の API にはプロキシが無く、SDK の起動前に作った計器は no-op のまま残る。最初の記録のときに作る。
 let instruments: { upstreamDuration: Histogram; cacheLookups: Counter } | undefined;
 
-function get() {
+function getInstruments() {
   if (!instruments) {
     const meter = metrics.getMeter('fishing-conditions-app');
     instruments = {
@@ -23,8 +24,12 @@ function get() {
 }
 
 /** errorType が無ければ成功。 */
-export function recordUpstreamRequest(host: string, seconds: number, errorType?: string): void {
-  get().upstreamDuration.record(seconds, {
+export function recordUpstreamRequest(
+  host: string,
+  seconds: number,
+  errorType?: ApiErrorType,
+): void {
+  getInstruments().upstreamDuration.record(seconds, {
     'server.address': host,
     ...(errorType && { 'error.type': errorType }),
   });
@@ -32,5 +37,8 @@ export function recordUpstreamRequest(host: string, seconds: number, errorType?:
 
 /** prefix はキャッシュキーの先頭（weather・tide・location・score）。 */
 export function recordCacheLookup(prefix: string, hit: boolean): void {
-  get().cacheLookups.add(1, { 'cache.prefix': prefix, 'cache.result': hit ? 'hit' : 'miss' });
+  getInstruments().cacheLookups.add(1, {
+    'cache.prefix': prefix,
+    'cache.result': hit ? 'hit' : 'miss',
+  });
 }
