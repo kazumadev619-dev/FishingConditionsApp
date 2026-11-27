@@ -10,7 +10,10 @@ const loggerMock = vi.hoisted(() => ({ error: vi.fn() }));
 vi.mock('./client', () => ({ cache: cacheMock }));
 vi.mock('../logger', () => ({ logger: loggerMock }));
 
-import { fetchWithOptionalCache, withCache } from './helpers';
+import { setupTestMeter } from '../telemetry/testMeter';
+import { fetchWithOptionalCache, generateCacheKey, withCache } from './helpers';
+
+const readMetric = setupTestMeter();
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -305,5 +308,34 @@ describe('同じキーの同時の取得（#433）', () => {
 
     await expect(a).resolves.toMatchObject({ data: { v: 1 } });
     expect(shared).toHaveBeenCalledTimes(1);
+  });
+});
+
+// 期待値は issue #283 の「着手前の決定（2026-11-27）」から決める。キャッシュのヒット／ミスを数え、
+// ラベルにスポット（港コード・座標など）を入れない。キーの先頭（種類）だけをラベルにする。
+describe('キャッシュの計測（#283）', () => {
+  const read = () => readMetric('fishing.cache.lookups');
+  const key = generateCacheKey('tide', { portCode: '13_1', date: '2026-11-27' });
+
+  it('ヒットとミスを、キーの種類ごとに数える', async () => {
+    cacheMock.get.mockResolvedValueOnce({ hit: true, value: { a: 1 } });
+    await withCache(key, 60, async () => ({ a: 2 }));
+    cacheMock.get.mockResolvedValueOnce({ hit: false });
+    await withCache(key, 60, async () => ({ a: 2 }));
+
+    const points = await read();
+    expect(points).toHaveLength(2);
+    expect(points).toEqual(
+      expect.arrayContaining([
+        { attributes: { 'cache.prefix': 'tide', 'cache.result': 'hit' }, value: 1 },
+        { attributes: { 'cache.prefix': 'tide', 'cache.result': 'miss' }, value: 1 },
+      ]),
+    );
+  });
+
+  it('skipCache のときはキャッシュを引かないので数えない', async () => {
+    await fetchWithOptionalCache(key, 60, true, async () => ({ a: 1 }));
+
+    expect(await read()).toEqual([]);
   });
 });
