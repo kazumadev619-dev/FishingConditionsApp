@@ -288,37 +288,46 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
       expect(loggedMetaTypes()).not.toContain('API_ERROR');
     });
 
-    it('API キー未設定（weather / scores / locations/search）は 503 と固定文言を返し、warn ではなく error ログを出す', async () => {
-      vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
-      const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
-      expect(weatherRes.status).toBe(503);
-      await expect(weatherRes.json()).resolves.toEqual({
-        error: 'Weather API is not configured',
-        code: 'API_NOT_CONFIGURED',
-        status: 503,
+    describe('API キー未設定は 503 と固定文言を返し、warn ではなく error ログを出す', () => {
+      it('weather', async () => {
+        vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
+        const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
+        expect(weatherRes.status).toBe(503);
+        await expect(weatherRes.json()).resolves.toEqual({
+          error: 'Weather API is not configured',
+          code: 'API_NOT_CONFIGURED',
+          status: 503,
+        });
+        expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
+        expect(logger.warn).not.toHaveBeenCalled();
       });
-      expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
 
-      vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
-      const scoresRes = await scores(request(scoresUrl));
-      expect(scoresRes.status).toBe(503);
-      await expect(scoresRes.json()).resolves.toEqual({
-        error: 'Weather API is not configured',
-        code: 'API_NOT_CONFIGURED',
-        status: 503,
+      it('scores', async () => {
+        vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
+        const scoresRes = await scores(request(scoresUrl));
+        expect(scoresRes.status).toBe(503);
+        await expect(scoresRes.json()).resolves.toEqual({
+          error: 'Weather API is not configured',
+          code: 'API_NOT_CONFIGURED',
+          status: 503,
+        });
+        expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(getCurrentWeather).not.toHaveBeenCalled();
+        expect(getTideData).not.toHaveBeenCalled();
       });
-      expect(getCurrentWeather).not.toHaveBeenCalled();
-      expect(getTideData).not.toHaveBeenCalled();
 
-      vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
-      const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
-      expect(locationRes.status).toBe(503);
-      await expect(locationRes.json()).resolves.toEqual({
-        error: 'Location search is not configured',
-        status: 503,
+      it('locations/search', async () => {
+        vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
+        const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
+        expect(locationRes.status).toBe(503);
+        await expect(locationRes.json()).resolves.toEqual({
+          error: 'Location search is not configured',
+          status: 503,
+        });
+        expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
+        expect(logger.warn).not.toHaveBeenCalled();
       });
-      expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
-      expect(logger.warn).not.toHaveBeenCalled();
     });
 
     it('weather の自前の ApiError でない例外は 500 の固定文言で返す', async () => {
