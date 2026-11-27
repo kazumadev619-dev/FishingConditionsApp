@@ -166,6 +166,14 @@ describe('apiErrorUtils（#428）', () => {
       retryable: true,
     });
     expect(JSON.stringify(body)).not.toContain('secret upstream 504');
+
+    const clientBody = await clientRes.json();
+    expect(clientBody).toEqual({
+      error: '一時的に利用できません。時間をおいて再度お試しください。',
+      code: ApiErrorType.CLIENT_ERROR,
+      retryable: false,
+    });
+    expect(JSON.stringify(clientBody)).not.toContain('unauthorized');
   });
 
   it.each([

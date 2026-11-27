@@ -124,6 +124,10 @@ export async function getTideData(
       },
     });
 
+    if (typeof rawData !== 'object' || rawData === null || Array.isArray(rawData)) {
+      throw createApiError(502, 'tide736 API Error: Invalid response format');
+    }
+
     if (rawData.status !== 1) {
       throw createApiError(502, `tide736 API Error: ${rawData.message}`);
     }

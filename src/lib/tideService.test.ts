@@ -146,4 +146,65 @@ describe('getTideData のエラー分類（#428）', () => {
     expect(result.data.tides[0].date).toBe('2026-10-12');
     expect(cacheMock.set).toHaveBeenCalledOnce();
   });
+
+  // 根拠: #473（null / 非オブジェクト応答を TypeError(500) ではなく ApiError(502) として分類する）
+  it.each([
+    ['null', null],
+    ['undefined', undefined],
+    ['文字列', 'invalid response'],
+    ['数値', 123],
+    ['真偽値', true],
+    ['配列', []],
+  ])(
+    'tide736 が非オブジェクト（%s）を返したら ApiError(502, SERVER_ERROR) を投げ、キャッシュしない',
+    async (_label, rawResponse) => {
+      apiMock.tide736Client.get.mockResolvedValue(rawResponse);
+
+      const error = await getTideData('13', '1', '2026-10-12').catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ApiError);
+      expect(error).toMatchObject({
+        type: ApiErrorType.SERVER_ERROR,
+        statusCode: 502,
+        retryable: true,
+        message: 'tide736 API Error: Invalid response format',
+      });
+      expect(cacheMock.set).not.toHaveBeenCalled();
+    },
+  );
+
+  // 根拠: #473（withCache による同時並列リクエスト中に上流失敗が起きたときの回復経路）
+  it('同時並列リクエスト中に上流失敗しても全リクエストが ApiError で失敗し、後続リクエストで回復・キャッシュ保存できる', async () => {
+    const upstreamDeferred = Promise.withResolvers<unknown>();
+    apiMock.tide736Client.get
+      .mockReturnValueOnce(upstreamDeferred.promise)
+      .mockResolvedValueOnce(validTideResponse);
+
+    const req1 = getTideData('13', '1', '2026-10-12');
+    const req2 = getTideData('13', '1', '2026-10-12');
+
+    upstreamDeferred.resolve(null);
+
+    const [res1, res2] = await Promise.allSettled([req1, req2]);
+
+    expect(res1.status).toBe('rejected');
+    expect(res2.status).toBe('rejected');
+    if (res1.status === 'rejected' && res2.status === 'rejected') {
+      expect(res1.reason).toBeInstanceOf(ApiError);
+      expect(res1.reason).toBe(res2.reason);
+      expect(res1.reason).toMatchObject({
+        type: ApiErrorType.SERVER_ERROR,
+        statusCode: 502,
+      });
+    }
+    // 仕様（同時並列の相乗りにより上流呼び出しは1回、失敗応答はキャッシュしない: testing-policy 5節）
+    expect(apiMock.tide736Client.get).toHaveBeenCalledTimes(1);
+    expect(cacheMock.set).not.toHaveBeenCalled();
+
+    // inFlight が解放されているため、次のリクエストで再取得して回復しキャッシュ保存できる
+    const recovered = await getTideData('13', '1', '2026-10-12');
+    expect(recovered.data.port.port_name).toBe('東京');
+    expect(apiMock.tide736Client.get).toHaveBeenCalledTimes(2);
+    expect(cacheMock.set).toHaveBeenCalledOnce();
+  });
 });

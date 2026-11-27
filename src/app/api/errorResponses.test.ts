@@ -172,7 +172,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         'CLIENT_ERROR (401)',
         502,
         createApiError(401, SECRET),
-        'リクエストが無効です。入力内容を確認してください。',
+        '一時的に利用できません。時間をおいて再度お試しください。',
         false,
         ApiErrorType.CLIENT_ERROR,
       ],
@@ -180,7 +180,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         'CLIENT_ERROR (422)',
         502,
         createApiError(422, SECRET),
-        'リクエストが無効です。入力内容を確認してください。',
+        '一時的に利用できません。時間をおいて再度お試しください。',
         false,
         ApiErrorType.CLIENT_ERROR,
       ],
@@ -288,7 +288,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
       expect(loggedMetaTypes()).not.toContain('API_ERROR');
     });
 
-    it('API キー未設定（weather / locations/search）は 503 と固定文言を返し、warn ではなく error ログを出す', async () => {
+    it('API キー未設定（weather / scores / locations/search）は 503 と固定文言を返し、warn ではなく error ログを出す', async () => {
       vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
       const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
       expect(weatherRes.status).toBe(503);
@@ -299,11 +299,22 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
       });
       expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
 
+      vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
+      const scoresRes = await scores(request(scoresUrl));
+      expect(scoresRes.status).toBe(503);
+      await expect(scoresRes.json()).resolves.toEqual({
+        error: 'Weather API is not configured',
+        code: 'API_NOT_CONFIGURED',
+        status: 503,
+      });
+      expect(getCurrentWeather).not.toHaveBeenCalled();
+      expect(getTideData).not.toHaveBeenCalled();
+
       vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
       const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
       expect(locationRes.status).toBe(503);
       await expect(locationRes.json()).resolves.toEqual({
-        error: 'Location search is not configured. Please set GOOGLE_MAPS_API_KEY.',
+        error: 'Location search is not configured',
         status: 503,
       });
       expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
