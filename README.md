@@ -284,7 +284,7 @@ npm run check-code
 - **CI/CD**: GitHub Actions で構築済み（詳細は [docs/guides/ci-cd.md](docs/guides/ci-cd.md)）
   - CI（`.github/workflows/ci.yml`）: PR および `main` / `develop` push で ESLint / Biome / TypeScript 型チェック / Vitest / actionlint / Next.js ビルド / k8s マニフェスト検証 / Docker イメージビルド / E2E 環境スモークと Playwright E2E を実行
   - CD（`.github/workflows/deploy.yml`）: `main` push（および手動実行）で arm64 イメージをビルド・GHCR へ push し、Raspberry Pi 5 上の k3s へ自動デプロイ
-- **監視**: 導入予定（Grafana Cloud + Alloy の構成を選定済み。[ADR-005](docs/adr/005-monitoring-platform.md)）
+- **監視**: Next 側に OpenTelemetry の計測を入れた（#283）。トレースとメトリクスを OTLP/HTTP で Alloy に送り、Grafana Cloud で見る（[ADR-005](docs/adr/005-monitoring-platform.md)）。送り先は環境変数 `OTEL_EXPORTER_OTLP_ENDPOINT`（本番の値は `k8s/config.env`）で、未設定なら何も送らない
 
 ---
 

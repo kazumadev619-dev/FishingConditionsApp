@@ -175,7 +175,7 @@ AUTH_GOOGLE_SECRET=...               # Google Cloud ConsoleのClient Secret
 # 監視（オプション。#283）
 # 設定すると、起動時に OpenTelemetry の SDK を動かし、トレースとメトリクスを OTLP/HTTP で送る。
 # 未設定なら何も送らない（ローカルとテストの既定）。本番の値は k8s/config.env
-OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
+# OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318
 ```
 
 ### 環境別設定

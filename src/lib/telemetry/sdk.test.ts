@@ -5,8 +5,20 @@ import {
   StackContextManager,
   TracerProvider,
 } from '@opentelemetry/sdk-trace';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
-import { sampler, stripUrlQuery } from './sdk';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// startTelemetry の配線だけを見るため、NodeSDK は渡された設定を記録するだけにする（外へ送らせない）
+const nodeSdk = vi.hoisted(() => ({ configs: [] as unknown[] }));
+vi.mock('@opentelemetry/sdk-node', () => ({
+  NodeSDK: class {
+    constructor(config: unknown) {
+      nodeSdk.configs.push(config);
+    }
+    start() {}
+  },
+}));
+
+import { sampler, startTelemetry, stripUrlQuery } from './sdk';
 
 // 期待値は issue #283 の「着手前の決定（2026-11-27）」から決める。
 // /healthz と /readyz は計測から外す。上流の URL のクエリには API キーが入るので送らない。
@@ -89,5 +101,17 @@ describe('URL のクエリを送らない', () => {
     request('/auth/verify-email?token=SECRET');
     const [span] = await finished();
     expect(span?.attributes['http.target']).toBe('/auth/verify-email');
+  });
+});
+
+// API キーを外に出さない処理と、ヘルスチェックを外す処理は、SDK に渡して初めて効く
+describe('startTelemetry', () => {
+  it('SDK に sampler と、クエリを消す処理を渡す', () => {
+    startTelemetry();
+
+    expect(nodeSdk.configs).toHaveLength(1);
+    const config = nodeSdk.configs[0] as { sampler: unknown; spanProcessors: unknown[] };
+    expect(config.sampler).toBe(sampler);
+    expect(config.spanProcessors).toContain(stripUrlQuery);
   });
 });
