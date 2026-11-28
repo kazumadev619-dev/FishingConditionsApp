@@ -323,6 +323,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         expect(locationRes.status).toBe(503);
         await expect(locationRes.json()).resolves.toEqual({
           error: 'Location search is not configured',
+          code: 'API_NOT_CONFIGURED',
           status: 503,
         });
         expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');

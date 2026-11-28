@@ -185,18 +185,17 @@ describe('getTideData のエラー分類（#428）', () => {
 
     upstreamDeferred.resolve(null);
 
-    const [res1, res2] = await Promise.allSettled([req1, req2]);
+    const [error1, error2] = await Promise.all([
+      req1.catch((e: unknown) => e),
+      req2.catch((e: unknown) => e),
+    ]);
 
-    expect(res1.status).toBe('rejected');
-    expect(res2.status).toBe('rejected');
-    if (res1.status === 'rejected' && res2.status === 'rejected') {
-      expect(res1.reason).toBeInstanceOf(ApiError);
-      expect(res1.reason).toBe(res2.reason);
-      expect(res1.reason).toMatchObject({
-        type: ApiErrorType.SERVER_ERROR,
-        statusCode: 502,
-      });
-    }
+    expect(error1).toBeInstanceOf(ApiError);
+    expect(error1).toMatchObject({
+      type: ApiErrorType.SERVER_ERROR,
+      statusCode: 502,
+    });
+    expect(error2).toBe(error1);
     // 仕様（同時並列の相乗りにより上流呼び出しは1回、失敗応答はキャッシュしない: testing-policy 5節）
     expect(apiMock.tide736Client.get).toHaveBeenCalledTimes(1);
     expect(cacheMock.set).not.toHaveBeenCalled();
