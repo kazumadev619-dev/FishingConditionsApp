@@ -75,15 +75,17 @@ export function FishingLocationMap({
     );
   }
 
-  // 地点が変わったら境界を作り直す。一度失敗した地図を、別の地点でも出さないままにしない
+  // 地点が変わったら境界を作り直す。一度失敗した地図を、別の地点でも出さないままにしない。
+  // 作り直しで地図も新しい地点で開くので、カメラは default* で渡す。
+  // center・zoom を渡すと、ライブラリが動かすたびにその値へ戻し、ズームとドラッグが効かない（#500）
   return (
     <MapErrorBoundary key={`${latitude},${longitude}`}>
       <APIProvider apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="maps-sdk-react-components">
         <GoogleMap
           mapId={GOOGLE_MAPS_MAP_ID}
           style={mapContainerStyle}
-          center={center}
-          zoom={14}
+          defaultCenter={center}
+          defaultZoom={14}
           gestureHandling={'greedy'}
           disableDefaultUI={!mapOptions.disableDefaultUI}
           zoomControl={mapOptions.zoomControl}
