@@ -1,6 +1,6 @@
 # E2E 環境
 
-E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と全 10 シナリオを導入済み）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
+E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と全 10 シナリオを導入済み）、実キーでの地図の確認は #440（[chrome-visual-check.md](./chrome-visual-check.md)）が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
 
 ## 立てる・片付ける
 
@@ -80,7 +80,7 @@ Playwright からは `scripts/e2e/session-cookie.mjs` の `sessionCookie()` を 
 
 地図はブラウザが Google に直接つなぐので、`fetch` の向け替えでは止まらない。この環境では `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` と `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` を空にしてビルドする。ブラウザが Google に出る経路が無くなり、地図の場所には「APIキーまたはMap IDが設定されていません」の代替表示が出る。
 
-読み込み失敗の画面を試したいときは、`E2E_MAPS_KEY` と `E2E_MAPS_MAP_ID` にダミーを渡して `up` し、Playwright の `page.route` で Google 宛てを遮断する。実キーで地図を出す確認は #440。
+読み込み失敗の画面を試したいときは、`E2E_MAPS_KEY` と `E2E_MAPS_MAP_ID` にダミーを渡して `up` し、Playwright の `page.route` で Google 宛てを遮断する。実キーで地図を出す確認は [chrome-visual-check.md](./chrome-visual-check.md)（localhost:3000 で立てる。`E2E_APP_PORT` でアプリのポートを固定できる）。
 
 ## CI
 

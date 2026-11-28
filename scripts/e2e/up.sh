@@ -7,7 +7,7 @@
 # 空きポートを使うので、複数の worktree で同時に立てても衝突しない。
 # E2E_DATABASE_URL と E2E_REDIS_URL が両方あるときは、compose を使わずそのサービスに接続する
 # （CI の service container 用。使い捨てで、localhost / 127.0.0.1 のものだけ）。
-# SKIP_BUILD=1 で、既にある .next をそのまま使う。
+# SKIP_BUILD=1 で、既にある .next をそのまま使う。E2E_APP_PORT でアプリのポートを固定できる。
 # 失敗・中断（Ctrl-C を含む）したときは、ログを出してから自分で片付ける。
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -55,6 +55,9 @@ fi
 
 # 空きポートを OS に選ばせる（アプリとスタブ）
 read -r APP_PORT STUB_PORT < <(node scripts/e2e/free-ports.mjs 2)
+# 実キーで地図を出すときだけ、リファラ制限で許可されたポートに固定する（docs/guides/chrome-visual-check.md）。
+# 使用中なら下の owns_port で失敗する
+APP_PORT=${E2E_APP_PORT:-$APP_PORT}
 # アプリは localhost で名乗る。Auth.js はログイン後の転送先を localhost で作るので、127.0.0.1 だと
 # Cookie が届かない（ブラウザは 127.0.0.1 と localhost を別のホストとして扱う）
 APP_URL=http://localhost:$APP_PORT

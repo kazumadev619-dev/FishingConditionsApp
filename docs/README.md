@@ -12,6 +12,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | CI が落ちた原因を知りたい | [guides/ci-cd.md](./guides/ci-cd.md) |
 | 依存の自動更新（Renovate）の PR を扱いたい | [guides/renovate.md](./guides/renovate.md) |
 | E2E 用の環境（DB・Redis・上流スタブ付き）を立てたい | [guides/e2e-env.md](./guides/e2e-env.md)（手順） ／ [adr/012-e2e-dev-env-per-worktree.md](./adr/012-e2e-dev-env-per-worktree.md)（選んだ理由） |
+| 地図・狭い幅・コンソールのエラーを、Claude in Chrome で確かめたい（昇格前の確認） | [guides/chrome-visual-check.md](./guides/chrome-visual-check.md) |
 | テストを書きたい | [guides/testing-policy.md](./guides/testing-policy.md)（方針） ／ [guides/development.md](./guides/development.md#テスト戦略)（置き場所・コマンド） |
 | ルール・スキル・フックを複数のエージェントでどう共有しているかを知りたい | [adr/013-multi-agent-customizations.md](./adr/013-multi-agent-customizations.md) |
 | 仕様の正がどこにあるかを知りたい | [adr/010-spec-source-of-truth.md](./adr/010-spec-source-of-truth.md) |
