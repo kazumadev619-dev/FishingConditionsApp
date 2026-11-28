@@ -35,6 +35,7 @@ beforeEach(() => {
 });
 
 describe('POST /api/client-errors（#247）', () => {
+  // auth() の呼び出し回数を検証するのは、testing-policy 5節「回数の例外」による。#435 の仕様が auth() の二重呼び出しの防止なので、回数そのものが仕様
   it('ログイン中の利用者の報告を、ユーザー ID つきの error ログに1件残して 204 を返す', async () => {
     const res = await post(valid);
 
@@ -47,7 +48,6 @@ describe('POST /api/client-errors（#247）', () => {
   });
 
   it('1回のリクエストで auth() は1回しか呼ばれない（#435: withUserRateLimit から userId を引き継ぐ）', async () => {
-    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する
     const res = await post(valid);
 
     expect(res.status).toBe(204);
@@ -59,7 +59,6 @@ describe('POST /api/client-errors（#247）', () => {
   });
 
   it('別ユーザーでも auth() は1回のみで、利用者ごとのキーで数えてログにその userId を残す（#435）', async () => {
-    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する
     vi.mocked(auth).mockResolvedValue({ user: { id: 'user-2' } } as never);
 
     const res = await post(valid);
@@ -73,19 +72,21 @@ describe('POST /api/client-errors（#247）', () => {
     );
   });
 
-  it('未ログインは 401 で、ログに残さない', async () => {
+  it('未ログインは 401 で、auth() 1 回かつログに残さない（#476）', async () => {
     vi.mocked(auth).mockResolvedValue(null as never);
 
     expect((await post(valid)).status).toBe(401);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 
-  it('1 分の上限（60 件）を超えたら 429 で、ログに残さない', async () => {
+  it('1 分の上限（60 件）を超えたら 429 で、auth() 1 回かつログに残さない（#476）', async () => {
     vi.mocked(cache.increment).mockResolvedValue(61);
 
     const res = await post(valid);
 
     expect(res.status).toBe(429);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(logger.error).not.toHaveBeenCalled();
   });
 

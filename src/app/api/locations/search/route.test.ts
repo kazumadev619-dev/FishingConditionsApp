@@ -24,7 +24,7 @@ vi.mock('@/lib/api/client', async (importOriginal) => ({
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
 vi.mock('@/lib/logger', () => ({ logger: loggerMock }));
 vi.mock('@/lib/rateLimit', () => ({
-  withUserRateLimit: (_name: string, handler: () => unknown) => handler(),
+  withUserRateLimit: (_name: string, handler: (userId: string) => unknown) => handler('user-1'),
 }));
 
 import { ApiErrorType } from '@/lib/api/types';

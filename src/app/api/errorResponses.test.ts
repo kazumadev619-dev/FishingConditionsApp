@@ -31,7 +31,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 vi.mock('@/lib/rateLimit', () => ({
-  withUserRateLimit: (_name: string, handler: () => unknown) => handler(),
+  withUserRateLimit: (_name: string, handler: (userId: string) => unknown) => handler('user-1'),
 }));
 vi.mock('@/lib/locationService', () => ({
   isLocationSearchConfigured: vi.fn(() => true),
