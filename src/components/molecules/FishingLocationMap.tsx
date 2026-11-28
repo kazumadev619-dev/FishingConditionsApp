@@ -77,7 +77,7 @@ export function FishingLocationMap({
 
   // 地点が変わったら境界を作り直す。一度失敗した地図を、別の地点でも出さないままにしない。
   // 作り直しで地図も新しい地点で開くので、カメラは default* で渡す。
-  // center・zoom を渡すと、ライブラリが動かすたびにその値へ戻し、ズームとドラッグが効かない（#500）
+  // center・zoom を渡すと、地図が動くたびにライブラリがその値へ戻し、ズームとドラッグが効かない（#500）
   return (
     <MapErrorBoundary key={`${latitude},${longitude}`}>
       <APIProvider apiKey={GOOGLE_MAPS_API_KEY} solutionChannel="maps-sdk-react-components">

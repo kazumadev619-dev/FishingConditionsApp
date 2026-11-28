@@ -1,4 +1,4 @@
-import { isValidElement, type ReactElement, type ReactNode } from 'react';
+import { Children, isValidElement, type ReactElement, type ReactNode } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -21,8 +21,7 @@ afterEach(() => {
 function findElement(node: ReactNode, type: unknown): ReactElement<Record<string, unknown>> | null {
   if (!isValidElement<{ children?: ReactNode }>(node)) return null;
   if (node.type === type) return node as ReactElement<Record<string, unknown>>;
-  const children = ([] as ReactNode[]).concat(node.props.children ?? []);
-  for (const child of children) {
+  for (const child of Children.toArray(node.props.children)) {
     const found = findElement(child, type);
     if (found) return found;
   }
@@ -85,5 +84,21 @@ describe('FishingLocationMap の操作（#500）', () => {
     expect(map?.props.zoom).toBeUndefined();
     expect(map?.props.defaultCenter).toEqual({ lat: 35, lng: 139 });
     expect(map?.props.defaultZoom).toEqual(expect.any(Number));
+  });
+
+  it('場所を選び直すと、別の地点を最初の表示位置として地図を作り直す', async () => {
+    const { FishingLocationMap } = await load();
+    const { Map: GoogleMap } = await import('@vis.gl/react-google-maps');
+    const element = FishingLocationMap({
+      latitude: 35.3,
+      longitude: 139.48,
+      locationName: '江ノ島',
+    });
+
+    expect(isValidElement(element) && element.key).toBe('35.3,139.48');
+    expect(findElement(element, GoogleMap)?.props.defaultCenter).toEqual({
+      lat: 35.3,
+      lng: 139.48,
+    });
   });
 });
