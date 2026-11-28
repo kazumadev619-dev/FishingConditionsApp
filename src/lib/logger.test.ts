@@ -1,4 +1,4 @@
-import { context, TraceFlags, trace } from '@opentelemetry/api';
+import { context, INVALID_SPAN_CONTEXT, TraceFlags, trace } from '@opentelemetry/api';
 import { StackContextManager } from '@opentelemetry/sdk-trace';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -46,6 +46,14 @@ describe('logger の trace_id（#283）', () => {
       captureLine((l) => l.info('hello')),
     );
     expect(out).toMatchObject({ trace_id: spanContext.traceId, span_id: spanContext.spanId });
+  });
+
+  // SDK が動いていないと、Next のスパンは中身が 0 の無効な ID になる。それを載せない
+  it('無効なスパン（ID が 0）では載せない', () => {
+    const out = context.with(trace.setSpanContext(context.active(), INVALID_SPAN_CONTEXT), () =>
+      captureLine((l) => l.info('hello')),
+    );
+    expect(out).not.toHaveProperty('trace_id');
   });
 
   it('スパンの外では載せない', () => {

@@ -320,6 +320,8 @@ describe('キャッシュの計測（#283）', () => {
   it('ヒットとミスを、キーの種類ごとに数える', async () => {
     cacheMock.get.mockResolvedValueOnce({ hit: true, value: { a: 1 } });
     await withCache(key, 60, async () => ({ a: 2 }));
+    cacheMock.get.mockResolvedValueOnce({ hit: true, value: { a: 1 } });
+    await withCache(key, 60, async () => ({ a: 2 }));
     cacheMock.get.mockResolvedValueOnce({ hit: false });
     await withCache(key, 60, async () => ({ a: 2 }));
 
@@ -327,7 +329,7 @@ describe('キャッシュの計測（#283）', () => {
     expect(points).toHaveLength(2);
     expect(points).toEqual(
       expect.arrayContaining([
-        { attributes: { 'cache.prefix': 'tide', 'cache.result': 'hit' }, value: 1 },
+        { attributes: { 'cache.prefix': 'tide', 'cache.result': 'hit' }, value: 2 },
         { attributes: { 'cache.prefix': 'tide', 'cache.result': 'miss' }, value: 1 },
       ]),
     );
