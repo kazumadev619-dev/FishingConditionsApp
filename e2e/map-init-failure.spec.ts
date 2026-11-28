@@ -67,7 +67,8 @@ test.describe('Google Maps の初期化に失敗したとき（#237, #451）', (
 
     // #237 の完了条件: ダッシュボード全体がエラー画面に落ちず、地図の場所だけが代替表示になり、
     // ほかの部分（ハートの状態を含む）が使える
-    await expect(page.getByRole('heading', { name: '一時的に利用できません' })).toBeHidden();
     await expectDashboard(page, { isFavorite: true, mapFallback: 'マップを表示できませんでした' });
+    // 代替表示とほかのカードが出たあとで、エラー画面（dashboard/error.tsx）に変わっていないことを確かめる
+    await expect(page.getByRole('heading', { name: '一時的に利用できません' })).toBeHidden();
   });
 });

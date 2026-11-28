@@ -33,6 +33,12 @@ const state = readState();
 // ほかのテストは、キーが空のビルドの代替表示を前提にしている（docs/guides/e2e-env.md）
 const MAP_INIT_FAILURE_SPEC = 'map-init-failure.spec.ts';
 const mapsKeySet = /^MAPS_KEY_SET=1$/m.test(state);
+// ファイルを指定して流したときに、理由が出ないまま「No tests found」にならないよう知らせる（ワーカーでは出さない）
+if (mapsKeySet && !process.env.TEST_WORKER_INDEX) {
+  console.warn(
+    `Maps のダミーのキーの環境なので、${MAP_INIT_FAILURE_SPEC} だけを流します。ほかのテストは npm run e2e:up で立て直してから流してください。`,
+  );
+}
 
 export default defineConfig({
   testDir: './e2e',
