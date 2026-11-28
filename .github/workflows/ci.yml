@@ -402,6 +402,19 @@ jobs:
       - name: Run E2E tests
         run: npm run test:e2e
 
+      # Maps の初期化に失敗したときの画面（#451）。NEXT_PUBLIC_ の値はビルド時に埋め込まれるので、
+      # ダミーのキーでビルドし直す。時間が延びるので、main への昇格の PR だけで流す
+      - name: Restart E2E environment with dummy Maps key
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: npm run e2e:up
+        env:
+          E2E_MAPS_KEY: e2e-dummy-maps-key
+          E2E_MAPS_MAP_ID: e2e-dummy-map-id
+
+      - name: Run Maps init failure E2E
+        if: github.event_name == 'pull_request' && github.base_ref == 'main'
+        run: npm run test:e2e
+
       - name: Print E2E logs on failure
         if: failure()
         run: |

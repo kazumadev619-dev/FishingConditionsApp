@@ -106,7 +106,7 @@ steps:
 
 #### ジョブ5: E2E Environment
 
-Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E 用の環境を立てて `npm run e2e:smoke` と `npm run test:e2e`（Playwright / Chromium）を流す。失敗時は `e2e:down` で `.e2e/` を消す前に `.e2e/app.log`・`.e2e/stub.log` の末尾をログに出し、`playwright-report/` と `test-results/` を 7 日間 artifact として残す。`services:` はジョブをまたいで共有できないので、実 DB のテスト（#354）は、このジョブにステップを足すか、同じ定義を写して使う。詳細は [e2e-env.md](./e2e-env.md)。
+Postgres・Redis を service container で用意し、`npm run e2e:up` で E2E 用の環境を立てて `npm run e2e:smoke` と `npm run test:e2e`（Playwright / Chromium）を流す。`main` 向け PR のときだけ、続けてダミーの Maps のキーで `e2e:up` し直し、Maps の初期化に失敗したときの E2E（#451）を流す（ビルドが1回増えるため）。失敗時は `e2e:down` で `.e2e/` を消す前に `.e2e/app.log`・`.e2e/stub.log` の末尾をログに出し、`playwright-report/` と `test-results/` を 7 日間 artifact として残す。`services:` はジョブをまたいで共有できないので、実 DB のテスト（#354）は、このジョブにステップを足すか、同じ定義を写して使う。詳細は [e2e-env.md](./e2e-env.md)。
 
 #### ジョブ6: CI Summary
 
@@ -251,7 +251,7 @@ npm run prisma:generate
 - [x] Vitestセットアップ
 - [x] ユニットテスト実行CI追加（Code Quality Check の中で実行）
 - ~~コードカバレッジ計測~~（不採用。[testing-policy.md](./testing-policy.md) の8節）
-- [x] E2Eテスト（Playwright。`e2e-env` ジョブで全10シナリオを実行。#439）
+- [x] E2Eテスト（Playwright。`e2e-env` ジョブで実行。#439。Maps の初期化の失敗は `main` 向け PR だけ。#451）
 - [ ] 実 DB（PostgreSQL・Redis）を使うテスト（service container は `e2e-env` ジョブにある。テストの切り替えは #354）
 
 ### Phase 3: Prismaマイグレーション検証

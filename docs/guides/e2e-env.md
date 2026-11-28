@@ -1,6 +1,6 @@
 # E2E 環境
 
-E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と全 10 シナリオを導入済み）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
+E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と 10 シナリオ）と #451（Maps の初期化の失敗）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
 
 ## 立てる・片付ける
 
@@ -80,11 +80,25 @@ Playwright からは `scripts/e2e/session-cookie.mjs` の `sessionCookie()` を 
 
 地図はブラウザが Google に直接つなぐので、`fetch` の向け替えでは止まらない。この環境では `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` と `NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID` を空にしてビルドする。ブラウザが Google に出る経路が無くなり、地図の場所には「APIキーまたはMap IDが設定されていません」の代替表示が出る。
 
-読み込み失敗の画面を試したいときは、`E2E_MAPS_KEY` と `E2E_MAPS_MAP_ID` にダミーを渡して `up` し、Playwright の `page.route` で Google 宛てを遮断する。実キーで地図を出す確認は #440。
+Maps の初期化に失敗したときの画面（#237。`E2E-MAP-02`）は、ダミーのキーでビルドした環境で確かめる。`NEXT_PUBLIC_` の値はビルド時に埋め込まれるので、キーが空のビルドとは別に立て直す。
+
+```bash
+E2E_MAPS_KEY=e2e-dummy-maps-key E2E_MAPS_MAP_ID=e2e-dummy-map-id npm run e2e:up
+npm run test:e2e      # この環境では e2e/map-init-failure.spec.ts だけが流れる
+npm run e2e:up        # キーが空のビルドに戻す（ほかのテストはこちらで流す）
+```
+
+- `up` は、`E2E_MAPS_KEY` を渡したかを `.e2e/state.env` の `MAPS_KEY_SET` に書く。`playwright.config.ts` はそれを見て、`1` なら `map-init-failure.spec.ts` だけを、`0` ならそれ以外を流す。ほかのテストは、キーが空のビルドの代替表示を前提にしているため
+- `SKIP_BUILD=1` で立てると、`MAPS_KEY_SET` と既存の `.next` が食い違うことがある。キーを切り替えるときはビルドを省かない
+- テストは `page.route` で Maps の JS（`https://maps.googleapis.com/maps/api/js?...`）への要求を、初期化に失敗する最小のスクリプトで `route.fulfill` する。要求を打ち切るだけ（`route.abort`）では、#237 の「読めたが初期化に失敗した」状態にならない。スクリプトは `gm_authFailure` を呼び、マーカーの `position` の2回目以降の設定で #237 と同じ例外を投げる
+- Google には要求が出ない。差し替えた要求のほかに Google 宛てがあれば、`context` fixture が記録してテストを落とす
+- 実キーで地図を出す確認は #440
 
 ## CI
 
 `.github/workflows/ci.yml` の `e2e-env` ジョブが、Postgres・Redis を service container で用意し、同じ `up.sh` / `smoke.sh` に続けて Playwright（Chromium）の `npm run test:e2e` を流す。`E2E_DATABASE_URL` と `E2E_REDIS_URL` が両方あると、`up.sh` は compose を使わずそのサービスに接続する。使い捨てで、`localhost` か `127.0.0.1` のものだけを受け付ける。2つの URL を1つずつ判定し、クエリの `host` / `hostaddr` も同じ判定にかける（pg は URL のホストよりクエリを優先する）。どちらかが別のホストなら、`.e2e/` も作らずに終了コード 2 で止まる。`seed-users.mjs` も、`DATABASE_URL` が別のホストなら入れない。
+
+`main` 向け PR のときだけ、同じジョブの中で続けて、ダミーの Maps のキーで `up` し直して `E2E-MAP-02` を流す（ビルドが1回増えるため。`develop` 向け PR と `push` では飛ばす）。
 
 `ci-summary` は `e2e-env` の結果を参照し、`main` 向け PR（`github.event_name == 'pull_request' && github.base_ref == 'main'`）のときだけ `e2e-env` の失敗で `ci-summary` を落とす（`develop` 向け PR や `push` では参考結果の表示のみ）。
 
@@ -103,6 +117,7 @@ npm run e2e:down      # 環境を片付ける
 - 設定は `playwright.config.ts`、共通 fixture と `expectDashboard` は `e2e/fixtures.ts`。
 - `e2e/fixtures.ts` の `context` fixture が `APP_URL` 以外のオリジンへのブラウザ通信を遮断し、1件でも記録されればテストを落とす。
 - テストを足したり消したりしたら、下の表も更新する。
+- キーが空のビルドの地図の代替表示（「APIキーまたはMap IDが設定されていません」）は、`expectDashboard` を呼ぶテストが毎回確かめる。
 
 | ID | 優先度 | 状態 | 流れ | 期待値の出どころ | ファイル |
 |---|---|---|---|---|---|
@@ -116,6 +131,7 @@ npm run e2e:down      # 環境を片付ける
 | `E2E-ERR-01` | P2 | 実装済み | 上流 API が失敗したときエラー画面（「一時的に利用できません」と「再試行」）が表示され、上流の応答本文は漏れない | [api-error-handling.md](../reference/api-error-handling.md) | `e2e/error.spec.ts` |
 | `E2E-AUTH-04` | P1 | 実装済み | サイドバーからログアウトすると `/login` に移り `/dashboard` に戻れない | [authentication.md](../reference/authentication.md)（3節）、#439 | `e2e/auth.spec.ts` |
 | `E2E-AUTH-05` | P2 | 実装済み | ログイン済みで `/login` と `/register` を開くと `/dashboard` にリダイレクトされる | [authentication.md](../reference/authentication.md)（3節） | `e2e/auth.spec.ts` |
+| `E2E-MAP-02` | P4 | 実装済み | （ダミーの Maps のキーのビルドだけ）Maps の初期化に失敗した状態でハートを押しても、地図の場所だけが「マップを表示できませんでした」になり、ほかのカードとハートの状態は出たまま。CI では `main` 向け PR だけで流す | #237 の完了条件、#451 | `e2e/map-init-failure.spec.ts` |
 
 ## 本番に触れない
 
