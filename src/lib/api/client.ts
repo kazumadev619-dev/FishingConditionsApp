@@ -1,10 +1,12 @@
 import { logger } from '../logger';
+import { recordUpstreamRequest } from '../telemetry/metrics';
 import { createApiError, parseErrorResponse } from './errorHandler';
 import { getBackoffDelay } from './retryStrategy';
 import { ApiError, ApiErrorType, type RequestOptions } from './types';
 
 class ApiClient {
   private baseUrl: string;
+  private host: string;
   private apiKey: string;
   private keyName: string;
   private isConfigured: boolean = true;
@@ -15,6 +17,7 @@ class ApiClient {
   // API キーはクエリで渡す（3 つのクライアントすべてがそう使っている）
   constructor(baseUrl: string, apiKey: string, keyName: string, requireApiKey: boolean = true) {
     this.baseUrl = baseUrl;
+    this.host = new URL(baseUrl).hostname;
     this.apiKey = apiKey;
     this.keyName = keyName;
 
@@ -53,12 +56,18 @@ class ApiClient {
       url.searchParams.append(this.keyName, this.apiKey);
     }
 
+    // HTTP 1回ごとに、上流ごとの所要時間と ApiErrorType を記録する（#283）。リトライの待ちは含めない
+    const startedAt = performance.now();
+    const record = (errorType?: ApiErrorType) =>
+      recordUpstreamRequest(this.host, (performance.now() - startedAt) / 1000, errorType);
+
     // リトライできる失敗なら、遅延をログに出して待ち、同じ request をやり直す。
     // できなければ error を投げる。
     const retryOrThrow = async (
       error: ApiError,
       log: { reason?: string; message: string },
     ): Promise<T> => {
+      record(error.type);
       if (!error.retryable || attempt >= this.MAX_RETRIES) {
         throw error;
       }
@@ -99,6 +108,7 @@ class ApiClient {
         });
       }
 
+      record();
       return response.json() as Promise<T>;
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -129,6 +139,7 @@ class ApiClient {
         throw error;
       }
 
+      record(ApiErrorType.NETWORK_ERROR);
       throw new ApiError(
         `Unexpected error: ${error instanceof Error ? error.message : String(error)}`,
         ApiErrorType.NETWORK_ERROR,
