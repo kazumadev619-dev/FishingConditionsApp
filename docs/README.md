@@ -28,6 +28,7 @@ Fishing Conditions App のドキュメント一覧。目的から探せるよう
 | `/api/scores` の並列化・同時要求の相乗りの、直す前後の数値を知りたい | [perf/2026-11-22-scores-parallel-and-dedupe.md](./perf/2026-11-22-scores-parallel-and-dedupe.md) |
 | 性能計測（Server-Timing）の対象を増やしたい／読み方を知りたい | [src/lib/serverTiming.ts](../src/lib/serverTiming.ts)（JSDoc） |
 | 監視の構成と選定理由を知りたい | [adr/005-monitoring-platform.md](./adr/005-monitoring-platform.md) |
+| アプリが何をどんな名前で計測しているか（トレース・メトリクス・ログの `trace_id`）を知りたい | [reference/observability.md](./reference/observability.md) |
 | 画面デザインの方針を知りたい | [adr/006-design-system.md](./adr/006-design-system.md) |
 | なぜこの技術を選んだか知りたい | [adr/](./adr/) |
 | 開発の進捗と今後の予定を知りたい | [roadmap.md](./roadmap.md) |

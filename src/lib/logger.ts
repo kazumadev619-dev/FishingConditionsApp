@@ -1,3 +1,4 @@
+import { isSpanContextValid, trace } from '@opentelemetry/api';
 import pino from 'pino';
 
 const isProduction = process.env.NODE_ENV === 'production';
@@ -30,6 +31,13 @@ export const loggerOptions: pino.LoggerOptions = {
   // 失敗の理由がログに残らない（#294）
   serializers: {
     error: pino.stdSerializers.err,
+  },
+
+  // Loki のログから Tempo のトレースへ辿れるように、スパンの中のログに ID を載せる（#283）。
+  // SDK が動いていない環境（ローカル、テスト）ではスパンが無いので、何も足さない
+  mixin() {
+    const span = trace.getActiveSpan()?.spanContext();
+    return span && isSpanContextValid(span) ? { trace_id: span.traceId, span_id: span.spanId } : {};
   },
 
   // センシティブ情報のマスキング

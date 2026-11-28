@@ -72,6 +72,8 @@ APP_URL=http://localhost:$APP_PORT
   echo "STUB_PORT=$STUB_PORT"
   echo "APP_URL=$APP_URL"
   echo "STUB_URL=http://127.0.0.1:$STUB_PORT"
+  # Playwright がこれを見て、流すテストを選ぶ（playwright.config.ts）。地図はキーと Map ID の両方が要る
+  echo "MAPS_KEY_SET=$([ -n "${E2E_MAPS_KEY:-}" ] && [ -n "${E2E_MAPS_MAP_ID:-}" ] && echo 1 || echo 0)"
 } >> "$STATE"
 
 DATABASE_URL_DIRECT=$DATABASE_URL npx --no-install prisma migrate deploy > /dev/null
@@ -88,8 +90,8 @@ curl -sf "http://127.0.0.1:$STUB_PORT/__stats" > /dev/null || { echo "スタブ�
 
 AUTH_SECRET=$(node -e 'import("./scripts/e2e/users.mjs").then((m) => process.stdout.write(m.E2E_AUTH_SECRET))')
 # シェルにある本物のキーが混ざらないよう、空の環境から必要な値だけを渡す。
-# Google Maps のキーは既定で空（ブラウザが Google に出る経路を作らない）。読み込み失敗の画面を試すときは
-# E2E_MAPS_KEY / E2E_MAPS_MAP_ID にダミーを渡す
+# Google Maps のキーは既定で空（ブラウザが Google に出る経路を作らない）。初期化の失敗の画面を試すときは
+# E2E_MAPS_KEY / E2E_MAPS_MAP_ID にダミーを渡す（e2e/map-init-failure.spec.ts が Maps JS への要求を差し替える）
 app_env=(
   env -i "PATH=$PATH" "HOME=$HOME" NEXT_TELEMETRY_DISABLED=1 TZ=Asia/Tokyo
   "DATABASE_URL=$DATABASE_URL" "REDIS_URL=$REDIS_URL" LOG_LEVEL=warn

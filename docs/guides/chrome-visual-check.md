@@ -29,6 +29,7 @@ E2E_APP_PORT=3000 npm run e2e:up
 - 3000 番が使用中（同じ worktree の `npm run dev` を含む）なら、`up` はアプリを起動する前に止まって片付ける。流し終えたらすぐ `npm run e2e:down` で空ける
 - キーの値は読まない・出さない。上のコマンドは値を変数に渡すだけで、画面にもログにも出さない。`.env.local` を開かない
 - 実キーは `next build` でバンドルに焼き込まれる。流し終えたら `npm run e2e:down` のあと `rm -rf .next` で消し、次の `SKIP_BUILD=1` の `up` に持ち越さない
+- 実キーと Map ID を渡して立てた環境は `.e2e/state.env` の `MAPS_KEY_SET` が `1` になる。この環境で `npm run test:e2e` を流すと、`E2E-MAP-02` だけが流れ、ほかのテストは対象外になる（[e2e-env.md](./e2e-env.md) の「Google Maps の地図」）。Playwright のテストは、キーなしで立て直してから流す
 - 地図を見ない項目だけなら、ふつうの `npm run e2e:up`（キーなし・任意のポート）でよい
 
 ログインは画面から `e2e-verified@example.test` と `scripts/e2e/users.mjs` のパスワードで行う。
@@ -50,7 +51,7 @@ E2E_APP_PORT=3000 npm run e2e:up
 
 C-NARROW は #287（スマホ対応）が終わるまで不合格になりうる。#287 が開いている間の不合格は、昇格を止める理由にしない。前回の結果より悪くなっていないかを見る。
 
-C-MAP-3 は、ズームとドラッグが効かない不具合（[#500](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/500)）が直るまで不合格になる。#500 が開いている間の C-MAP-3 の不合格は、昇格を止める理由にしない。
+C-MAP-3 は、2026-11-28 に流したときはズームとドラッグが効かず不合格だった。この不具合（[#500](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/500)）は #502 で直した。C-MAP-3 の不合格は、ほかの項目と同じく扱う。
 
 ### C-CONSOLE の「想定内」
 
