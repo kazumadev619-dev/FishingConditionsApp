@@ -5,6 +5,21 @@ description: アプリをローカルで起動して動きを確かめるとき�
 
 # run-app-locally
 
+> **参考にした考え方:** [pstack `create-verification-skill`](https://github.com/cursor/plugins/tree/main/pstack/skills/create-verification-skill) / [`principle-prove-it-works`](https://github.com/cursor/plugins/tree/main/pstack/skills/principle-prove-it-works)
+
+## 0. 実行環境の選び方（共有ローカル vs worktree 隔離 E2E）
+
+| 場面 | 使う環境 | 理由 |
+|---|---|---|
+| 並列エージェント / Orca bot / PR 検証で安全にスモーク・E2E を回す | **worktree 隔離 E2E**（`npm run e2e:up` → `npm run e2e:smoke` → `npm run e2e:down`。[ADR-012](../../../docs/adr/012-e2e-dev-env-per-worktree.md)） | Postgres・Redis・ポートが worktree ごとに独立し、他セッションやローカル DB を汚さない |
+| 対話デバッグ・実キーでの画面確認・単発の実 DB 検証 | **このスキルの手順（下の 1〜6）** | 開発用 `.env.local` と `:3000` を使い、HMR や実 OAuth / 地図をすぐ試せる |
+
+### 証拠を残す（Prove It Works）
+
+「動いた」「200 が返った」という感想だけで終わらせない。確認したエンドポイント・実行コマンド・実際の HTTP ステータスや応答要点（画面確認なら確認した状態）をセットで報告に残す。ただしシークレットや `Set-Cookie` の値は絶対に出力しない。
+
+この手順や `session-cookie.mjs` がアプリ変更とズレていないかの定期点検は [`maintain-verification`](../maintain-verification/SKILL.md) を使う。
+
 ## 1. 前提をそろえる
 
 ```bash

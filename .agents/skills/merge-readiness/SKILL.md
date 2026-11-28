@@ -54,6 +54,8 @@ PR をマージしてよいかを、**コードを変えない**レビュー役�
    - `npm run check-code` は必ず
    - 壊して落ちるかの確認（[`mutation-test`](../mutation-test/SKILL.md)）は、テストを足した・変えた PR だけ
    - E2E・build は、変更が関係するときだけ
+   - 共通基盤・認証・DB スキーマ・3リポジトリ契約に触る PR では、[`blast-radius`](../blast-radius/SKILL.md) の観点（diff 外の急所が実行で裏取りされているか）を確かめる
+   - 性能改善を主張する PR では、[`benchmark-checklist`](../benchmark-checklist/SKILL.md) の 7 問が実測で満たされているかを確かめる
 3. **計画と照合する。** 計画・決定がある issue は、項目を表にして「合う・一部・合わない」を書く（必須）。計画・決定のありかは依頼する側が渡す。渡されなければ issue と PR 本文から探し、見つからなければ完了条件だけと照合したと報告に書く。「合わない」「一部」の項目には、中身に応じて重さを付ける（決定に反するなら中以上）
 4. **ほかの skill を使う。**
    - `ponytail:ponytail-review` と testing-policy を、この判定の中で使う
