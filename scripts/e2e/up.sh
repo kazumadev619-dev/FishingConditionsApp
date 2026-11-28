@@ -56,8 +56,12 @@ fi
 # 空きポートを OS に選ばせる（アプリとスタブ）
 read -r APP_PORT STUB_PORT < <(node scripts/e2e/free-ports.mjs 2)
 # 実キーで地図を出すときだけ、リファラ制限で許可されたポートに固定する（docs/guides/chrome-visual-check.md）。
-# 使用中なら下の owns_port で失敗する
-APP_PORT=${E2E_APP_PORT:-$APP_PORT}
+# 同じ worktree の先客（npm run dev の 3000 など）は owns_port では見分けられないので、起動の前に空きを確かめる
+if [ -n "${E2E_APP_PORT:-}" ]; then
+  APP_PORT=$E2E_APP_PORT
+  node --input-type=module -e "const { isFree } = await import('./scripts/e2e/free-ports.mjs'); process.exit((await isFree(Number(process.argv[1]))) ? 0 : 1)" "$APP_PORT" \
+    || { echo "E2E_APP_PORT=$APP_PORT は使用中（npm run dev などを止めてから流す）" >&2; exit 1; }
+fi
 # アプリは localhost で名乗る。Auth.js はログイン後の転送先を localhost で作るので、127.0.0.1 だと
 # Cookie が届かない（ブラウザは 127.0.0.1 と localhost を別のホストとして扱う）
 APP_URL=http://localhost:$APP_PORT

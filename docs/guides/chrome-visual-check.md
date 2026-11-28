@@ -24,8 +24,9 @@ E2E_MAPS_MAP_ID="$(sed -n 's/^NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID=//p' "$F")" \
 E2E_APP_PORT=3000 npm run e2e:up
 ```
 
-- **地図の確認は localhost:3000 で行う。** ブラウザ用キーの HTTP リファラ制限で許可されている localhost は `http://localhost:3000/*` だけで、ほかのポートではリファラ制限で地図が出ない（2026-11-28 にオーナーが Cloud Console で確認）
-- 3000 番はほかの worktree とぶつかりうる。使用中なら `up` は失敗して片付ける。流し終えたらすぐ `npm run e2e:down` で空ける
+- **地図の確認は localhost:3000 で行う。** ほかのポートでは、ブラウザ用キーのリファラ制限で地図が出ない（許可されている URL は [google-maps-api.md](../reference/google-maps-api.md#ブラウザ用キーのリファラ制限)）
+- `.env.local` の値は引用符なしで書かれている前提。`KEY="..."` の形だと引用符ごと渡り、地図が出ない
+- 3000 番が使用中（同じ worktree の `npm run dev` を含む）なら、`up` はアプリを起動する前に止まって片付ける。流し終えたらすぐ `npm run e2e:down` で空ける
 - キーの値は読まない・出さない。上のコマンドは値を変数に渡すだけで、画面にもログにも出さない。`.env.local` を開かない
 - 実キーは `next build` でバンドルに焼き込まれる。流し終えたら `npm run e2e:down` のあと `rm -rf .next` で消し、次の `SKIP_BUILD=1` の `up` に持ち越さない
 - 地図を見ない項目だけなら、ふつうの `npm run e2e:up`（キーなし・任意のポート）でよい
@@ -39,15 +40,17 @@ E2E_APP_PORT=3000 npm run e2e:up
 | ID | 必須 | 確かめる内容 | 合格の基準 | 基準の出どころ |
 |---|---|---|---|---|
 | C-MAP-1 | 必須 | 実キーで地図が描画される | 「釣り場の位置」に地図のタイルが出る。「マップを表示できませんでした」「APIキーまたはMap IDが設定されていません」が出ない | #440、#262、[google-maps-api.md](../reference/google-maps-api.md) |
-| C-MAP-2 | 必須 | マーカーの位置 | 江ノ島を選んだとき、マーカーの座標が `prisma/data/port-coordinates.csv` の江ノ島の行（`14,19,35.3,139.4833…`）と一致し、地図上でも江ノ島の上にある | #440、#345 |
+| C-MAP-2 | 必須 | マーカーの位置 | 江ノ島を選んだとき、マーカーの座標が `prisma/data/port-coordinates.csv` の江ノ島の行（都道府県コード 14・港コード 19）と一致し、地図上でも江ノ島の上にある | #440、#345 |
 | C-MAP-3 | 必須 | 拡大・縮小と移動 | ズームのボタンとドラッグで、地図の表示範囲が変わる | #440 |
-| C-MAP-4 | 人が確かめる | 全画面表示 | 全画面のボタンで地図が全画面になり、Esc で戻る | #440 |
-| C-NARROW | 必須 | 狭い幅でのレイアウト | 幅 375px で、`/dashboard` と `/login` に横スクロールが出ず、操作できる（メニューを開ける、ログインできる） | #287 の完了条件 |
+| C-MAP-4 | 人が確かめる | 全画面表示 | 全画面のボタンで地図が全画面になり、Esc で戻る。2026-11-28 時点では未確認 | #440 |
+| C-NARROW | 必須 | 狭い幅でのレイアウト | 幅 375px で、`/dashboard` と `/login` に横スクロールが出ず、操作できる（メニューを開ける、ログインできる）。Claude は縮められる最小の幅で、375px は人が開発者ツールのデバイスモードで確かめる。375px は 2026-11-28 時点では未確認 | #287 の完了条件 |
 | C-CONSOLE | 必須 | ブラウザのコンソールと通信のエラー | 下の「想定内」を除き、`/login`・`/dashboard`・場所の選択・お気に入りの追加と削除の間に、コンソールのエラー・例外・CSP 違反が出ない。同じオリジンへの要求に 4xx・5xx が無い | #440、#284 |
-| C-FEEL | 任意 | 操作感（検索タブの切り替え、候補の出方、`dashboard/loading.tsx` の読み込み中の表示、ハートを押したときの反応） | 合否は付けず、気づいたことを記録する（仕様に基準が無いため） | #440 |
+| C-FEEL | 任意 | 操作感（検索タブの切り替え、候補の出方、`dashboard/loading.tsx` の読み込み中の表示、お気に入り（星のアイコン）を押したときの反応） | 合否は付けず、気づいたことを記録する（仕様に基準が無いため） | #440 |
 | C-GOOGLE | 任意・人 | Google ログイン | 実 Google のログインは人が行う。Claude はログインページで止まり、人に渡す | #440、[authentication.md](../reference/authentication.md) |
 
 C-NARROW は #287（スマホ対応）が終わるまで不合格になりうる。#287 が開いている間の不合格は、昇格を止める理由にしない。前回の結果より悪くなっていないかを見る。
+
+C-MAP-3 は、ズームとドラッグが効かない不具合（[#500](https://github.com/kazumadev619-dev/FishingConditionsApp/issues/500)）が直るまで不合格になる。#500 が開いている間の C-MAP-3 の不合格は、昇格を止める理由にしない。
 
 ### C-CONSOLE の「想定内」
 
@@ -74,7 +77,8 @@ C-NARROW は #287（スマホ対応）が終わるまで不合格になりうる
 
 ```js
 performance.getEntriesByType('resource').concat(performance.getEntriesByType('navigation'))
-  .filter((e) => e.responseStatus >= 400).map((e) => [e.responseStatus, new URL(e.name).pathname])
+  .filter((e) => new URL(e.name).origin === location.origin && e.responseStatus >= 400)
+  .map((e) => [e.responseStatus, new URL(e.name).pathname])
 ```
 
 ### C-MAP（localhost:3000、実キー）
@@ -114,6 +118,6 @@ const m = document.querySelector('gmp-advanced-marker');
 
 ## 既知の制約
 
-- **全画面にできない。** Claude in Chrome のクリックでは、Fullscreen API が許可されない（素の `requestFullscreen()` を呼ぶボタンでも `not granted`）。C-MAP-4 は人が確かめる
-- **375px まで縮まない。** macOS の Chrome は、ウィンドウの最小幅で表示域がおよそ 570px になる（2026-11-28 に実測）。それより狭い幅は Claude in Chrome では作れない。`md`（768px）より狭いので、スマホ用のレイアウトには切り替わる
+- **全画面にできない。** Claude in Chrome のクリックでは、Fullscreen API が許可されない（素の `requestFullscreen()` を呼ぶボタンでも `not granted`）。C-MAP-4 は人が確かめる。2026-11-28 時点では未確認
+- **375px まで縮まない。** macOS の Chrome は、ウィンドウの最小幅で表示域がおよそ 570px になる（2026-11-28 に実測）。それより狭い幅は Claude in Chrome では作れない。`md`（768px）より狭いので、スマホ用のレイアウトには切り替わる。375px は人が Chrome の開発者ツールのデバイスモード（幅 375 を指定）で確かめる。2026-11-28 時点では未確認
 - 地図はブラウザが Google に直接つなぐ。この確認の間だけ、E2E 環境は外部（Google Maps）に出る
