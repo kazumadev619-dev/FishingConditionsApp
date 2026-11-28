@@ -2,7 +2,7 @@
 
 > - **状態**: 仕様（正）
 > - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/googleMapsClient.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`、`src/instrumentation-client.ts`、`src/components/molecules/FishingLocationMap.tsx`
-> - **最終確認**: 2026-11-28（#476 で、回数制限の `warn` に載せる項目を足した）。2026-11-27（#473 で、`CLIENT_ERROR` の利用者向け文言を「一時的に利用できません。時間をおいて再度お試しください。」へ統一し、`/api/scores` の API キー未設定時 503 チェック、`/api/locations/search` の 503 の文言と `code`（`API_NOT_CONFIGURED`）を `/api/weather` に統一、`tide736` の非オブジェクト応答の 502 分類を反映）。2026-11-23（`/api/scores` が天気と潮汐を並べて呼ぶこと、両方が失敗したときの扱いを、実装に合わせて足した。仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **最終確認**: 2026-11-28（#476 で、回数制限の `warn` に載せる項目を足した。#472 で、回数制限で利用者 ID をどう確かめるかを足した）。2026-11-27（#473 で、`CLIENT_ERROR` の利用者向け文言を「一時的に利用できません。時間をおいて再度お試しください。」へ統一し、`/api/scores` の API キー未設定時 503 チェック、`/api/locations/search` の 503 の文言と `code`（`API_NOT_CONFIGURED`）を `/api/weather` に統一、`tide736` の非オブジェクト応答の 502 分類を反映）。2026-11-23（`/api/scores` が天気と潮汐を並べて呼ぶこと、両方が失敗したときの扱いを、実装に合わせて足した。仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -275,6 +275,11 @@ API ルートごとの現状は、ここに書かない（コードが変わる�
 | 通知 | しない | 1件ごとにはしない。率で検知する（ADR-005 の 5xx 率・外部 API エラー率） | 1件でも人が気づけるようにする（`error` ログ。通知の経路は #283・#284 で入れる） |
 
 回数制限（429）の `warn` には、ルート名（`routeName`）と利用者 ID（`userId`）を載せる（`src/lib/rateLimit.ts` の `withUserRateLimit`。#476）。
+
+利用者ごとの回数制限は、セッションの `user.id` を数えるキーにする。`user.id` が空白以外の文字を含む文字列のときだけ数える。無い、空、空白だけ、文字列でない（真偽値など）ときは、未ログインとして扱う（`src/lib/rateLimit.ts` の `isValidUserId`。#472）。
+
+- `withUserRateLimit`（API ルート）: 401 `{"error":"Unauthorized"}` を返し、ハンドラを呼ばない
+- `isUserRateLimited`（`/dashboard` の座標指定）: 上限を超えたときと同じく、通さない
 
 境目の判断:
 
