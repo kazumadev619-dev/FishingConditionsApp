@@ -72,6 +72,7 @@ describe('isUserRateLimited', () => {
 });
 
 describe('withUserRateLimit', () => {
+  // auth() の呼び出し回数は、各テストで 1 回と検証する。testing-policy 5節「回数の例外」: #435 の仕様が auth() の二重呼び出しの防止なので、回数そのものが仕様
   // 仕様（#472）: 空文字・空白のみ・非文字列の user.id は未認証と同じく 401 を返し、計数・ハンドラ・warn ログを呼ばない
   it.each([
     ['null', null],
@@ -93,7 +94,6 @@ describe('withUserRateLimit', () => {
       const response = await withUserRateLimit('weather', handler);
 
       expect(response.status).toBe(401);
-      // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する（#476）
       expect(auth).toHaveBeenCalledTimes(1);
       expect(cache.increment).not.toHaveBeenCalled();
       expect(handler).not.toHaveBeenCalled();
@@ -114,8 +114,7 @@ describe('withUserRateLimit', () => {
 
       expect(response.status).toBe(429);
       expect(response.headers.get('Retry-After')).toBe('60');
-      // 仕様: docs/reference/api-error-handling.md「エラーの分類と扱い」の表。回数制限は warn を出す。
-      // testing-policy 5節「回数の例外」: #435 の仕様（auth() 二重呼び出し防止）と 429 時の warn 1回出力を検証する
+      // 仕様: docs/reference/api-error-handling.md「エラーの分類と扱い」。回数制限は warn を1回出し、routeName と userId を載せる
       expect(auth).toHaveBeenCalledTimes(1);
       expect(logger.warn).toHaveBeenCalledTimes(1);
       expect(logger.warn).toHaveBeenCalledWith({ routeName, userId }, expect.any(String));
@@ -130,7 +129,6 @@ describe('withUserRateLimit', () => {
     const response = await withUserRateLimit('weather', handler);
 
     expect(response.status).toBe(200);
-    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する（#476）
     expect(auth).toHaveBeenCalledTimes(1);
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:weather:user-1', 60);
     expect(handler).toHaveBeenCalledWith('user-1');
@@ -145,7 +143,6 @@ describe('withUserRateLimit', () => {
     const response = await withUserRateLimit('scores', handler);
 
     expect(response).toBe(customResponse);
-    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する（#476）
     expect(auth).toHaveBeenCalledTimes(1);
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:scores:user-2', 60);
     expect(handler).toHaveBeenCalledWith('user-2');
@@ -158,7 +155,6 @@ describe('withUserRateLimit', () => {
     const response = await withUserRateLimit('scores', handler);
 
     expect(response.status).toBe(200);
-    // testing-policy 5節「回数の例外」: #435 の仕様自体が auth() の二重呼び出し防止のため回数を検証する（#476）
     expect(auth).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith('user-2');
     expect(logger.warn).not.toHaveBeenCalled();
