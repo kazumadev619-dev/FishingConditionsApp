@@ -6,10 +6,11 @@
 import { type NextRequest, NextResponse } from 'next/server';
 import { ApiError } from '@/lib/api/types';
 import { createApiErrorResponse } from '@/lib/apiErrorUtils';
+import { createErrorResponse } from '@/lib/apiResponseHandler';
 import { CACHE_PREFIX, CACHE_TTL } from '@/lib/cache/config';
 import { generateCacheKey, type Jsonified, reviveDate, withCache } from '@/lib/cache/helpers';
 import { logger } from '@/lib/logger';
-import { getCurrentWeather } from '@/lib/openWeatherService';
+import { getCurrentWeather, isWeatherApiConfigured } from '@/lib/openWeatherService';
 import { withUserRateLimit } from '@/lib/rateLimit';
 import { calculateFishingScore } from '@/lib/scoring';
 import { withServerTiming } from '@/lib/serverTiming';
@@ -81,9 +82,12 @@ export const GET = withServerTiming('scores', (request: NextRequest) =>
   withUserRateLimit('scores', () => handleGet(request)),
 );
 
-async function handleGet(
-  request: NextRequest,
-): Promise<NextResponse<ScoringResponse | { error: string }>> {
+async function handleGet(request: NextRequest) {
+  if (!isWeatherApiConfigured()) {
+    logger.error('OPENWEATHERMAP_API_KEY is not configured');
+    return createErrorResponse('Weather API is not configured', 503, 'API_NOT_CONFIGURED');
+  }
+
   try {
     // クエリパラメータを取得
     const searchParams = request.nextUrl.searchParams;

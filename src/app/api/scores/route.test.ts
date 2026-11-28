@@ -10,7 +10,10 @@ vi.mock('@/lib/rateLimit', () => ({
     handler('user-1'),
 }));
 vi.mock('@/lib/cache/client', () => ({ cache: cacheMock }));
-vi.mock('@/lib/openWeatherService', () => ({ getCurrentWeather: weatherMock }));
+vi.mock('@/lib/openWeatherService', () => ({
+  isWeatherApiConfigured: () => true,
+  getCurrentWeather: weatherMock,
+}));
 // vi.fn() は返した Promise に then をつなぐので、reject が「処理済み」になってしまう。
 // 未処理の reject を確かめるテスト用に、素の関数で包む（holder.impl があればそちらを呼ぶ）。
 const tideHolder = vi.hoisted(() => ({ impl: null as null | (() => Promise<unknown>) }));
