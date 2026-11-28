@@ -1,6 +1,6 @@
 # E2E 環境
 
-E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と 10 シナリオ）と #451（Maps の初期化の失敗）、実キーでの地図の確認は #440 が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
+E2E（画面を通した確認）を、毎回同じ条件で流すための環境の立て方と使い方。Playwright の E2E テスト本体は #439（基盤と 10 シナリオ）と #451（Maps の初期化の失敗）、実キーでの地図の確認は #440（[chrome-visual-check.md](./chrome-visual-check.md)）が受け持つ。worktree ごとに分けた理由は [ADR-012](../adr/012-e2e-dev-env-per-worktree.md)。
 
 ## 立てる・片付ける
 
@@ -92,7 +92,7 @@ npm run e2e:up        # キーが空のビルドに戻す（ほかのテスト�
 - `SKIP_BUILD=1` で立てると、`MAPS_KEY_SET` と既存の `.next` が食い違うことがある。キーを切り替えるときはビルドを省かない
 - テストは `page.route` で Maps の JS（`https://maps.googleapis.com/maps/api/js?...`）への要求を、初期化に失敗する最小のスクリプトで `route.fulfill` する。要求を打ち切るだけ（`route.abort`）では、#237 の「読めたが初期化に失敗した」状態にならない。スクリプトは `gm_authFailure` を呼び、マーカーの `position` の2回目以降の設定で #237 と同じ例外を投げる
 - Google には要求が出ない。差し替えた要求のほかに Google 宛てがあれば、`context` fixture が記録してテストを落とす
-- 実キーで地図を出す確認は #440
+- 実キーで地図を出す確認は [chrome-visual-check.md](./chrome-visual-check.md)（#440。localhost:3000 で立てる。`E2E_APP_PORT` でアプリのポートを固定できる）
 
 ## CI
 

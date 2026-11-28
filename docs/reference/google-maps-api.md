@@ -2,7 +2,7 @@
 
 > - **状態**: 説明（参考）
 > - **対応する実装**: `src/lib/googleMapsClient.ts`（サーバー側の Geocoding）、`src/components/molecules/FishingLocationMap.tsx`（ブラウザ側の地図。`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` を使う）
-> - **最終確認**: 2026-11-20（「対応する実装」を #388 で直した。そのほかは未確認）
+> - **最終確認**: 2026-11-28（ブラウザ用キーのリファラ制限を #440 で追記。2026-11-20 に「対応する実装」を #388 で直した。そのほかは未確認）
 
 このドキュメントは、このプロジェクトで Google Maps API を統合し、利用する方法について概説します。
 
@@ -23,6 +23,12 @@ Google Maps API は、主に住所から座標への変換（ジオコーディ�
 | --- | --- | --- | --- |
 | `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` | ブラウザ | Maps JavaScript API | HTTP リファラ |
 | `GOOGLE_MAPS_API_KEY` | サーバーのみ | Geocoding API | API 制限のみ |
+
+### ブラウザ用キーのリファラ制限
+
+ブラウザ用キー（`NEXT_PUBLIC_GOOGLE_MAPS_API_KEY`）の HTTP リファラ制限で許可されている URL は、`http://localhost:3000/*` と `https://fishing.kazuma-lab.com/*` の2つだけ（2026-11-28 にオーナーが Cloud Console で確認）。ローカルで実キーの地図を出せるのは localhost:3000 だけで、ほかのポートでは地図が出ない。ローカルでの確かめ方は [chrome-visual-check.md](../guides/chrome-visual-check.md)。
+
+### キーの作り方
 
 1.  [Google Cloud Console](https://console.cloud.google.com/) で2本の API キーを作成します。
 2.  プロジェクトのルートに `.env.local` ファイルが存在しない場合は作成します。
