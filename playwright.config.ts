@@ -29,7 +29,7 @@ function readAppUrl(content: string): string {
 
 const isCI = Boolean(process.env.CI);
 const state = readState();
-// Maps のダミーのキーでビルドした環境（E2E_MAPS_KEY 付きの e2e:up）では、初期化の失敗の E2E だけを流す。
+// Maps のダミーのキーでビルドした環境（E2E_MAPS_KEY と E2E_MAPS_MAP_ID 付きの e2e:up）では、初期化の失敗の E2E だけを流す。
 // ほかのテストは、キーが空のビルドの代替表示を前提にしている（docs/guides/e2e-env.md）
 const MAP_INIT_FAILURE_SPEC = 'map-init-failure.spec.ts';
 const mapsKeySet = /^MAPS_KEY_SET=1$/m.test(state);

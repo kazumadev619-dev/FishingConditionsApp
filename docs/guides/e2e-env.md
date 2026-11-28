@@ -88,7 +88,7 @@ npm run test:e2e      # この環境では e2e/map-init-failure.spec.ts だけ�
 npm run e2e:up        # キーが空のビルドに戻す（ほかのテストはこちらで流す）
 ```
 
-- `up` は、`E2E_MAPS_KEY` を渡したかを `.e2e/state.env` の `MAPS_KEY_SET` に書く。`playwright.config.ts` はそれを見て、`1` なら `map-init-failure.spec.ts` だけを、`0` ならそれ以外を流す。ほかのテストは、キーが空のビルドの代替表示を前提にしているため
+- `up` は、`E2E_MAPS_KEY` と `E2E_MAPS_MAP_ID` を両方渡したかを `.e2e/state.env` の `MAPS_KEY_SET` に書く（地図はキーと Map ID の両方が要る）。`playwright.config.ts` はそれを見て、`1` なら `map-init-failure.spec.ts` だけを、`0` ならそれ以外を流す。ほかのテストは、キーが空のビルドの代替表示を前提にしているため
 - `SKIP_BUILD=1` で立てると、`MAPS_KEY_SET` と既存の `.next` が食い違うことがある。キーを切り替えるときはビルドを省かない
 - テストは `page.route` で Maps の JS（`https://maps.googleapis.com/maps/api/js?...`）への要求を、初期化に失敗する最小のスクリプトで `route.fulfill` する。要求を打ち切るだけ（`route.abort`）では、#237 の「読めたが初期化に失敗した」状態にならない。スクリプトは `gm_authFailure` を呼び、マーカーの `position` の2回目以降の設定で #237 と同じ例外を投げる
 - Google には要求が出ない。差し替えた要求のほかに Google 宛てがあれば、`context` fixture が記録してテストを落とす

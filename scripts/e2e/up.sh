@@ -65,8 +65,8 @@ APP_URL=http://localhost:$APP_PORT
   echo "STUB_PORT=$STUB_PORT"
   echo "APP_URL=$APP_URL"
   echo "STUB_URL=http://127.0.0.1:$STUB_PORT"
-  # Playwright がこれを見て、流すテストを選ぶ（playwright.config.ts）
-  echo "MAPS_KEY_SET=$([ -n "${E2E_MAPS_KEY:-}" ] && echo 1 || echo 0)"
+  # Playwright がこれを見て、流すテストを選ぶ（playwright.config.ts）。地図はキーと Map ID の両方が要る
+  echo "MAPS_KEY_SET=$([ -n "${E2E_MAPS_KEY:-}" ] && [ -n "${E2E_MAPS_MAP_ID:-}" ] && echo 1 || echo 0)"
 } >> "$STATE"
 
 DATABASE_URL_DIRECT=$DATABASE_URL npx --no-install prisma migrate deploy > /dev/null
