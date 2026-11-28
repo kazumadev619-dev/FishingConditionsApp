@@ -5,6 +5,8 @@ description: GitHub issue を1本ずつ仕上げて本番まで届けるスキ�
 
 # Issue を仕上げて本番へ届ける
 
+> **参考にした考え方:** [pstack `poteto-mode`](https://github.com/cursor/plugins/tree/main/pstack/skills/poteto-mode) / [`show-me-your-work`](https://github.com/cursor/plugins/tree/main/pstack/skills/show-me-your-work) / [`principle-subtract-before-you-add`](https://github.com/cursor/plugins/tree/main/pstack/skills/principle-subtract-before-you-add) / [`principle-make-operations-idempotent`](https://github.com/cursor/plugins/tree/main/pstack/skills/principle-make-operations-idempotent)
+
 このスキルは「issue を選ぶ → 前提を検証する → 実装する → 実証する → レビューさせる → 昇格させる」の流れを扱う。
 コミット書式・PR テンプレートの詳細は **`github-push-pr` スキル**に従うこと。ここでは重複を書かない。
 
@@ -35,6 +37,14 @@ gh pr view <N> --json files --jq '.files[].path'
 
 重なっていなければ別ブランチで並行して進められる。重なっていたら順番に片付ける。
 
+### 二重着手を防ぐ（複数エージェント・Orca bot 運用時）
+
+複数の会話や bot が同じ待ち Issue を同時に拾うと、同じ作業の worktree が 2 つ立つ。**着手する直前に「この Issue は自分が掴んだ」印を付ける。**
+
+1. 既に開いている PR（`gh pr list --search "#<N>"`）や他の Assignee が付いていないかを確かめる
+2. 着手する直前に `gh issue edit <N> --add-assignee @me` を打つ（または作業開始コメントでブランチ名を宣言する）
+3. 別セッションや夜間 bot から引き継ぐときは、先に [`recall`](../recall/SKILL.md) で現在地を復元する
+
 優先の考え方:
 
 - 本番に実害が出ているもの（P0）が最優先
@@ -52,9 +62,18 @@ CLAUDE.md の禁止事項を守る。
 
 **スコープを勝手に広げない。** 作業中に見つけた無関係な問題は、このブランチに混ぜず別 issue にする（ステップ5参照）。
 
+設計・実装の原則（`pstack` より取り込み）:
+
+- **足す前に引く**: 新しい抽象・フラグ・補助層を足す前に、不要な分岐・重複・死んだコードの削除で単純にできないかを先に見る
+- **操作を冪等にする**: スクリプト・マイグレーション・シード・CI ステップを書く・直すときは、途中で失敗して再実行しても壊れず目標状態へ収束する作りにする
+
 ## ステップ3: 実証する
 
 **「型チェックとビルドが通った」は検証ではない。壊れることを確かめて初めて検証になる。**
+
+- **共通モジュール・認証・スコア・DB スキーマ・3リポジトリ契約に触れたとき**: [`blast-radius`](../blast-radius/SKILL.md) で diff 外の急所を洗い出し、実行して安全を証明する
+- **性能改善や応答時間を主張するとき**: [`benchmark-checklist`](../benchmark-checklist/SKILL.md) の 7 問を実測で満たしてから報告する
+- **無人・夜間実行（Orca bot 等）の経過記録**: 長時間の自律タスクでは、実行したコマンド・判断理由・詰まった点を Draft PR 本文や Issue コメントに段階的に残し、途中で止まっても人間がそのまま引き継げる状態にする（`show-me-your-work`）
 
 ### 回帰テストや CI ガードを書いたとき: 変異テスト
 
@@ -181,7 +200,7 @@ git worktree remove --force "$W"
 
 ### 0. 仕様と実装を突き合わせる
 
-昇格に含まれる差分が、「仕様（正）」の文書（`docs/reference/` のうち、冒頭の状態が「仕様（正）」のもの）の「対応する実装」に触れているときだけ行う（ADR-010）。仕様と実装を書いた担当とは別の新しいエージェントに、その文書と実装を突き合わせてもらい、食い違いを一覧にする。文書の誤りは同じ昇格に含め、実装の誤りと、どちらか判断が要るものは、ユーザーに確認してから進める。
+昇格に含まれる差分が、「仕様（正）」の文書（`docs/reference/` のうち、冒頭の状態が「仕様（正）」のもの）の「対応する実装」に触れているときだけ行う（ADR-010）。仕様と実装を書いた担当とは別の新しいエージェントに、[`maintain-verification`](../maintain-verification/SKILL.md) の手順で文書と実装を突き合わせてもらい、食い違いを一覧にする。文書の誤りは同じ昇格に含め、実装の誤りと、どちらか判断が要るものは、ユーザーに確認してから進める。
 
 ### 1. 対象の issue を機械的に列挙する
 
@@ -241,6 +260,10 @@ gh run watch <run-id>
 - この昇格に含まれる変更それぞれについて、変わったことが外から見える点（画面、ヘッダ、デプロイログの `configured` / `created` 行など）
 
 最後に手順2で `Closes` にした issue が CLOSED、`Refs` にした issue が OPEN のままであることを確かめる。
+
+### 6. 振り返り（Outer Loop・任意）
+
+手間取ったタスクや、同じ指摘を繰り返した昇格のあとには [`reflect`](../reflect/SKILL.md) で学びを仕分け、機械的に防げるものは [`correct`](../correct/SKILL.md) でガード化する。
 
 ## commitlint の落とし穴（github-push-pr に加えて）
 
