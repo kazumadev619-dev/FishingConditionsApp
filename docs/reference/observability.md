@@ -23,7 +23,7 @@ Next がサーバーの起動時に `register()`（`src/instrumentation.ts`）�
 | `OTEL_LOGS_EXPORTER` | `none` | OTLP でのログの送信を止める。ログは stdout から Loki に入る |
 
 - サービス名は `fishing-conditions-app`
-- トレースは OTLP/HTTP（protobuf）で送る。メトリクスは SDK の既定（OTLP、60秒ごと）で送る。記録が無い間は、メトリクスを送らない
+- トレースは OTLP/HTTP（protobuf）で送る。メトリクスは SDK の既定（OTLP、60秒ごと）で送る。最初に記録するまでは、メトリクスを送らない
 - 送り先に届かなくても、アプリは動く。送信の失敗はログに出ないので、届いていないことには Grafana Cloud にデータが来ないことで気づく（`k8s/README.md` の環境変数の表）
 
 ## トレース
@@ -75,8 +75,8 @@ Prometheus では、名前は `fishing_upstream_request_duration_seconds_{bucket
 
 ### キャッシュのヒット／ミス
 
-- `withCache` が Redis を引いた回数を数える
-- `skipCache` の経路と、同じキーへの相乗り（#433）は Redis を引かないので、数えない
+- `withCache` がキャッシュを引くたびに1回数える。Redis が使えないときと、読み取りや JSON の解析に失敗したときも、`miss` として数える（`src/lib/cache/client.ts` の `get`）
+- `skipCache` の経路と、同じキーへの相乗り（#433）は、キャッシュを引かないので数えない
 
 ### ラベルに入れないもの
 

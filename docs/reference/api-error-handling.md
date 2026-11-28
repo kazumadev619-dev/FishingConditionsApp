@@ -279,7 +279,7 @@ API ルートごとの現状は、ここに書かない（コードが変わる�
 利用者ごとの回数制限は、セッションの `user.id` を数えるキーにする。`user.id` が空白以外の文字を含む文字列のときだけ数える。無い、空、空白だけ、文字列でない（真偽値など）ときは、未ログインとして扱う（`src/lib/rateLimit.ts` の `isValidUserId`。#472）。
 
 - `withUserRateLimit`（API ルート）: 401 `{"error":"Unauthorized"}` を返し、ハンドラを呼ばない
-- `isUserRateLimited`（`/dashboard` の座標指定）: 上限を超えたときと同じく、通さない
+- `isUserRateLimited`（`/dashboard` の座標指定）: 上限を超えたときと同じく、既定の場所を返す
 
 境目の判断:
 
