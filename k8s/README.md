@@ -190,6 +190,7 @@ CRLF の `\r` とキーの前の空白は剥がされる。
 | `AUTH_URL` | クォートやコメントが入ると `/login` と `/api/auth/*` が 500（`Invalid URL`）。消える / `http://` になると Cookie の `__Host-` と `Secure` が静かに外れる（#134） | CI ガードと deploy の `callbackUrl` 照合 |
 | `NEXTAUTH_URL` | メール検証リンクが壊れ、未確認の利用者がログインできなくなる（`src/lib/email.ts` が文字列連結している。Auth.js は `AUTH_URL` を優先するので認証には効かない） | **ガードは無い** |
 | `REDIS_URL` | クォートの場合、接続できず、キャッシュが永久に無効のまま動く | deploy の非ブロッキングスモークが `/readyz` の cache で warning を出すだけ |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | アプリは動くが、トレースとメトリクスが届かない（送信の失敗はログに出ない）。消すと SDK を起動しない | **ガードは無い**。Grafana Cloud で `fishing-conditions-app` のデータが来ないことで気づく |
 
 Deployment 側で `envFrom` に `prefix:` を付けたり、`env:` で同じ名前を上書きしたり
 しても、`config.env` が正しいままアプリから見える値が変わる（#168 のコメント）。

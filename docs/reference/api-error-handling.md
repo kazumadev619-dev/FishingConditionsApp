@@ -1,8 +1,8 @@
 # API エラーハンドリング - 使用方法ガイド
 
 > - **状態**: 仕様（正）
-> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`、`src/instrumentation-client.ts`、`src/components/molecules/FishingLocationMap.tsx`
-> - **最終確認**: 2026-11-23（仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
+> - **対応する実装**: `src/lib/api/`、`src/lib/apiErrorUtils.ts`、`src/lib/openWeatherService.ts`、`src/lib/tideService.ts`、`src/lib/googleMapsClient.ts`、`src/lib/rateLimit.ts`、`src/lib/cache/client.ts`、`src/lib/clientErrors.ts`、`src/app/api/`、`src/app/readyz/route.ts`、`src/app/dashboard/error.tsx`、`src/instrumentation-client.ts`、`src/components/molecules/FishingLocationMap.tsx`
+> - **最終確認**: 2026-11-28（#476 で、回数制限の `warn` に載せる項目を足した。#472 で、回数制限で利用者 ID をどう確かめるかを足した）。2026-11-27（#473 で、`CLIENT_ERROR` の利用者向け文言を「一時的に利用できません。時間をおいて再度お試しください。」へ統一し、`/api/scores` の API キー未設定時 503 チェック、`/api/locations/search` の 503 の文言と `code`（`API_NOT_CONFIGURED`）を `/api/weather` に統一、`tide736` の非オブジェクト応答の 502 分類を反映）。2026-11-23（`/api/scores` が天気と潮汐を並べて呼ぶこと、両方が失敗したときの扱いを、実装に合わせて足した。仕様と実装の突き合わせで、使用例の文言、`DB_ERROR` のログの形、対応する実装を直した。#428 で、上流を呼び出す API ルートと `tideService` の `ApiError` 分類、DB 障害の 503 分類、`/readyz` の `error` ログを反映）。2026-11-22（`error-classification.md` の分類の決まりをこの文書に統合し、画面の例外の受け口の約束をこの文書に書いた。#446）。2026-11-21（#379 で、使われていない `timeout`・`retries`・`isRetryable` の記述を消した。2026-11-21 に 4xx の種別とリトライの範囲を #389 で直した。#414 で、上流の応答が不正なときの節を足した。2026-11-07 に 429 を #368 で直した。リトライの条件・ログ・`apiErrorUtils.ts` は #388 で実装と突き合わせて直した）
 
 ## 概要
 
@@ -230,17 +230,34 @@ const RETRYABLE_STATUS_CODES = [
 
 OpenWeather が 200 を返しても、スコアに使う数値（風速・気圧）が有限の数値でなければ、不正な応答として弾く（`src/lib/openWeatherService.ts`、#414）。`createApiError(502, …)` を投げる（`SERVER_ERROR`、`retryable: true`）。弾いた応答はキャッシュに書かない。
 
-tide736 も、応答の `status` が 1 でなければ `createApiError(502, …)` を投げる（`SERVER_ERROR`、`src/lib/tideService.ts`、#470）。弾いた応答はキャッシュに書かない。
+tide736 も、応答がオブジェクトでない場合（`null`・プリミティブ・配列）や `status` が 1 でなければ `createApiError(502, …)` を投げる（`SERVER_ERROR`、`src/lib/tideService.ts`、#470・#473）。弾いた応答はキャッシュに書かない。
+
+Google Maps Geocoding API は、`ZERO_RESULTS` を 0 件の正常応答（`[]`）として扱い、異常 `status` は種別ごとに `ApiError` に分類する（`src/lib/googleMapsClient.ts`、#471）。弾いた応答はキャッシュに書かない。
+
+- `OVER_QUERY_LIMIT`: `ApiErrorType.RATE_LIMITED`（`retryable: false`。429 と同じく、上流が絞っているときはリトライしない（#317））
+- `REQUEST_DENIED` / `INVALID_REQUEST`: `ApiErrorType.CLIENT_ERROR`（`retryable: false`）
+- `UNKNOWN_ERROR` 等: `ApiErrorType.SERVER_ERROR`（`retryable: true`、502）
 
 | 入口 | 利用者に出るもの |
 |---|---|
 | `/api/weather` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/api/scores` | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
 | `/api/conditions/tide`（tide736） | HTTP 502。`error` は「サーバーで問題が発生しました。サポートに連絡してください。」、`code` は `SERVER_ERROR` |
+| `/api/locations/search`（Geocoding） | HTTP 502。`code` は上流の分類に従う（`RATE_LIMITED` / `CLIENT_ERROR` / `SERVER_ERROR`）、`error` は `getErrorMessage` の固定文言 |
 | `/` | `try/catch` も `app/error.tsx` も無いので、Next.js 既定のエラー画面 |
 | `/dashboard` | `try/catch` は無いが、`dashboard/error.tsx` が受ける。「一時的に利用できません」と、「再試行」ボタン |
 
 応答には、不正だった値も上流の本文も入れない（`message` はログにだけ残る）。点を付けられない値を 0 点として扱う案は採らない（点と説明文が食い違うため）。
+
+## `/api/scores` の上流の呼び出し
+
+`/api/scores` は、天気 API キーが未設定のとき `/api/weather` と同じく HTTP 503（`API_NOT_CONFIGURED`）を返す（#473）。スコアを計算するとき（キャッシュのミス、または `skipCache=true`）は、天気（OpenWeather）と潮汐（tide736）を並べて呼ぶ（`src/app/api/scores/route.ts`、#432）。互いに依存しないので、待ち時間は遅いほう 1 つぶんで済む。キャッシュにヒットしたときは、どちらも呼ばない。
+
+失敗の扱い:
+
+- どちらかが失敗したら、成功した側の結果は使わず、失敗を返す。HTTP ステータスとログは、下の[「エラーの分類と扱い」](#エラーの分類と扱い)に従う。失敗した結果はキャッシュに書かない
+- 両方が失敗したら、潮汐でなく天気の失敗を理由にする。先に失敗したほうを選ぶと、同じ障害でも、エラーの分類が揺れるため、順番に呼んでいた頃に合わせて固定する
+- 片方が失敗しても、もう片方が終わるまで待つ。成功した側は各サービスのキャッシュに載るので、再試行で無駄にならない
 
 ## エラーの分類と扱い
 
@@ -256,6 +273,13 @@ API ルートごとの現状は、ここに書かない（コードが変わる�
 | ログ | 出さない。回数制限と、不正な値の繰り返しだけ `warn` | 最終的に失敗したとき `error`。リトライ中は `warn`。同じ障害が続くときは間引く（Redis の例） | `error`（スタック付き） |
 | リトライ | しない。429 は `Retry-After` のあとに利用者が再試行する | する（指数バックオフ、最大3回）。上流の 429 はしない（#317） | しない |
 | 通知 | しない | 1件ごとにはしない。率で検知する（ADR-005 の 5xx 率・外部 API エラー率） | 1件でも人が気づけるようにする（`error` ログ。通知の経路は #283・#284 で入れる） |
+
+回数制限（429）の `warn` には、ルート名（`routeName`）と利用者 ID（`userId`）を載せる（`src/lib/rateLimit.ts` の `withUserRateLimit`。#476）。
+
+利用者ごとの回数制限は、セッションの `user.id` を数えるキーにする。`user.id` が空白以外の文字を含む文字列のときだけ数える。無い、空、空白だけ、文字列でない（真偽値など）ときは、未ログインとして扱う（`src/lib/rateLimit.ts` の `isValidUserId`。#472）。
+
+- `withUserRateLimit`（API ルート）: 401 `{"error":"Unauthorized"}` を返し、ハンドラを呼ばない
+- `isUserRateLimited`（`/dashboard` の座標指定）: 上限を超えたときと同じく、既定の場所を返す
 
 境目の判断:
 

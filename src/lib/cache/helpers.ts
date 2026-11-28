@@ -1,4 +1,5 @@
 import { logger } from '../logger';
+import { recordCacheLookup } from '../telemetry/metrics';
 import { cache } from './client';
 import type { Cacheable, Jsonified } from './types';
 
@@ -84,6 +85,8 @@ export function withCache<T extends Cacheable>(
   const promise = (async () => {
     // キャッシュから取得を試みる
     const cached = await cache.get<T>(key);
+    // ラベルはキーの先頭（種類）だけ。残りは港コードや座標なので入れない（#283）
+    recordCacheLookup(key.split(':')[0] as string, cached.hit);
 
     if (cached.hit) {
       // revive を省けるのは ReviverArgument が `Jsonified<T> extends T` を確かめた型だけなので、

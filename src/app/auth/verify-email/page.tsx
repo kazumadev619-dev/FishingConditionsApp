@@ -16,7 +16,7 @@ export default async function VerifyEmailPage({
     <div className="flex items-center justify-center min-h-screen bg-background">
       <Card className="mx-auto max-w-md">
         <CardHeader>
-          <CardTitle className="text-2xl text-center">メールアドレスの確認</CardTitle>
+          <CardTitle className="text-title text-center">メールアドレスの確認</CardTitle>
           <CardDescription className="text-center">
             ご自身で登録した場合だけ、下のボタンを押してください
           </CardDescription>

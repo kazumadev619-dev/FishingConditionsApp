@@ -29,8 +29,9 @@ const request = (url: string) => new NextRequest(`https://app.test${url}`);
 const passThrough = () =>
   vi
     .mocked(withUserRateLimit)
-    .mockImplementation(((_name: string, handler: () => Promise<NextResponse>) =>
-      handler()) as never);
+    .mockImplementation((_name: string, handler: (userId: string) => Promise<NextResponse>) =>
+      handler('user-1'),
+    );
 const scoresUrl = '/api/scores?lat=35.6&lon=139.7&prefectureCode=13&portCode=2&date=2026-11-01';
 
 afterEach(() => vi.clearAllMocks());

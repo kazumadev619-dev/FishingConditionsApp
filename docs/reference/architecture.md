@@ -2,7 +2,7 @@
 
 > - **状態**: 説明（参考）
 > - **対応する実装**: `src/` 全体
-> - **最終確認**: 2026-11-20（#388 で、読んで実装と突き合わせて直した。実行はしていない）
+> - **最終確認**: 2026-11-28（#283 で、監視の節を足した）。2026-11-20（#388 で、読んで実装と突き合わせて直した。実行はしていない）
 
 ## システム全体構成
 
@@ -360,13 +360,13 @@ erDiagram
 ```
 1. ユーザーが釣り場Aを選択
    ↓
-2. 天気データ取得
+2. 天気データ取得（3 と並べて呼ぶ）
    - locations(A).latitude, longitude取得
    - Redisキャッシュ確認: [weather:…] で30分以内のデータ？
    - 有効 → 返す
    - 期限切れ → OpenWeatherMap API呼び出し → Redisにキャッシュ保存
    ↓
-3. 潮汐データ取得
+3. 潮汐データ取得（2 と並べて呼ぶ）
    - locations(A).port_id取得
    - ports(port_id).port_code, prefecture_code取得
    - Redisキャッシュ確認: [tide:…] で6時間以内のデータ？
@@ -379,6 +379,8 @@ erDiagram
 5. UI表示
    - スコア、天気、潮汐情報をダッシュボードに表示
 ```
+
+2 と 3 は互いに依存しないので、`/api/scores` は並べて呼ぶ。失敗したときの扱いは [api-error-handling.md の「`/api/scores` の上流の呼び出し」](./api-error-handling.md#apiscores-の上流の呼び出し)。
 
 ---
 
@@ -452,6 +454,12 @@ WHERE l.id = ${locationId};
 - **ブラウザキャッシュ**: `Cache-Control` ヘッダで効かせる。`/api/scores` は `private, max-age=1800`（30分）、`/api/locations/search`・`/api/conditions/tide` は `private, max-age=3600`（Redis から返したとき。そうでなければ 300）。認証必須の API なので、`public` にして共有キャッシュに載せない。
 
 Service Worker のキャッシュは無い。セッションは JWT の Cookie（Auth.js）で、Redis には持たない。
+
+---
+
+## 監視
+
+本番の監視は Grafana Cloud の無料枠で行い、Pi には収集エージェントの Alloy だけを置く（[ADR-005](../adr/005-monitoring-platform.md)）。アプリは OpenTelemetry の SDK で、トレースとメトリクスを OTLP/HTTP で `monitoring` の Alloy に送る。ログは stdout から Loki に入り、スパンの中のログには `trace_id` が載る。計測の名前、ラベル、送らないもの（ヘルスチェック、URL のクエリ）は [observability.md](./observability.md) にある。
 
 ---
 

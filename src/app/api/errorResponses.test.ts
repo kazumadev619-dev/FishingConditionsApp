@@ -1,5 +1,6 @@
 import { NextRequest } from 'next/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { auth } from '@/auth';
 import { Prisma } from '@/generated/prisma/client';
 import { createApiError } from '@/lib/api/errorHandler';
 import { ApiError, ApiErrorType } from '@/lib/api/types';
@@ -19,7 +20,7 @@ import { GET as weather } from './weather/route';
 
 const userId = '11111111-1111-4111-8111-111111111111';
 
-vi.mock('@/auth', () => ({ auth: async () => ({ user: { id: userId } }) }));
+vi.mock('@/auth', () => ({ auth: vi.fn(async () => ({ user: { id: userId } })) }));
 vi.mock('@/lib/logger', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
@@ -30,7 +31,7 @@ vi.mock('@/lib/prisma', () => ({
   },
 }));
 vi.mock('@/lib/rateLimit', () => ({
-  withUserRateLimit: (_name: string, handler: () => unknown) => handler(),
+  withUserRateLimit: (_name: string, handler: (userId: string) => unknown) => handler('user-1'),
 }));
 vi.mock('@/lib/locationService', () => ({
   isLocationSearchConfigured: vi.fn(() => true),
@@ -66,7 +67,10 @@ const loggedMetaTypes = () =>
 const expectNotInHeaders = (response: Response) =>
   expect([...response.headers.values()].join('\n')).not.toContain(SECRET);
 
-afterEach(() => vi.clearAllMocks());
+afterEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(auth).mockResolvedValue({ user: { id: userId } } as never);
+});
 
 describe('失敗の応答に例外の message を入れない（#313）', () => {
   it.each([
@@ -79,6 +83,12 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
     [
       'favorites GET',
       () => vi.mocked(prisma.user_favorites.findMany),
+      () => getFavorites(),
+      { error: 'Failed to fetch favorites' },
+    ],
+    [
+      'favorites GET (auth 例外)',
+      () => vi.mocked(auth),
       () => getFavorites(),
       { error: 'Failed to fetch favorites' },
     ],
@@ -162,7 +172,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         'CLIENT_ERROR (401)',
         502,
         createApiError(401, SECRET),
-        'リクエストが無効です。入力内容を確認してください。',
+        '一時的に利用できません。時間をおいて再度お試しください。',
         false,
         ApiErrorType.CLIENT_ERROR,
       ],
@@ -170,7 +180,7 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
         'CLIENT_ERROR (422)',
         502,
         createApiError(422, SECRET),
-        'リクエストが無効です。入力内容を確認してください。',
+        '一時的に利用できません。時間をおいて再度お試しください。',
         false,
         ApiErrorType.CLIENT_ERROR,
       ],
@@ -278,26 +288,47 @@ describe('失敗の応答に例外の message を入れない（#313）', () => 
       expect(loggedMetaTypes()).not.toContain('API_ERROR');
     });
 
-    it('API キー未設定（weather / locations/search）は 503 と固定文言を返し、warn ではなく error ログを出す', async () => {
-      vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
-      const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
-      expect(weatherRes.status).toBe(503);
-      await expect(weatherRes.json()).resolves.toEqual({
-        error: 'Weather API is not configured',
-        code: 'API_NOT_CONFIGURED',
-        status: 503,
+    describe('API キー未設定は 503 と固定文言を返し、warn ではなく error ログを出す', () => {
+      it('weather', async () => {
+        vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
+        const weatherRes = await weather(request('/api/weather?lat=35.6&lon=139.7'));
+        expect(weatherRes.status).toBe(503);
+        await expect(weatherRes.json()).resolves.toEqual({
+          error: 'Weather API is not configured',
+          code: 'API_NOT_CONFIGURED',
+          status: 503,
+        });
+        expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
+        expect(logger.warn).not.toHaveBeenCalled();
       });
-      expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
 
-      vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
-      const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
-      expect(locationRes.status).toBe(503);
-      await expect(locationRes.json()).resolves.toEqual({
-        error: 'Location search is not configured. Please set GOOGLE_MAPS_API_KEY.',
-        status: 503,
+      it('scores', async () => {
+        vi.mocked(isWeatherApiConfigured).mockReturnValueOnce(false);
+        const scoresRes = await scores(request(scoresUrl));
+        expect(scoresRes.status).toBe(503);
+        await expect(scoresRes.json()).resolves.toEqual({
+          error: 'Weather API is not configured',
+          code: 'API_NOT_CONFIGURED',
+          status: 503,
+        });
+        expect(logger.error).toHaveBeenCalledWith('OPENWEATHERMAP_API_KEY is not configured');
+        expect(logger.warn).not.toHaveBeenCalled();
+        expect(getCurrentWeather).not.toHaveBeenCalled();
+        expect(getTideData).not.toHaveBeenCalled();
       });
-      expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
-      expect(logger.warn).not.toHaveBeenCalled();
+
+      it('locations/search', async () => {
+        vi.mocked(isLocationSearchConfigured).mockReturnValueOnce(false);
+        const locationRes = await locationSearch(request('/api/locations/search?q=tokyo'));
+        expect(locationRes.status).toBe(503);
+        await expect(locationRes.json()).resolves.toEqual({
+          error: 'Location search is not configured',
+          code: 'API_NOT_CONFIGURED',
+          status: 503,
+        });
+        expect(logger.error).toHaveBeenCalledWith('GOOGLE_MAPS_API_KEY is not configured');
+        expect(logger.warn).not.toHaveBeenCalled();
+      });
     });
 
     it('weather の自前の ApiError でない例外は 500 の固定文言で返す', async () => {

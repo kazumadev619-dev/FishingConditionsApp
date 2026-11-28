@@ -202,11 +202,11 @@ export const test = base.extend<E2EFixtures>({
  * - 天気・潮汐の固定値: scripts/perf/stub.mjs（weatherResponse / tideResponse）
  * - ランクと範囲・風の注意文: docs/reference/scoring-algorithm.md
  * - お気に入り登録状態: #78, #439
- * - 地図の代替表示: docs/guides/e2e-env.md
+ * - 地図の代替表示: docs/guides/e2e-env.md（キーが空のビルド）。初期化に失敗したときは #237
  */
 export async function expectDashboard(
   page: Page,
-  options: { isFavorite?: boolean } = {},
+  options: { isFavorite?: boolean; mapFallback?: string } = {},
 ): Promise<void> {
   const main = page.getByRole('main');
 
@@ -279,8 +279,10 @@ export async function expectDashboard(
   const favoriteLabel = options.isFavorite ? 'お気に入りから削除' : 'お気に入りに追加';
   await expect(main.getByRole('button', { name: favoriteLabel })).toBeVisible();
 
-  // 地図: API キー・Map ID が空の E2E ビルドでは代替表示が出ること
-  await expect(main.getByText('APIキーまたはMap IDが設定されていません')).toBeVisible();
+  // 地図: 既定は API キー・Map ID が空の E2E ビルドの代替表示
+  await expect(
+    main.getByText(options.mapFallback ?? 'APIキーまたはMap IDが設定されていません'),
+  ).toBeVisible();
 }
 
 export { E2E_USERS, expect };

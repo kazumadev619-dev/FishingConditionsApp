@@ -3,8 +3,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const loggerMock = vi.hoisted(() => ({ warn: vi.fn(), error: vi.fn(), info: vi.fn() }));
 vi.mock('../logger', () => ({ logger: loggerMock }));
 
+import { setupTestMeter } from '../telemetry/testMeter';
 import { ApiClient } from './client';
 import { ApiError, ApiErrorType } from './types';
+
+const readMetric = setupTestMeter();
 
 // 期待値は docs/reference/api-error-handling.md から決める。
 // 自動リトライは最大 3 回（合計 4 回呼ぶ）、遅延は 100・200・400ms、タイムアウトは 10 秒。
@@ -247,5 +250,75 @@ describe('ApiClient のリクエスト', () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(error.type).toBe(ApiErrorType.CLIENT_ERROR);
     expect(error.retryable).toBe(false);
+  });
+});
+
+// 期待値は issue #283 の「着手前の決定（2026-11-27）」から決める。上流ごとの呼び出し数・
+// ApiErrorType ごとのエラー数・所要時間を ApiClient.request の1か所で記録する。ラベルにスポットを入れない。
+// 呼び出しは HTTP の1回ごとに数える（リトライも上流のクォータを使うため）。
+describe('ApiClient の計測（#283）', () => {
+  const read = () => readMetric('fishing.upstream.request.duration');
+  const host = { 'server.address': 'example.test' };
+
+  it('成功は error.type なしで1回と数える。ラベルにエンドポイントやパラメータを入れない', async () => {
+    fetchMock.mockResolvedValue(ok({}));
+
+    await newClient().get('/weather', { params: { lat: '35', lon: '139' } });
+
+    expect(await read()).toEqual([{ attributes: host, value: 1 }]);
+  });
+
+  it('リトライも1回ずつ数え、失敗は ApiErrorType ごとに数える', async () => {
+    fetchMock.mockResolvedValueOnce(httpError(503)).mockResolvedValueOnce(ok({}));
+
+    const promise = newClient().get('/x');
+    await vi.runAllTimersAsync();
+    await promise;
+
+    expect(await read()).toEqual(
+      expect.arrayContaining([
+        { attributes: { ...host, 'error.type': ApiErrorType.SERVER_ERROR }, value: 1 },
+        { attributes: host, value: 1 },
+      ]),
+    );
+    expect(await read()).toHaveLength(0);
+  });
+
+  it.each([
+    [429, ApiErrorType.RATE_LIMITED, 1],
+    [404, ApiErrorType.CLIENT_ERROR, 1],
+    [500, ApiErrorType.SERVER_ERROR, 4],
+  ])('HTTP %i は %s として %i 回数える', async (status, type, calls) => {
+    fetchMock.mockImplementation(async () => httpError(status));
+
+    await failure(newClient().get('/x'));
+
+    expect(await read()).toEqual([{ attributes: { ...host, 'error.type': type }, value: calls }]);
+  });
+
+  it('タイムアウトは TIMEOUT として数える', async () => {
+    fetchMock.mockRejectedValue(new DOMException('aborted', 'AbortError'));
+
+    await failure(newClient().get('/x'));
+
+    expect(await read()).toEqual([
+      { attributes: { ...host, 'error.type': ApiErrorType.TIMEOUT }, value: 4 },
+    ]);
+  });
+
+  it('ネットワークの失敗は NETWORK_ERROR として数える', async () => {
+    fetchMock.mockRejectedValue(new TypeError('fetch failed'));
+
+    await failure(newClient().get('/x'));
+
+    expect(await read()).toEqual([
+      { attributes: { ...host, 'error.type': ApiErrorType.NETWORK_ERROR }, value: 4 },
+    ]);
+  });
+
+  it('API キーが無く上流を呼ばないときは数えない', async () => {
+    await failure(new ApiClient('https://example.test/api', '', 'appid', true).get('/x'));
+
+    expect(await read()).toEqual([]);
   });
 });

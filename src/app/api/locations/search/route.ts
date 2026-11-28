@@ -16,10 +16,7 @@ async function handleGet(request: NextRequest) {
   try {
     if (!isLocationSearchConfigured()) {
       logger.error('GOOGLE_MAPS_API_KEY is not configured');
-      return createErrorResponse(
-        'Location search is not configured. Please set GOOGLE_MAPS_API_KEY.',
-        503,
-      );
+      return createErrorResponse('Location search is not configured', 503, 'API_NOT_CONFIGURED');
     }
 
     const searchParams = request.nextUrl.searchParams;

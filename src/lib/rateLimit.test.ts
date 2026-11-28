@@ -50,8 +50,21 @@ describe('isUserRateLimited', () => {
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:dashboard:user-1', 60);
   });
 
-  it('id が空なら数えられないので通さない', async () => {
-    asUser('');
+  // 仕様（#472）: 空文字・空白のみ・非文字列の user.id は未認証と同じく遮断し、Redis 計数を行わない
+  it.each([
+    ['null', null],
+    ['空オブジェクト', {}],
+    ['user.id が無い', { user: {} }],
+    ['user.id が空文字', { user: { id: '' } }],
+    ['user.id が半角スペースのみ', { user: { id: '   ' } }],
+    ['user.id がタブ・改行のみ', { user: { id: '\t\n' } }],
+    ['user.id が数値', { user: { id: 123 } }],
+    ['user.id が数値 0', { user: { id: 0 } }],
+    ['user.id がオブジェクト', { user: { id: { bad: true } } }],
+    ['user.id が配列', { user: { id: ['user-1'] } }],
+    ['user.id が真偽値 true', { user: { id: true } }],
+  ])('無効セッション（%s）なら数えられないので遮断する（#472）', async (_label, session) => {
+    vi.mocked(auth).mockResolvedValue(session as never);
 
     await expect(isUserRateLimited('dashboard')).resolves.toBe(true);
     expect(cache.increment).not.toHaveBeenCalled();
@@ -59,11 +72,20 @@ describe('isUserRateLimited', () => {
 });
 
 describe('withUserRateLimit', () => {
+  // auth() の呼び出し回数は、各テストで 1 回と検証する。testing-policy 5節「回数の例外」: #435 の仕様が auth() の二重呼び出しの防止なので、回数そのものが仕様
+  // 仕様（#472）: 空文字・空白のみ・非文字列の user.id は未認証と同じく 401 を返し、計数・ハンドラ・warn ログを呼ばない
   it.each([
     ['null', null],
     ['空オブジェクト', {}],
     ['user.id が無い', { user: {} }],
     ['user.id が空文字', { user: { id: '' } }],
+    ['user.id が半角スペースのみ', { user: { id: '   ' } }],
+    ['user.id がタブ・改行のみ', { user: { id: '\t\n' } }],
+    ['user.id が数値', { user: { id: 123 } }],
+    ['user.id が数値 0', { user: { id: 0 } }],
+    ['user.id がオブジェクト', { user: { id: { bad: true } } }],
+    ['user.id が配列', { user: { id: ['user-1'] } }],
+    ['user.id が真偽値 true', { user: { id: true } }],
   ])(
     '無効セッション（%s）なら 401 を返し、回数確認・ハンドラ・warn ログを呼ばない',
     async (_label, session) => {
@@ -72,25 +94,33 @@ describe('withUserRateLimit', () => {
       const response = await withUserRateLimit('weather', handler);
 
       expect(response.status).toBe(401);
+      expect(auth).toHaveBeenCalledTimes(1);
       expect(cache.increment).not.toHaveBeenCalled();
       expect(handler).not.toHaveBeenCalled();
       expect(logger.warn).not.toHaveBeenCalled();
     },
   );
 
-  it('上限を超えたら 429 と Retry-After を返し、warn ログを1回残してハンドラを呼ばない', async () => {
-    asUser('user-1');
-    vi.mocked(cache.increment).mockResolvedValue(61);
+  it.each([
+    ['weather', 'user-1'],
+    ['scores', 'user-2'],
+  ])(
+    '上限を超えたら（%s, %s）429 と Retry-After を返し、warn ログに routeName と userId を1回残してハンドラを呼ばない（#476）',
+    async (routeName, userId) => {
+      asUser(userId);
+      vi.mocked(cache.increment).mockResolvedValue(61);
 
-    const response = await withUserRateLimit('weather', handler);
+      const response = await withUserRateLimit(routeName, handler);
 
-    expect(response.status).toBe(429);
-    expect(response.headers.get('Retry-After')).toBe('60');
-    // 仕様: docs/reference/api-error-handling.md「エラーの分類と扱い」の表。回数制限は warn を出す。
-    // ログの項目や文言は仕様にないので検証しない（1回の 429 につき 1 回、だけを確かめる）
-    expect(logger.warn).toHaveBeenCalledTimes(1);
-    expect(handler).not.toHaveBeenCalled();
-  });
+      expect(response.status).toBe(429);
+      expect(response.headers.get('Retry-After')).toBe('60');
+      // 仕様: docs/reference/api-error-handling.md「エラーの分類と扱い」。回数制限は warn を1回出し、routeName と userId を載せる
+      expect(auth).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledTimes(1);
+      expect(logger.warn).toHaveBeenCalledWith({ routeName, userId }, expect.any(String));
+      expect(handler).not.toHaveBeenCalled();
+    },
+  );
 
   it('上限ちょうどまでは通し、ルートとユーザーごとに数えて userId をハンドラへ渡す（#435）', async () => {
     asUser('user-1');
@@ -99,6 +129,7 @@ describe('withUserRateLimit', () => {
     const response = await withUserRateLimit('weather', handler);
 
     expect(response.status).toBe(200);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:weather:user-1', 60);
     expect(handler).toHaveBeenCalledWith('user-1');
   });
@@ -112,6 +143,7 @@ describe('withUserRateLimit', () => {
     const response = await withUserRateLimit('scores', handler);
 
     expect(response).toBe(customResponse);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(cache.increment).toHaveBeenCalledWith('ratelimit:scores:user-2', 60);
     expect(handler).toHaveBeenCalledWith('user-2');
   });
@@ -123,6 +155,7 @@ describe('withUserRateLimit', () => {
     const response = await withUserRateLimit('scores', handler);
 
     expect(response.status).toBe(200);
+    expect(auth).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith('user-2');
     expect(logger.warn).not.toHaveBeenCalled();
   });
