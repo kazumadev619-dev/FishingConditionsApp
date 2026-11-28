@@ -96,7 +96,7 @@ export function getErrorMessage(error: ApiError): string {
       return 'サーバーで問題が発生しました。サポートに連絡してください。';
 
     case ApiErrorType.CLIENT_ERROR:
-      return 'リクエストが無効です。入力内容を確認してください。';
+      return '一時的に利用できません。時間をおいて再度お試しください。';
 
     case ApiErrorType.NETWORK_ERROR:
       return 'ネットワーク接続を確認してください。';
